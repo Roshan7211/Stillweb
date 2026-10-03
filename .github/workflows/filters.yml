@@ -1,0 +1,53 @@
+# Rebuilds the filter bundle daily and publishes it to GitHub Pages, so the app gets new
+# filters without an app release. Point EXPO_PUBLIC_FILTER_MANIFEST_URL at
+# https://<user>.github.io/<repo>/manifest.json
+# The privacy policy is published at https://<user>.github.io/<repo>/privacy/
+name: Filters
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: filters
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            native/shield-webview/rust/target
+          key: rust-${{ hashFiles('native/shield-webview/rust/Cargo.toml', 'native/shield-webview/rust/src/**') }}
+      - run: node scripts/filters/build.mjs --out filter-server/dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Static pages (privacy policy) are published next to the filter bundle.
+      - run: cp -R site/. filter-server/dist/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: filter-server/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

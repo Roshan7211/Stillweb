@@ -1,0 +1,103 @@
+{
+  "lists": [
+    {
+      "id": "easylist",
+      "title": "EasyList",
+      "purpose": "Ads",
+      "url": "https://easylist.to/easylist/easylist.txt",
+      "homepage": "https://easylist.to/",
+      "license": "GPLv3 or CC BY-SA 3.0",
+      "licenseUrl": "https://easylist.to/pages/licence.html",
+      "trusted": false
+    },
+    {
+      "id": "easyprivacy",
+      "title": "EasyPrivacy",
+      "purpose": "Trackers",
+      "url": "https://easylist.to/easylist/easyprivacy.txt",
+      "homepage": "https://easylist.to/",
+      "license": "GPLv3 or CC BY-SA 3.0",
+      "licenseUrl": "https://easylist.to/pages/licence.html",
+      "trusted": false
+    },
+    {
+      "id": "adguard-dns",
+      "title": "AdGuard DNS filter",
+      "purpose": "Ad and tracker domains",
+      "url": "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt",
+      "homepage": "https://github.com/AdguardTeam/AdGuardSDNSFilter",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/AdguardTeam/AdGuardSDNSFilter/blob/master/LICENSE",
+      "trusted": false,
+      "platforms": [
+        "android"
+      ],
+      "note": "Android only: on iOS it would exceed WebKit's content rule limit."
+    },
+    {
+      "id": "easylist-cookie",
+      "title": "EasyList Cookie List",
+      "purpose": "Cookie banners",
+      "url": "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt",
+      "homepage": "https://easylist.to/",
+      "license": "CC BY 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+      "trusted": false
+    },
+    {
+      "id": "ubo-filters",
+      "title": "uBlock filters",
+      "purpose": "Ads, pop-ups, inline video ads",
+      "url": "https://ublockorigin.github.io/uAssets/filters/filters.txt",
+      "homepage": "https://github.com/uBlockOrigin/uAssets",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
+      "trusted": true
+    },
+    {
+      "id": "ubo-privacy",
+      "title": "uBlock filters – Privacy",
+      "purpose": "Trackers",
+      "url": "https://ublockorigin.github.io/uAssets/filters/privacy.txt",
+      "homepage": "https://github.com/uBlockOrigin/uAssets",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
+      "trusted": true
+    },
+    {
+      "id": "ubo-quick-fixes",
+      "title": "uBlock filters – Quick fixes",
+      "purpose": "Fast-moving fixes",
+      "url": "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt",
+      "homepage": "https://github.com/uBlockOrigin/uAssets",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
+      "trusted": true
+    },
+    {
+      "id": "ubo-unbreak",
+      "title": "uBlock filters – Unbreak",
+      "purpose": "Fixes sites broken by other lists",
+      "url": "https://ublockorigin.github.io/uAssets/filters/unbreak.txt",
+      "homepage": "https://github.com/uBlockOrigin/uAssets",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
+      "trusted": true
+    }
+  ],
+  "resources": {
+    "title": "uBlock Origin scriptlets and redirect resources",
+    "repo": "gorhill/uBlock",
+    "tag": "1.75.0",
+    "homepage": "https://github.com/gorhill/uBlock",
+    "license": "GPLv3",
+    "licenseUrl": "https://github.com/gorhill/uBlock/blob/master/LICENSE.txt"
+  },
+  "software": [
+    {
+      "title": "adblock-rust",
+      "homepage": "https://github.com/brave/adblock-rust",
+      "license": "MPL-2.0"
+    }
+  ]
+}

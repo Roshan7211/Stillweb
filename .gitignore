@@ -1,0 +1,63 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# Rust build output
+native/shield-webview/rust/target/
+filter-server/dist/
+scripts/filters/.cache/
+
+# Native module build output and local SDK paths
+native/shield-webview/android/build/
+native/shield-webview/android/.cxx/
+local.properties
+
+# App binaries (attach to GitHub Releases instead)
+*.apk
+*.aab
+*.ipa
+
+# Any env file (EXPO_PUBLIC_* values may include private URLs)
+.env
+.env.*
+
+# Python bytecode
+__pycache__/

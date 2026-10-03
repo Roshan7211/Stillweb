@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "version": "2026-10-03T14:06:27Z",
+  "android": {
+    "lists": [
+      {
+        "id": "easylist",
+        "trusted": false,
+        "file": "android/easylist.txt",
+        "sha256": "82211bb9f9df69c66663ec9c614b687c20d9b05749528de2b8ca5bca2b2c2901",
+        "bytes": 2089973
+      },
+      {
+        "id": "easyprivacy",
+        "trusted": false,
+        "file": "android/easyprivacy.txt",
+        "sha256": "20c4c4d1c18fde5198b375af2c81f98bc0b8097cdfc4ee123a191a95fca664c5",
+        "bytes": 1507381
+      },
+      {
+        "id": "adguard-dns",
+        "trusted": false,
+        "file": "android/adguard-dns.txt",
+        "sha256": "0ff0e13dd19a8edff4c8df12d7c1b5064171d688ff492948d1ce0407c6d417ce",
+        "bytes": 4324145
+      },
+      {
+        "id": "easylist-cookie",
+        "trusted": false,
+        "file": "android/easylist-cookie.txt",
+        "sha256": "e1ce315bd7566c7761a0103be2f3307460f52c467fccf7fe8e5cc597d9ccb3a8",
+        "bytes": 1210358
+      },
+      {
+        "id": "ubo-filters",
+        "trusted": true,
+        "file": "android/ubo-filters.txt",
+        "sha256": "7dd11e00ac9611cc65b570337b935438404ab4e8d7e665c884c17879ac395e4b",
+        "bytes": 2404536
+      },
+      {
+        "id": "ubo-privacy",
+        "trusted": true,
+        "file": "android/ubo-privacy.txt",
+        "sha256": "98ea4fba1d8190cc4b625b035f113e0b75f91f71bb96a5eadafc9c7637cdcca7",
+        "bytes": 187243
+      },
+      {
+        "id": "ubo-quick-fixes",
+        "trusted": true,
+        "file": "android/ubo-quick-fixes.txt",
+        "sha256": "efc7fbfedd19ae398d04f41097c3ed9f714b12f351d3e12fa32abb8101f3de30",
+        "bytes": 74637
+      },
+      {
+        "id": "ubo-unbreak",
+        "trusted": true,
+        "file": "android/ubo-unbreak.txt",
+        "sha256": "d6aa331272458fb7f2c14e02020dde02103b59aa1dfe9e6107d182a30e43757d",
+        "bytes": 277555
+      }
+    ],
+    "resources": {
+      "file": "resources.json",
+      "sha256": "b5a8b121cb82920af5e1588567b869f7ff0342dac097b49a7f24fc0cf7589577",
+      "bytes": 469916
+    }
+  },
+  "ios": null
+}

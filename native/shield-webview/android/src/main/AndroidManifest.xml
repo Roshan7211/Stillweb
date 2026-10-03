@@ -1,0 +1,20 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <!-- DownloadManager writes to public Downloads; only needed before Android 10. -->
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+  <!-- Background play: keeps audio running with a media notification. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Keep Wi-Fi and the CPU awake only while media is playing (released when it stops). -->
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+  <application>
+    <!-- Don't let Android WebView upload usage metrics to Google. -->
+    <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
+    <service
+        android:name="expo.modules.shieldwebview.MediaPlaybackService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
+  </application>
+</manifest>

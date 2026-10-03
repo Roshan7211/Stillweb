@@ -1,0 +1,18 @@
+<!-- Stillweb glyph: a shield holding a calm sun over still water. White on black;
+     the black areas become transparent when rendered by scripts/gen-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <mask id="cut">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <!-- sun resting on the horizon -->
+      <path d="M402 498 A110 110 0 0 1 622 498 Z" fill="#000"/>
+      <!-- horizon and its calm reflections -->
+      <rect x="322" y="522" width="380" height="44" rx="22" fill="#000"/>
+      <rect x="387" y="596" width="250" height="40" rx="20" fill="#000"/>
+      <rect x="452" y="664" width="120" height="36" rx="18" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="1024" height="1024" fill="#000"/>
+  <path mask="url(#cut)" fill="#fff"
+        d="M330 214 H694 Q786 214 786 306 V512 C786 690 652 790 512 846 C372 790 238 690 238 512 V306 Q238 214 330 214 Z"/>
+</svg>

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "version": "2026-10-03T13:42:17Z",
+  "android": null,
+  "ios": {
+    "rules": [
+      {
+        "count": 118319,
+        "file": "ios/rules-0.json",
+        "sha256": "fc974d303e4c6fc2aa09c62c0d707415794edfca2b4931f5e662b442faa1b694",
+        "bytes": 12765048
+      },
+      {
+        "count": 57467,
+        "file": "ios/rules-1.json",
+        "sha256": "6d06f703cc2ec3abf0f1e3e9539c1a210560a2e089ca6925b101d26ced8ec7fa",
+        "bytes": 7427353
+      }
+    ],
+    "scriptlets": {
+      "file": "ios/scriptlets.json",
+      "sha256": "2b6f56ce1f9ad084f665b9b8e24ad2466685459ad65134619a772966707cbb9a",
+      "bytes": 4819815
+    }
+  }
+}

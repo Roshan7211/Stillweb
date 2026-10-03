@@ -1,0 +1,12 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ShieldWebViewModule", "ShieldEngineModule"]
+  },
+  "android": {
+    "modules": [
+      "expo.modules.shieldwebview.ShieldWebViewModule",
+      "expo.modules.shieldwebview.ShieldEngineModule"
+    ]
+  }
+}
