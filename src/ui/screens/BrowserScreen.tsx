@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ShieldEngine, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
+import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
 import { useSearchSuggestions } from '../../browser/suggest';
@@ -36,12 +37,14 @@ import ShieldPanel from '../components/ShieldPanel';
 import SuggestionsPanel from '../components/SuggestionsPanel';
 import { useTheme } from '../theme';
 import AboutScreen from './AboutScreen';
+import PlusScreen from './PlusScreen';
+import PrivacyReportScreen from './PrivacyReportScreen';
 import { BookmarksScreen, DownloadsScreen, HistoryScreen } from './LibraryScreens';
 import SettingsScreen from './SettingsScreen';
 import ShieldTestScreen from './ShieldTestScreen';
 import TabSwitcherScreen from './TabSwitcherScreen';
 
-type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest';
+type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus';
 
 export default function BrowserScreen() {
   const { settings } = useSettings();
@@ -50,9 +53,23 @@ export default function BrowserScreen() {
   const tabsApi = useTabs();
   const { tabs, activeTab, liveIds, restored, openTab, closeTab, closeAll, navigate, updateTab } = tabsApi;
   const library = useLibrary();
+  const stats = usePrivacyStatsActions();
 
   const refs = useRef(new Map<string, ShieldWebViewRef>());
   const [overlay, setOverlay] = useState<Overlay>('none');
+  // Where the privacy report and Plus screens go back to (they open from several places).
+  const [reportBack, setReportBack] = useState<Overlay>('none');
+  const [plusBack, setPlusBack] = useState<Overlay>('none');
+  const openReport = useCallback((from: Overlay = 'none') => {
+    setReportBack(from);
+    setOverlay('report');
+  }, []);
+  const openPlus = (from: Overlay) => {
+    setPlusBack(from);
+    setOverlay('plus');
+  };
+  // From the new tab page (stable: tab views are memoized).
+  const openReportFromPage = useCallback(() => openReport('none'), [openReport]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [shieldOpen, setShieldOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
@@ -328,7 +345,15 @@ export default function BrowserScreen() {
         return true;
       }
       if (overlay !== 'none') {
-        setOverlay(overlay === 'about' ? 'settings' : 'none');
+        setOverlay(
+          overlay === 'about' || overlay === 'shieldTest'
+            ? 'settings'
+            : overlay === 'report'
+              ? reportBack
+              : overlay === 'plus'
+                ? plusBack
+                : 'none',
+        );
         return true;
       }
       if (findOpen) {
@@ -361,6 +386,7 @@ export default function BrowserScreen() {
     if (settings.clearDataOnExit) {
       await ShieldEngine.clearBrowsingData().catch(() => {});
       library.clearHistory();
+      stats.clear();
       closeAll(true);
       closeAll(false);
     }
@@ -499,6 +525,7 @@ export default function BrowserScreen() {
               onFindResult={onFindResult}
               onLinkAction={onLinkAction}
               onChromeChange={onChromeChange}
+              onOpenReport={openReportFromPage}
               chromeCollapsed={tab.id === activeTab?.id && collapsed}
             />
           ))}
@@ -653,6 +680,10 @@ export default function BrowserScreen() {
           setShieldOpen(false);
           setOverlay('settings');
         }}
+        onOpenReport={() => {
+          setShieldOpen(false);
+          openReport('none');
+        }}
       />
 
       {overlay !== 'none' ? (
@@ -685,6 +716,8 @@ export default function BrowserScreen() {
               onBack={() => setOverlay('none')}
               onOpenAbout={() => setOverlay('about')}
               onOpenShieldTest={() => setOverlay('shieldTest')}
+              onOpenPlus={() => openPlus('settings')}
+              onOpenReport={() => openReport('settings')}
               onClearedData={() => ShieldEngine.getStatus().then((s) => setTotalBlocked(s.totalBlocked))}
             />
           ) : overlay === 'about' ? (
@@ -698,6 +731,17 @@ export default function BrowserScreen() {
             />
           ) : overlay === 'shieldTest' ? (
             <ShieldTestScreen onClose={() => setOverlay('settings')} />
+          ) : overlay === 'report' ? (
+            <PrivacyReportScreen theme={theme} onBack={() => setOverlay(reportBack)} onUpgrade={() => openPlus('report')} />
+          ) : overlay === 'plus' ? (
+            <PlusScreen
+              theme={theme}
+              onBack={() => setOverlay(plusBack)}
+              onOpen={(url) => {
+                setOverlay('none');
+                openTab(url);
+              }}
+            />
           ) : null}
         </View>
       ) : null}

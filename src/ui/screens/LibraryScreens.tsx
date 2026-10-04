@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ShieldEngine } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
+import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { displayUrl } from '../../browser/url';
 import { IconButton, Row, ScreenHeader } from '../components/primitives';
 import type { Theme } from '../theme';
@@ -49,6 +50,7 @@ function dayLabel(ts: number): string {
 
 export function HistoryScreen({ theme, onBack, onOpen }: Props) {
   const { history, removeHistory, clearHistory } = useLibrary();
+  const stats = usePrivacyStatsActions();
   const rows: ({ kind: 'day'; label: string } | { kind: 'item'; url: string; title: string; visitedAt: number })[] = [];
   let lastDay = '';
   for (const h of history) {
@@ -73,9 +75,16 @@ export function HistoryScreen({ theme, onBack, onOpen }: Props) {
               label="Clear history"
               color={theme.text}
               onPress={() =>
-                Alert.alert('Clear history?', 'This removes every page from your history.', [
+                Alert.alert('Clear history?', 'This removes every page from your history and the sites in your privacy report.', [
                   { text: 'Cancel', style: 'cancel' },
-                  { text: 'Clear', style: 'destructive', onPress: clearHistory },
+                  {
+                    text: 'Clear',
+                    style: 'destructive',
+                    onPress: () => {
+                      clearHistory();
+                      stats.clear();
+                    },
+                  },
                 ])
               }
             />

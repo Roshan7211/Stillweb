@@ -9,6 +9,8 @@ export type Theme = {
   border: string;
   accent: string;
   accentSoft: string;
+  /** Data marks (privacy report bars); validated for contrast on this mode's background. */
+  chart: string;
   danger: string;
   privateBackground: string;
   privateSurface: string;
@@ -23,6 +25,7 @@ const light: Theme = {
   border: '#D9DCE1',
   accent: '#2F6FEB',
   accentSoft: '#E3ECFD',
+  chart: '#2F6FEB',
   danger: '#D93D3D',
   privateBackground: '#1E1630',
   privateSurface: '#2C2244',
@@ -37,6 +40,7 @@ const dark: Theme = {
   border: '#33363C',
   accent: '#6E9BF5',
   accentSoft: '#1F2B45',
+  chart: '#5E8FF0',
   danger: '#F06A6A',
   privateBackground: '#1A1328',
   privateSurface: '#2A2140',

@@ -109,6 +109,8 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   @Volatile private var pageUrl = "about:blank"
   @Volatile private var shieldsActive = true
   private val blockedOnPage = AtomicInteger(0)
+  /** Blocked request counts by host since the last event (for the privacy report). */
+  private val blockedHosts = java.util.concurrent.ConcurrentHashMap<String, Int>()
   private val blockedEventQueued = AtomicBoolean(false)
 
   // ---- cosmetic scripts registered per hostname (main thread writes) ----
@@ -414,8 +416,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     if (blockedOnPage.getAndSet(0) != 0) queueBlockedEvent()
   }
 
-  private fun countBlocked() {
+  private fun countBlocked(url: String? = null) {
     blockedOnPage.incrementAndGet()
+    url?.let(::hostOf)?.let { host -> blockedHosts.merge(host, 1, Int::plus) }
     ShieldEngine.recordBlocked()
     queueBlockedEvent()
   }
@@ -425,8 +428,10 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     if (!blockedEventQueued.compareAndSet(false, true)) return
     main.postDelayed({
       blockedEventQueued.set(false)
+      val hosts = HashMap<String, Int>()
+      for (host in blockedHosts.keys) blockedHosts.remove(host)?.let { hosts[host] = it }
       onBlockedCountChange(
-        mapOf("blocked" to blockedOnPage.get(), "totalBlocked" to ShieldEngine.totalBlocked().toDouble())
+        mapOf("blocked" to blockedOnPage.get(), "totalBlocked" to ShieldEngine.totalBlocked().toDouble(), "hosts" to hosts)
       )
     }, 250)
   }
@@ -625,11 +630,11 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       return when (val verdict = ShieldEngine.check(url, pageUrl, type)) {
         Verdict.Allow -> null
         Verdict.Block -> {
-          countBlocked()
+          countBlocked(url)
           if (type == "sub_frame") ShieldResponses.blockedFrame() else ShieldResponses.blocked()
         }
         is Verdict.Redirect -> {
-          countBlocked()
+          countBlocked(url)
           ShieldResponses.redirect(verdict.dataUrl)
         }
       }
@@ -647,7 +652,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
           if (request.hasGesture()) {
             onExternalLink(mapOf("url" to url))
           } else if (shieldsActive) {
-            countBlocked()
+            countBlocked(url)
           }
           return true
         }
@@ -657,7 +662,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       if (shieldsActive && !request.hasGesture() && !request.isRedirect &&
         ShieldEngine.check(url, pageUrl, "document") != Verdict.Allow
       ) {
-        countBlocked()
+        countBlocked(url)
         onPopupBlocked(mapOf("url" to url, "kind" to "redirect"))
         return true
       }
@@ -758,7 +763,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
             debug("popup target $target")
             val isAd = shieldsActive && ShieldEngine.check(target, pageUrl, "document") != Verdict.Allow
             if (isAd) {
-              countBlocked()
+              countBlocked(target)
               onPopupBlocked(mapOf("url" to target, "kind" to "popup"))
             } else {
               onOpenWindow(mapOf("url" to target, "incognito" to incognito))

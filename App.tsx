@@ -6,8 +6,10 @@ import { ShieldEngine } from './native/shield-webview';
 import { applyDevProxy } from './src/blocking/devProxy';
 import { checkForFilterUpdate, registerFilterUpdateTask } from './src/blocking/filterUpdater';
 import { LibraryProvider, useLibrary } from './src/browser/library';
+import { PrivacyStatsProvider, usePrivacyStatsActions } from './src/browser/privacyStats';
 import { SettingsProvider, useSettings } from './src/browser/settings';
 import { TabsProvider } from './src/browser/tabs';
+import { PlusProvider } from './src/plus/plus';
 import BrowserScreen from './src/ui/screens/BrowserScreen';
 import { useTheme } from './src/ui/theme';
 
@@ -15,6 +17,7 @@ import { useTheme } from './src/ui/theme';
 function Root() {
   const { settings, loaded } = useSettings();
   const library = useLibrary();
+  const stats = usePrivacyStatsActions();
   const theme = useTheme(settings.theme);
   const [ready, setReady] = useState(false);
 
@@ -28,6 +31,7 @@ function Root() {
       if (settings.clearDataOnExit) {
         await ShieldEngine.clearBrowsingData().catch(() => {});
         library.clearHistory();
+        stats.clear();
       }
       setReady(true);
     })();
@@ -62,7 +66,11 @@ export default function App() {
     <SafeAreaProvider>
       <SettingsProvider>
         <LibraryProvider>
-          <Root />
+          <PrivacyStatsProvider>
+            <PlusProvider>
+              <Root />
+            </PlusProvider>
+          </PrivacyStatsProvider>
         </LibraryProvider>
       </SettingsProvider>
     </SafeAreaProvider>

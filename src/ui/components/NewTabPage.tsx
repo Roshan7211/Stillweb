@@ -13,9 +13,10 @@ type Props = {
   /** The tab on screen: only one scroll view may answer the iOS status bar tap. */
   active: boolean;
   onOpen: (url: string) => void;
+  onOpenReport: () => void;
 };
 
-export default function NewTabPage({ theme, incognito, totalBlocked, active, onOpen }: Props) {
+export default function NewTabPage({ theme, incognito, totalBlocked, active, onOpen, onOpenReport }: Props) {
   const { bookmarks } = useLibrary();
   const bg = incognito ? theme.privateBackground : theme.background;
   const fg = incognito ? '#ECE6F7' : theme.text;
@@ -42,11 +43,16 @@ export default function NewTabPage({ theme, incognito, totalBlocked, active, onO
         </View>
       ) : null}
 
-      <View style={[styles.card, { backgroundColor: card }]}>
+      <Pressable
+        style={({ pressed }) => [styles.card, { backgroundColor: card, opacity: pressed ? 0.8 : 1 }]}
+        onPress={onOpenReport}
+        accessibilityRole="button"
+        accessibilityLabel={`${totalBlocked.toLocaleString()} ads and trackers blocked. Open privacy report`}>
         <Icon name="shield" size={26} color={theme.accent} />
         <Text style={[styles.stat, { color: fg }]}>{totalBlocked.toLocaleString()}</Text>
         <Text style={[styles.cardBody, { color: muted }]}>ads and trackers blocked</Text>
-      </View>
+        <Text style={[styles.cardLink, { color: theme.accent }]}>Privacy report</Text>
+      </Pressable>
 
       {bookmarks.length > 0 ? (
         <View style={styles.grid}>
@@ -74,6 +80,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: '600' },
   cardBody: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
   stat: { fontSize: 34, fontWeight: '700' },
+  cardLink: { fontSize: 14, fontWeight: '600', marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
   tile: { width: '25%', alignItems: 'center', paddingVertical: 10, gap: 6 },
   tileIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },

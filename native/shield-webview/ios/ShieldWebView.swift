@@ -73,6 +73,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private var shieldsActive = true
   private var countedHost: String?
   private var blockedOnPage = 0
+  /// Blocked request counts by host since the last event (for the privacy report).
+  private var blockedHosts: [String: Int] = [:]
   private var pendingUpgradeURL: URL?
   private var downloadProgress: [ObjectIdentifier: NSKeyValueObservation] = [:]
   private var downloadPaths: [ObjectIdentifier: String] = [:]
@@ -83,21 +85,31 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// payment pop-ups need to report back to the page that opened them.
   private static var pendingPopups: [String: WKWebView] = [:]
 
-  /// Counts resource loads that fail (content-blocked requests surface as load errors).
-  /// WebKit doesn't report blocked requests, so the iOS counter is an estimate.
+  /// Counts resource loads that fail (content-blocked requests surface as load errors), with
+  /// their hosts for the privacy report. WebKit doesn't report blocked requests, so the iOS
+  /// counter is an estimate.
   private static let statsScript = WKUserScript(
     source: """
     (function () {
-      var pending = 0, timer = 0;
+      var pending = 0, hosts = {}, timer = 0;
       var tags = /^(SCRIPT|IMG|IFRAME|LINK|VIDEO|AUDIO|SOURCE|EMBED|OBJECT)$/;
       function flush() {
         timer = 0;
-        if (pending) { window.webkit.messageHandlers.shieldStats.postMessage(pending); pending = 0; }
+        if (pending) {
+          window.webkit.messageHandlers.shieldStats.postMessage({ count: pending, hosts: hosts });
+          pending = 0;
+          hosts = {};
+        }
       }
       window.addEventListener('error', function (e) {
         var el = e.target;
         if (el && el !== window && el.tagName && tags.test(el.tagName)) {
           pending++;
+          var match = /^https?:\\/\\/([^\\/?#:]+)/i.exec(el.currentSrc || el.src || el.href || '');
+          if (match) {
+            var host = match[1].toLowerCase();
+            hosts[host] = (hosts[host] || 0) + 1;
+          }
           if (!timer) timer = setTimeout(flush, 300);
         }
       }, true);
@@ -724,14 +736,20 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     return upgraded
   }
 
-  private func countBlocked(_ n: Int = 1) {
+  private func countBlocked(_ n: Int = 1, hosts: [String: Int] = [:]) {
     blockedOnPage += n
+    blockedHosts.merge(hosts, uniquingKeysWith: +)
     ShieldEngine.shared.recordBlocked(n)
     emitBlocked()
   }
 
   private func emitBlocked() {
-    onBlockedCountChange(["blocked": blockedOnPage, "totalBlocked": ShieldEngine.shared.totalBlocked])
+    onBlockedCountChange([
+      "blocked": blockedOnPage,
+      "totalBlocked": ShieldEngine.shared.totalBlocked,
+      "hosts": blockedHosts,
+    ])
+    blockedHosts = [:]
   }
 
   private func emitNavigationState() {
@@ -752,8 +770,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   // MARK: - WKScriptMessageHandler
 
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-    if message.name == "shieldStats", shieldsActive, let n = message.body as? Int, n > 0 {
-      countBlocked(n)
+    if message.name == "shieldStats", shieldsActive {
+      let body = message.body as? [String: Any]
+      let n = (body?["count"] as? Int) ?? (message.body as? Int) ?? 0
+      let hosts = (body?["hosts"] as? [String: Any])?.compactMapValues { $0 as? Int } ?? [:]
+      if n > 0 { countBlocked(n, hosts: hosts) }
     } else if message.name == "shieldTouch" {
       let src = message.body as? String ?? ""
       let url = URL(string: src)
@@ -781,7 +802,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         onExternalLink(["url": url.absoluteString])
       } else if shieldsActive {
         // Script-driven jumps to app stores / other apps.
-        countBlocked()
+        countBlocked(hosts: url.host.map { [$0.lowercased(): 1] } ?? [:])
         onPopupBlocked(["url": url.absoluteString, "kind": "redirect"])
       }
       return

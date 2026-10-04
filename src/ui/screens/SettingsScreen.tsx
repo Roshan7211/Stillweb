@@ -7,9 +7,11 @@ import { ShieldEngine, type EngineStatus } from '../../../native/shield-webview'
 import { FILTER_MANIFEST_URL } from '../../blocking/config';
 import { checkForFilterUpdate } from '../../blocking/filterUpdater';
 import { useLibrary } from '../../browser/library';
+import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { hasRemoteSuggestions } from '../../browser/suggest';
 import { SEARCH_ENGINES } from '../../browser/url';
+import { usePlus } from '../../plus/plus';
 import { Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
 import type { Theme } from '../theme';
 
@@ -18,6 +20,8 @@ type Props = {
   onBack: () => void;
   onOpenAbout: () => void;
   onOpenShieldTest: () => void;
+  onOpenPlus: () => void;
+  onOpenReport: () => void;
   onClearedData: () => void;
 };
 
@@ -27,9 +31,11 @@ function formatVersion(v: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? v : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShieldTest, onClearedData }: Props) {
+export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShieldTest, onOpenPlus, onOpenReport, onClearedData }: Props) {
   const { settings, update, setSiteShields } = useSettings();
   const library = useLibrary();
+  const stats = usePrivacyStatsActions();
+  const plus = usePlus();
   const [status, setStatus] = useState<EngineStatus | null>(null);
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
@@ -88,6 +94,7 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
         onPress: async () => {
           await ShieldEngine.clearBrowsingData();
           library.clearHistory();
+          stats.clear();
           onClearedData();
           Alert.alert('Browsing data cleared');
         },
@@ -102,6 +109,17 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <ScreenHeader title="Settings" onBack={onBack} theme={theme} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {plus.supported ? (
+          <Row
+            title="Stillweb Plus"
+            subtitle={plus.entitlement ? 'Active. Thank you for supporting Stillweb' : 'Get more out of Stillweb'}
+            icon="star"
+            theme={theme}
+            onPress={onOpenPlus}
+            right={<Icon name="chevron-right" size={20} color={theme.muted} />}
+          />
+        ) : null}
+
         <SectionTitle theme={theme}>Protection</SectionTitle>
         <SwitchRow
           title="Block ads and trackers"
@@ -109,6 +127,14 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
           value={shields.enabled}
           onValueChange={(v) => update({ shields: { enabled: v } })}
           theme={theme}
+        />
+        <Row
+          title="Privacy report"
+          subtitle="What was blocked, day by day"
+          icon="bar-chart-2"
+          theme={theme}
+          onPress={onOpenReport}
+          right={<Icon name="chevron-right" size={20} color={theme.muted} />}
         />
         {settings.disabledSites.length ? (
           <>

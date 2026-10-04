@@ -4,9 +4,10 @@ import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native
 
 import { ShieldEngine, ShieldWebView, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
+import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { useTabActions, type Tab } from '../../browser/tabs';
-import { displayHost, isBlank } from '../../browser/url';
+import { displayHost, isBlank, siteKey } from '../../browser/url';
 import type { Theme } from '../theme';
 import type { ContextTarget } from './ContextMenuSheet';
 import NewTabPage from './NewTabPage';
@@ -29,6 +30,8 @@ type Props = {
   onChromeChange: (collapsed: boolean) => void;
   /** Whether the bars are shrunk (only passed to the active tab). */
   chromeCollapsed: boolean;
+  /** Opens the privacy report (from the new tab page's stats). */
+  onOpenReport: () => void;
 };
 
 type LoadError = { url: string; code: number; description: string };
@@ -74,11 +77,14 @@ export default memo(BrowserTabView);
 
 function BrowserTabView(props: Props) {
   const { tab, active, theme, totalBlocked, onTotalBlocked, registerRef, onToast, onContextMenu, onFullscreenChange, onFindResult } = props;
-  const { onLinkAction, onChromeChange, chromeCollapsed } = props;
+  const { onLinkAction, onChromeChange, chromeCollapsed, onOpenReport } = props;
   const { settings } = useSettings();
   const { updateTab, openTab, navigate, closeTab } = useTabActions();
   const library = useLibrary();
+  const stats = usePrivacyStatsActions();
   const ref = useRef<ShieldWebViewRef>(null);
+  // The page's running count, to turn each update into the newly blocked requests.
+  const lastBlocked = useRef(0);
   const lastVisit = useRef<string>('');
   // The URL the web view is created with. App-driven navigations after that (address bar,
   // bookmarks) bump tab.navigationKey and go through loadUrl.
@@ -115,6 +121,7 @@ function BrowserTabView(props: Props) {
           totalBlocked={totalBlocked}
           active={active}
           onOpen={(url) => navigate(tab.id, url)}
+          onOpenReport={onOpenReport}
         />
       </View>
     );
@@ -172,7 +179,13 @@ function BrowserTabView(props: Props) {
           updateTab(tab.id, { progress });
         }}
         onBlockedCountChange={({ nativeEvent }) => {
-          updateTab(tab.id, { blocked: nativeEvent.blocked });
+          const { blocked, hosts } = nativeEvent;
+          // A lower count means a new page started counting from zero.
+          const added = blocked >= lastBlocked.current ? blocked - lastBlocked.current : blocked;
+          lastBlocked.current = blocked;
+          if (tab.incognito) stats.record(added);
+          else stats.record(added, isBlank(tab.url) ? null : siteKey(tab.url), hosts);
+          updateTab(tab.id, { blocked });
           onTotalBlocked(nativeEvent.totalBlocked);
         }}
         onOpenWindow={({ nativeEvent }) => {

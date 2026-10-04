@@ -20,6 +20,8 @@ export type BlockedCount = {
   blocked: number;
   /** Requests blocked since install (or the last stats reset). */
   totalBlocked: number;
+  /** Blocked requests by host since the previous event (for the privacy report). */
+  hosts?: Record<string, number>;
 };
 
 export type DownloadRequest = {

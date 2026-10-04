@@ -15,9 +15,10 @@ type Props = {
   /** Reload so the new shield state takes effect. */
   onChanged: () => void;
   onOpenSettings: () => void;
+  onOpenReport: () => void;
 };
 
-export default function ShieldPanel({ visible, onClose, theme, url, blocked, totalBlocked, onChanged, onOpenSettings }: Props) {
+export default function ShieldPanel({ visible, onClose, theme, url, blocked, totalBlocked, onChanged, onOpenSettings, onOpenReport }: Props) {
   const { settings, setSiteShields } = useSettings();
   const site = siteKey(url);
   const globallyOn = settings.shields.enabled;
@@ -64,6 +65,7 @@ export default function ShieldPanel({ visible, onClose, theme, url, blocked, tot
       <Text style={[styles.note, { color: theme.muted }]}>
         If this site doesn't work properly, turn protection off. It's remembered for {site || 'this site'}.
       </Text>
+      <Row title="Privacy report" icon="bar-chart-2" theme={theme} onPress={onOpenReport} />
       <Row title="Settings" icon="sliders" theme={theme} onPress={onOpenSettings} />
     </Sheet>
   );
