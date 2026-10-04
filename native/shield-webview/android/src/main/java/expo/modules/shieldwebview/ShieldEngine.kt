@@ -67,6 +67,8 @@ internal object ShieldEngine {
   @Volatile var cosmeticFiltering = true
   @Volatile var blockThirdPartyCookies = true
   @Volatile var backgroundPlay = true
+  /** Stillweb Plus: annoyance lists in the engine and automatic cookie pop-up rejection. */
+  @Volatile var calmMode = false
   @Volatile private var disabledSites: Set<String> = emptySet()
   @Volatile private var enabledLists: Set<String>? = null // null = all lists
 
@@ -111,6 +113,7 @@ internal object ShieldEngine {
     cosmeticFiltering = prefs.getBoolean("cosmeticFiltering", true)
     blockThirdPartyCookies = prefs.getBoolean("blockThirdPartyCookies", true)
     backgroundPlay = prefs.getBoolean("backgroundPlay", true)
+    calmMode = prefs.getBoolean("calmMode", false)
 
     debuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     // Debug builds: allow chrome://inspect on page content.
@@ -202,6 +205,13 @@ internal object ShieldEngine {
       backgroundPlay = it
       if (!it) main.post { MediaPlaybackController.stop(pause = false) }
     }
+    (options["calmMode"] as? Boolean)?.let {
+      if (it != calmMode) {
+        calmMode = it
+        // The annoyance lists go in or out of the engine.
+        executor.execute { runCatching { loadBest() }.onFailure { e -> Log.w(TAG, "rebuild for Calm Mode failed", e) } }
+      }
+    }
     prefs.edit()
       .putBoolean("enabled", enabled)
       .putBoolean("httpsUpgrade", httpsUpgrade)
@@ -209,6 +219,7 @@ internal object ShieldEngine {
       .putBoolean("cosmeticFiltering", cosmeticFiltering)
       .putBoolean("blockThirdPartyCookies", blockThirdPartyCookies)
       .putBoolean("backgroundPlay", backgroundPlay)
+      .putBoolean("calmMode", calmMode)
       .apply()
     generation.incrementAndGet()
   }
@@ -347,6 +358,8 @@ internal object ShieldEngine {
       val entry = lists.getJSONObject(i)
       val id = entry.getString("id")
       if (wanted != null && id !in wanted) continue
+      // Calm Mode's annoyance lists only while it's on.
+      if (entry.optString("group") == "calm" && !calmMode) continue
       paths += File(dir, entry.getString("file")).absolutePath
       trusted += entry.optBoolean("trusted", false)
       ids += id

@@ -128,6 +128,14 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
           onValueChange={(v) => update({ shields: { enabled: v } })}
           theme={theme}
         />
+        <SwitchRow
+          title={plus.unlocked ? 'Calm Mode' : 'Calm Mode · Plus'}
+          subtitle="Rejects cookie pop-ups and hides newsletter pop-ups, chat bubbles, floating videos and other annoyances. Applies to pages you open next"
+          value={shields.calmMode && plus.unlocked}
+          onValueChange={(v) => (plus.unlocked ? update({ shields: { calmMode: v } }) : onOpenPlus())}
+          theme={theme}
+          disabled={disabled}
+        />
         <Row
           title="Privacy report"
           subtitle="What was blocked, day by day"

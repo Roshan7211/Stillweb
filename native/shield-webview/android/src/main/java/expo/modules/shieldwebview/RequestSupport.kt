@@ -145,6 +145,10 @@ internal object CosmeticScripts {
   fun generic(context: Context): String =
     genericScript ?: readAsset(context, "shieldjs/cosmetic-generic.js").also { genericScript = it }
 
+  /** Calm Mode's cookie pop-up script (DuckDuckGo autoconsent, MPL-2.0; ios/Resources/vendor). */
+  fun autoconsent(context: Context): String =
+    assetCache.getOrPut("autoconsent.js") { readAsset(context, "autoconsent.js") }
+
   /**
    * Script for one hostname: scriptlets first (they must run before page scripts), then
    * specific hide rules and procedural filters. Returns null when there is nothing to inject.

@@ -14,8 +14,9 @@ android {
   }
   sourceSets {
     main {
-      // Page-side scripts shared with iOS (web/shieldjs/*.js -> assets/shieldjs/).
-      assets.srcDirs += ["${projectDir}/../web"]
+      // Page-side scripts shared with iOS (web/shieldjs/*.js -> assets/shieldjs/), and
+      // Calm Mode's cookie pop-up script (ios/Resources/vendor/autoconsent.js -> assets/).
+      assets.srcDirs += ["${projectDir}/../web", "${projectDir}/../ios/Resources/vendor"]
     }
   }
   lintOptions {

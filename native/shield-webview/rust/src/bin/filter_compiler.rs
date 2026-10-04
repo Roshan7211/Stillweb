@@ -23,32 +23,52 @@ const MAX_RULES_PER_LIST: usize = 150_000;
 
 struct Args {
     lists: Vec<(PathBuf, bool)>,
-    resources: PathBuf,
+    /// Lists whose element-hiding exceptions also apply here, without emitting their rules
+    /// (an optional group compiled on its own, like Calm Mode's annoyance lists).
+    context: Vec<PathBuf>,
+    resources: Option<PathBuf>,
     out: PathBuf,
+    /// Output file names: `{prefix}-0.json` (network) and `{prefix}-1.json` (hiding).
+    prefix: String,
+    scriptlets: bool,
 }
 
 fn parse_args() -> Args {
     let mut it = std::env::args().skip(1);
     if it.next().as_deref() != Some("ios") {
-        die("usage: filter-compiler ios --list FILE[:trusted]... --resources FILE --out DIR");
+        die("usage: filter-compiler ios --list FILE[:trusted]... [--context FILE]... \
+             [--resources FILE | --no-scriptlets] [--prefix NAME] --out DIR");
     }
-    let (mut lists, mut resources, mut out) = (vec![], None, None);
+    let (mut lists, mut context, mut resources, mut out) = (vec![], vec![], None, None);
+    let (mut prefix, mut scriptlets) = ("rules".to_string(), true);
     while let Some(arg) = it.next() {
+        if arg == "--no-scriptlets" {
+            scriptlets = false;
+            continue;
+        }
         let value = it.next().unwrap_or_else(|| die(&format!("missing value for {arg}")));
         match arg.as_str() {
             "--list" => match value.strip_suffix(":trusted") {
                 Some(path) => lists.push((PathBuf::from(path), true)),
                 None => lists.push((PathBuf::from(value), false)),
             },
+            "--context" => context.push(PathBuf::from(value.trim_end_matches(":trusted"))),
             "--resources" => resources = Some(PathBuf::from(value)),
             "--out" => out = Some(PathBuf::from(value)),
+            "--prefix" => prefix = value,
             other => die(&format!("unknown argument {other}")),
         }
     }
+    if scriptlets && resources.is_none() {
+        die("--resources is required (or --no-scriptlets)");
+    }
     Args {
         lists,
-        resources: resources.unwrap_or_else(|| die("--resources is required")),
+        context,
+        resources,
         out: out.unwrap_or_else(|| die("--out is required")),
+        prefix,
+        scriptlets,
     }
 }
 
@@ -61,18 +81,18 @@ fn main() {
     let args = parse_args();
     std::fs::create_dir_all(&args.out).expect("create out dir");
 
-    let texts: Vec<(String, bool)> = args
-        .lists
-        .iter()
-        .map(|(path, trusted)| {
-            let text = std::fs::read_to_string(path)
-                .unwrap_or_else(|e| die(&format!("read {}: {e}", path.display())));
-            (text, *trusted)
-        })
-        .collect();
+    let read = |path: &PathBuf| {
+        std::fs::read_to_string(path).unwrap_or_else(|e| die(&format!("read {}: {e}", path.display())))
+    };
+    let texts: Vec<(String, bool)> =
+        args.lists.iter().map(|(path, trusted)| (read(path), *trusted)).collect();
+    let context: Vec<String> = args.context.iter().map(read).collect();
 
-    let rule_files = write_content_rules(&texts, &args.out);
-    let hosts = write_scriptlets(&texts, &args.resources, &args.out);
+    let rule_files = write_content_rules(&texts, &context, &args.out, &args.prefix);
+    let hosts = match (&args.resources, args.scriptlets) {
+        (Some(resources), true) => write_scriptlets(&texts, resources, &args.out),
+        _ => 0,
+    };
 
     println!(
         "{}",
@@ -83,10 +103,15 @@ fn main() {
 // ---------------------------------------------------------------------------
 // Content blocking rules
 
-fn write_content_rules(texts: &[(String, bool)], out: &PathBuf) -> Vec<Value> {
+fn write_content_rules(texts: &[(String, bool)], context: &[String], out: &PathBuf, prefix: &str) -> Vec<Value> {
     // adblock-rust turns `site#@#sel` into a *hiding* rule for every other site, and drops
     // `$generichide` / `$elemhide`. Both are handled here instead (see cosmetic_rules).
     let mut exceptions = CosmeticExceptions::default();
+    for text in context {
+        text.lines().for_each(|line| {
+            exceptions.take(line);
+        });
+    }
     let mut set = FilterSet::new(true); // debug mode is required for conversion
     for (text, trusted) in texts {
         let kept: Vec<&str> = text.lines().filter(|line| !exceptions.take(line)).collect();
@@ -107,8 +132,8 @@ fn write_content_rules(texts: &[(String, bool)], out: &PathBuf) -> Vec<Value> {
             _ => network.push(rule),
         }
     }
-    let groups: Vec<(&str, Vec<CbRule>)> =
-        vec![("rules-0.json", network), ("rules-1.json", cosmetic_rules(cosmetic, &exceptions))];
+    let groups: Vec<(String, Vec<CbRule>)> =
+        vec![(format!("{prefix}-0.json"), network), (format!("{prefix}-1.json"), cosmetic_rules(cosmetic, &exceptions))];
 
     groups
         .into_iter()
@@ -121,7 +146,7 @@ fn write_content_rules(texts: &[(String, bool)], out: &PathBuf) -> Vec<Value> {
                 rules.truncate(MAX_RULES_PER_LIST);
             }
             let data = serde_json::to_vec(&rules).expect("serialize rules");
-            std::fs::write(out.join(name), data).expect("write rules");
+            std::fs::write(out.join(&name), data).expect("write rules");
             json!({ "file": name, "count": rules.len() })
         })
         .collect()

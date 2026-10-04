@@ -118,6 +118,8 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   private val hostScripts = ConcurrentHashMap<String, Any>()
   @Volatile private var scriptsGeneration = -1
   private var genericScript: ScriptHandler? = null
+  /** Calm Mode's cookie pop-up script, registered while it's on (and shields are on here). */
+  private var calmScript: ScriptHandler? = null
   private var privacyScript: ScriptHandler? = null
 
   // ---- main-thread state ----
@@ -158,6 +160,8 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       removeHostScripts()
       genericScript?.remove()
       privacyScript?.remove()
+      calmScript?.remove()
+      calmScript = null
       wv.stopLoading()
       wv.webChromeClient = null
       removeView(wv)
@@ -476,6 +480,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   private fun registerHostScript(url: String) {
     val wv = webView ?: return
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+    syncCalmScript(wv, url)
     resetHostScriptsIfStale()
     val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
     val host = uri.host?.lowercase() ?: return
@@ -489,6 +494,17 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       NoScript
     } else {
       WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("https://$host", "http://$host"))
+    }
+  }
+
+  /** Main thread, before a page starts: adds or removes Calm Mode's cookie pop-up script. */
+  private fun syncCalmScript(wv: WebView, url: String) {
+    val on = ShieldEngine.calmMode && ShieldEngine.shieldsEnabledFor(hostOf(url))
+    if (on && calmScript == null) {
+      calmScript = WebViewCompat.addDocumentStartJavaScript(wv, CosmeticScripts.autoconsent(context), setOf("*"))
+    } else if (!on && calmScript != null) {
+      calmScript?.remove()
+      calmScript = null
     }
   }
 

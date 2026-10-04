@@ -16,6 +16,8 @@ export type ShieldSettings = {
   hideCookieBanners: boolean;
   /** Keep audio and video playing when the app is in the background or the screen is off. */
   backgroundPlay: boolean;
+  /** Stillweb Plus: reject cookie pop-ups and hide annoyances (only applied while Plus is active). */
+  calmMode: boolean;
 };
 
 export type Settings = {
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
     blockThirdPartyCookies: true,
     hideCookieBanners: true,
     backgroundPlay: true,
+    calmMode: false,
   },
   disabledSites: [],
   clearDataOnExit: false,
@@ -71,7 +74,8 @@ type SettingsContextValue = {
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 function pushToNative(next: Settings, prev: Settings | null) {
-  const { hideCookieBanners, ...options } = next.shields;
+  // Calm Mode depends on Plus too; App sends it (see PlusFeatureSync).
+  const { hideCookieBanners, calmMode: _calmMode, ...options } = next.shields;
   ShieldEngine.setOptions(options);
   ShieldEngine.setDisabledSites(next.disabledSites);
   if (Platform.OS === 'android' && (!prev || prev.shields.hideCookieBanners !== hideCookieBanners)) {

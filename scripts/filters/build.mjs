@@ -334,7 +334,8 @@ async function main() {
 
   for (const list of forPlatform('android')) {
     const entry = writeFile(`android/${list.id}.txt`, preprocess(raw[list.id], PLATFORM_ENV.android));
-    manifest.android.lists.push({ id: list.id, trusted: list.trusted, ...entry });
+    // Optional groups (Calm Mode) are only used when the app turns them on.
+    manifest.android.lists.push({ id: list.id, trusted: list.trusted, ...(list.group ? { group: list.group } : {}), ...entry });
   }
   const resources = await buildResources();
   manifest.android.resources = writeFile('resources.json', JSON.stringify(resources));
@@ -343,24 +344,28 @@ async function main() {
     const work = path.join(CACHE, 'ios-lists');
     fs.rmSync(work, { recursive: true, force: true });
     fs.mkdirSync(work, { recursive: true });
-    const listArgs = [];
+    const coreArgs = [];
+    const calmArgs = [];
     for (const list of forPlatform('ios')) {
       const file = path.join(work, `${list.id}.txt`);
       fs.writeFileSync(file, preprocess(raw[list.id], PLATFORM_ENV.ios));
-      listArgs.push('--list', `${file}${list.trusted ? ':trusted' : ''}`);
+      (list.group === 'calm' ? calmArgs : coreArgs).push('--list', `${file}${list.trusted ? ':trusted' : ''}`);
     }
     const iosOut = path.join(OUT, 'ios');
-    const report = execFileSync(
-      compilerPath(),
-      ['ios', ...listArgs, '--resources', path.join(OUT, 'resources.json'), '--out', iosOut],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] },
-    );
-    const summary = JSON.parse(report);
+    const compiler = compilerPath();
+    const compile = (args) =>
+      JSON.parse(execFileSync(compiler, ['ios', ...args, '--out', iosOut], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }));
+    const summary = compile([...coreArgs, '--resources', path.join(OUT, 'resources.json')]);
+    // Calm Mode's lists: their own rule lists (attached only when it's on), honoring the core
+    // lists' site exceptions. Their scriptlets aren't used on iOS.
+    const contextArgs = coreArgs.map((a) => (a === '--list' ? '--context' : a));
+    const calm = calmArgs.length ? compile([...calmArgs, ...contextArgs, '--no-scriptlets', '--prefix', 'calm']) : { ruleFiles: [] };
     manifest.ios = {
       rules: summary.ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
       scriptlets: hashOf('ios/scriptlets.json'),
+      calm: calm.ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
     };
-    log(`ios: ${summary.ruleFiles.map((f) => `${f.file}=${f.count}`).join(', ')}, ${summary.scriptletHosts} scriptlet hosts`);
+    log(`ios: ${[...summary.ruleFiles, ...calm.ruleFiles].map((f) => `${f.file}=${f.count}`).join(', ')}, ${summary.scriptletHosts} scriptlet hosts`);
   }
 
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
@@ -394,7 +399,7 @@ function bundleIntoApp(manifest) {
   if (manifest.ios) {
     const iosAssets = path.join(MODULE, 'ios/Resources/shield');
     fs.rmSync(iosAssets, { recursive: true, force: true });
-    for (const r of manifest.ios.rules) copy(r.file, iosAssets);
+    for (const r of [...manifest.ios.rules, ...manifest.ios.calm]) copy(r.file, iosAssets);
     copy(manifest.ios.scriptlets.file, iosAssets);
     fs.writeFileSync(
       path.join(iosAssets, 'manifest.json'),

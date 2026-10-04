@@ -8,7 +8,7 @@
     "android": "npm run build:rust:android && expo run:android",
     "ios": "expo run:ios",
     "build:rust:android": "bash scripts/build-rust-android.sh",
-    "build:filters": "bash scripts/build-filters.sh",
+    "build:filters": "node scripts/filters/build.mjs",
     "typecheck": "tsc --noEmit"
   },
   "expo": {
@@ -37,6 +37,7 @@
     "react-native-safe-area-context": "~5.7.0"
   },
   "devDependencies": {
+    "@duckduckgo/autoconsent": "^16.45.0",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   }

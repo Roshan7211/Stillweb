@@ -11,7 +11,7 @@ import { PrivacyStatsProvider, usePrivacyStatsActions } from './src/browser/priv
 import { SettingsProvider, useSettings } from './src/browser/settings';
 import { TabsProvider } from './src/browser/tabs';
 import { installGlobalErrorHandler, markAppReady } from './src/errors';
-import { PlusProvider } from './src/plus/plus';
+import { PlusProvider, usePlus } from './src/plus/plus';
 import { ErrorBoundary, ErrorNotice, ProblemScreen } from './src/ui/components/ErrorBoundary';
 import BrowserScreen from './src/ui/screens/BrowserScreen';
 import { useTheme } from './src/ui/theme';
@@ -65,6 +65,13 @@ function Root() {
   useEffect(() => {
     if (ready) markAppReady();
   }, [ready]);
+
+  // Plus features reach the native side only while Plus is active.
+  const plus = usePlus();
+  const calmMode = settings.shields.calmMode && plus.unlocked;
+  useEffect(() => {
+    ShieldEngine.setOptions({ calmMode });
+  }, [calmMode]);
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: theme.background }} />;
   return (

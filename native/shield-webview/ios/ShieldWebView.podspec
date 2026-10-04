@@ -22,6 +22,7 @@ Pod::Spec.new do |s|
   # Default filter bundle (scripts/filters/build.mjs --bundle) for offline first launch.
   s.resource_bundles = {
     # A folder reference keeps the manifest's relative paths (shield/ios/rules-0.json, ...).
-    'ShieldWebViewAssets' => ['Resources/shield']
+    # vendor/autoconsent.js: Calm Mode's cookie pop-up script (scripts/gen-autoconsent.mjs).
+    'ShieldWebViewAssets' => ['Resources/shield', 'Resources/vendor/autoconsent.js']
   }
 end

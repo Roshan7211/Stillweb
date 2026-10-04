@@ -121,6 +121,8 @@ export type ShieldOptions = {
   blockThirdPartyCookies?: boolean;
   /** Keep audio/video playing when the app is in the background (media notification on Android). */
   backgroundPlay?: boolean;
+  /** Stillweb Plus: annoyance lists and automatic cookie pop-up rejection. */
+  calmMode?: boolean;
 };
 
 export type ShieldEngineEvents = {

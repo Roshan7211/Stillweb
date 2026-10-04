@@ -83,6 +83,28 @@
       "license": "GPLv3",
       "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
       "trusted": true
+    },
+    {
+      "id": "fanboy-annoyance",
+      "title": "Fanboy's Annoyance List",
+      "purpose": "Calm Mode: newsletter pop-ups, social widgets, notification prompts",
+      "url": "https://easylist.to/easylist/fanboy-annoyance.txt",
+      "homepage": "https://easylist.to/",
+      "license": "GPLv3 or CC BY-SA 3.0",
+      "licenseUrl": "https://easylist.to/pages/licence.html",
+      "trusted": false,
+      "group": "calm"
+    },
+    {
+      "id": "ubo-annoyances",
+      "title": "uBlock filters – Annoyances",
+      "purpose": "Calm Mode: floating videos, chat bubbles, \"open in app\" banners",
+      "url": "https://ublockorigin.github.io/uAssets/filters/annoyances.txt",
+      "homepage": "https://github.com/uBlockOrigin/uAssets",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
+      "trusted": true,
+      "group": "calm"
     }
   ],
   "resources": {
@@ -97,6 +119,11 @@
     {
       "title": "adblock-rust",
       "homepage": "https://github.com/brave/adblock-rust",
+      "license": "MPL-2.0"
+    },
+    {
+      "title": "Autoconsent (DuckDuckGo)",
+      "homepage": "https://github.com/duckduckgo/autoconsent",
       "license": "MPL-2.0"
     }
   ]

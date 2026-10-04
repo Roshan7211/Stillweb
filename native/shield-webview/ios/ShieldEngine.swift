@@ -67,6 +67,8 @@ final class ShieldEngine {
   private var initialized = false
 
   private(set) var ruleLists: [WKContentRuleList] = []
+  /// Calm Mode's annoyance lists (attached only while it's on).
+  private(set) var calmRuleLists: [WKContentRuleList] = []
   private var scriptlets: ScriptletIndex?
   private(set) var version: String?
   private(set) var source = "none"
@@ -80,6 +82,8 @@ final class ShieldEngine {
   var blockPopups = true
   var cosmeticFiltering = true
   var backgroundPlay = true
+  /// Stillweb Plus: annoyance lists and automatic cookie pop-up rejection.
+  var calmMode = false
   private var disabledSites = Set<String>()
   private(set) var totalBlocked = 0
 
@@ -106,6 +110,20 @@ final class ShieldEngine {
 
   private var activeDir: URL { rootDir.appendingPathComponent("active", isDirectory: true) }
 
+  /// DuckDuckGo's autoconsent (MPL-2.0), run in pages while Calm Mode is on to reject cookie
+  /// pop-ups (Resources/vendor/autoconsent.js, from scripts/gen-autoconsent.mjs).
+  private(set) lazy var autoconsentSource: String? = {
+    for bundle in [Bundle.main, Bundle(for: ShieldEngine.self)] {
+      if let url = bundle.url(forResource: "ShieldWebViewAssets", withExtension: "bundle"),
+         let assets = Bundle(url: url),
+         let file = assets.url(forResource: "autoconsent", withExtension: "js"),
+         let source = try? String(contentsOf: file, encoding: .utf8) {
+        return source
+      }
+    }
+    return nil
+  }()
+
   private var bundledDir: URL? {
     for bundle in [Bundle.main, Bundle(for: ShieldEngine.self)] {
       if let url = bundle.url(forResource: "ShieldWebViewAssets", withExtension: "bundle"),
@@ -127,6 +145,7 @@ final class ShieldEngine {
     blockPopups = prefs["blockPopups"] as? Bool ?? true
     cosmeticFiltering = prefs["cosmeticFiltering"] as? Bool ?? true
     backgroundPlay = prefs["backgroundPlay"] as? Bool ?? true
+    calmMode = prefs["calmMode"] as? Bool ?? false
     configureAudioSession()
     disabledSites = Set(defaults.stringArray(forKey: "shield.disabledSites") ?? [])
     totalBlocked = defaults.integer(forKey: "shield.totalBlocked")
@@ -239,10 +258,11 @@ final class ShieldEngine {
       backgroundPlay = v
       configureAudioSession()
     }
+    if let v = options["calmMode"] as? Bool { calmMode = v }
     defaults.set(
       [
         "enabled": enabled, "httpsUpgrade": httpsUpgrade, "blockPopups": blockPopups,
-        "cosmeticFiltering": cosmeticFiltering, "backgroundPlay": backgroundPlay,
+        "cosmeticFiltering": cosmeticFiltering, "backgroundPlay": backgroundPlay, "calmMode": calmMode,
       ],
       forKey: "shield.options"
     )
@@ -275,7 +295,8 @@ final class ShieldEngine {
               let scriptlets = ios["scriptlets"] as? [String: Any] else {
           throw ShieldError("manifest has no iOS section")
         }
-        for entry in rules + [scriptlets] {
+        let calm = ios["calm"] as? [[String: Any]] ?? []
+        for entry in rules + calm + [scriptlets] {
           guard let rel = entry["file"] as? String, let expected = entry["sha256"] as? String else {
             throw ShieldError("manifest entry is incomplete")
           }
@@ -339,25 +360,21 @@ final class ShieldEngine {
     completion?(.failure(error))
   }
 
-  private func load(dir: URL, source: String, completion: @escaping (Result<String?, Error>) -> Void) {
-    let started = Date()
-    guard let manifest = try? Self.readManifest(dir),
-          let version = manifest["version"] as? String,
-          let ios = manifest["ios"] as? [String: Any],
-          let rules = ios["rules"] as? [[String: Any]],
-          let scriptletFile = (ios["scriptlets"] as? [String: Any])?["file"] as? String,
-          let store = WKContentRuleListStore.default() else {
-      return fail(ShieldError("invalid filter bundle at \(dir.lastPathComponent)"), completion)
-    }
-
-    let idPrefix = "shield-" + version.filter { $0.isLetter || $0.isNumber }
-    var compiled = [WKContentRuleList?](repeating: nil, count: rules.count)
+  /// Compiles (or finds already compiled) rule lists `{prefix}-{index}`; all-or-nothing.
+  private func compileLists(
+    _ entries: [[String: Any]],
+    prefix: String,
+    dir: URL,
+    store: WKContentRuleListStore,
+    completion: @escaping ([WKContentRuleList]?, Error?) -> Void
+  ) {
+    var compiled = [WKContentRuleList?](repeating: nil, count: entries.count)
     var firstError: Error?
     let group = DispatchGroup()
 
-    for (index, rule) in rules.enumerated() {
+    for (index, rule) in entries.enumerated() {
       guard let file = rule["file"] as? String else { continue }
-      let identifier = "\(idPrefix)-\(index)"
+      let identifier = "\(prefix)-\(index)"
       group.enter()
       store.lookUpContentRuleList(forIdentifier: identifier) { cached, _ in
         if let cached {
@@ -383,6 +400,40 @@ final class ShieldEngine {
       }
     }
 
+    group.notify(queue: .main) {
+      let lists = compiled.compactMap { $0 }
+      if lists.count == entries.count {
+        completion(lists, nil)
+      } else {
+        completion(nil, firstError ?? ShieldError("rule compilation failed"))
+      }
+    }
+  }
+
+  private func load(dir: URL, source: String, completion: @escaping (Result<String?, Error>) -> Void) {
+    let started = Date()
+    guard let manifest = try? Self.readManifest(dir),
+          let version = manifest["version"] as? String,
+          let ios = manifest["ios"] as? [String: Any],
+          let rules = ios["rules"] as? [[String: Any]],
+          let scriptletFile = (ios["scriptlets"] as? [String: Any])?["file"] as? String,
+          let store = WKContentRuleListStore.default() else {
+      return fail(ShieldError("invalid filter bundle at \(dir.lastPathComponent)"), completion)
+    }
+    let calm = ios["calm"] as? [[String: Any]] ?? []
+
+    let idPrefix = "shield-" + version.filter { $0.isLetter || $0.isNumber }
+    var coreLists: [WKContentRuleList]?
+    var coreError: Error?
+    let group = DispatchGroup()
+
+    group.enter()
+    compileLists(rules, prefix: idPrefix, dir: dir, store: store) { lists, error in
+      coreLists = lists
+      coreError = error
+      group.leave()
+    }
+
     var index: ScriptletIndex?
     group.enter()
     queue.async {
@@ -391,11 +442,11 @@ final class ShieldEngine {
     }
 
     group.notify(queue: .main) {
-      let lists = compiled.compactMap { $0 }
-      guard lists.count == rules.count else {
-        return self.fail(firstError ?? ShieldError("rule compilation failed"), completion)
+      guard let lists = coreLists else {
+        return self.fail(coreError ?? ShieldError("rule compilation failed"), completion)
       }
       self.ruleLists = lists
+      self.calmRuleLists = []
       self.scriptlets = index
       self.version = version
       self.source = source
@@ -406,6 +457,14 @@ final class ShieldEngine {
       self.flushReadyWaiters()
       self.onEngineChanged?(self.status())
       completion(.success(version))
+
+      // Calm Mode's lists after the core ones, so the first pages never wait for them.
+      guard !calm.isEmpty else { return }
+      self.compileLists(calm, prefix: "\(idPrefix)-calm", dir: dir, store: store) { lists, _ in
+        guard let lists, self.version == version else { return }
+        self.calmRuleLists = lists
+        self.generation += 1
+      }
     }
   }
 

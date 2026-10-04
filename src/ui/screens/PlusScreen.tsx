@@ -13,6 +13,11 @@ type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void }
 /** What Plus includes today. Only features that exist are listed (App Store rule 3.1.2). */
 const PLUS_FEATURES: { icon: IconName; title: string; body: string }[] = [
   {
+    icon: 'sun',
+    title: 'Calm Mode',
+    body: 'Cookie pop-ups rejected for you, and newsletter pop-ups, chat bubbles and floating videos hidden.',
+  },
+  {
     icon: 'bar-chart-2',
     title: 'Full privacy report',
     body: 'A year of history, the sites you’re protected on most and the trackers blocked most often.',

@@ -702,6 +702,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       if !controller.rulesAttached || controller.appliedGeneration != engine.generation {
         controller.removeAllContentRuleLists()
         engine.ruleLists.forEach(controller.add)
+        // Calm Mode (Stillweb Plus): the annoyance lists on top.
+        if engine.calmMode { engine.calmRuleLists.forEach(controller.add) }
         controller.rulesAttached = !engine.ruleLists.isEmpty
       }
     } else if controller.rulesAttached {
@@ -716,6 +718,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       controller.addUserScript(Self.privacyScript)
       if engine.backgroundPlay { controller.addUserScript(Self.backgroundPlayScript) }
       if active, let host, let source = engine.scriptletSource(forHost: host) {
+        controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+      }
+      // Calm Mode: reject cookie pop-ups (consent dialogs also live in frames).
+      if active, engine.calmMode, let source = engine.autoconsentSource {
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
       }
     }
