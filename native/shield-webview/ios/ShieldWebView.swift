@@ -1,3 +1,4 @@
+import AVFoundation
 import ExpoModulesCore
 import UIKit
 import WebKit
@@ -56,6 +57,27 @@ final class SleepTimer {
     timer = nil
     views.allObjects.forEach { $0.pauseAllMedia() }
     onFired?()
+  }
+
+  /// Every tab's web view (the timer's registry doubles as the list of live pages).
+  var allViews: [ShieldWebView] { views.allObjects }
+}
+
+/// Unplugged headphones (or AirPods taken out): iOS pauses the media, and pages are told it
+/// was the user's pause, so background play never starts it again on the speaker.
+final class HeadphoneWatcher {
+  static let shared = HeadphoneWatcher()
+  private var observer: NSObjectProtocol?
+
+  func start() {
+    guard observer == nil else { return }
+    observer = NotificationCenter.default.addObserver(
+      forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+    ) { note in
+      let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+      guard raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) == .oldDeviceUnavailable else { return }
+      SleepTimer.shared.allViews.forEach { $0.markUserPause() }
+    }
   }
 }
 
@@ -274,7 +296,25 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       }
       function stopKeepAlive() {
         clearTimeout(gapTimer);
+        clearTimeout(nudgeTimer);
         if (keepAlive && !keepAlive.paused) keepAlive.pause();
+      }
+      // Keeps the page running until the next media plays; nothing after a minute: let it rest.
+      function bridgeGap() {
+        startKeepAlive();
+        gapTimer = setTimeout(stopKeepAlive, 60000);
+      }
+      // Media the page left paused in the background (not by the user) is started again,
+      // a few times, a few seconds apart.
+      var nudgeTimer = 0;
+      function nudge(m, pausedAt, attempt) {
+        clearTimeout(nudgeTimer);
+        nudgeTimer = setTimeout(function () {
+          if (!background || !m.paused || m.ended || !m.isConnected || userPausedAt > pausedAt) return;
+          resumeUntil = Date.now() + 2000;
+          resume(m);
+          if (attempt < 2) nudge(m, pausedAt, attempt + 1);
+        }, 4000);
       }
 
       // Lock screen and Control Center buttons. The page's own handlers are used as they
@@ -401,10 +441,15 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         if (now < resumeUntil) return resume(m);
         recent.push({ m: m, t: now });
         if (recent.length > 4) recent.shift();
-        if (background && m === current) {
-          // Paused by the page itself (not the user, not the system): show it as paused.
-          stopKeepAlive();
+        if (background && (m === current || !current || !current.isConnected)) {
+          // Paused by the page, not the user: a player switching to the next video pauses
+          // first, and YouTube waits out a removed ad and sometimes leaves the next video
+          // paused at the start. The page is kept running (so iOS doesn't suspend it in
+          // the gap) and the media is started again if it stays paused.
+          current = m;
           syncLockScreen();
+          bridgeGap();
+          nudge(m, now, 0);
         }
       }, true);
       document.addEventListener('playing', function (e) {
@@ -419,10 +464,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       }, true);
       document.addEventListener('ended', function (e) {
         if (!background || !audible(e.target)) return;
-        // Bridge the gap to the next video; nothing followed after a minute: let the page rest.
-        startKeepAlive();
         syncLockScreen();
-        gapTimer = setTimeout(stopKeepAlive, 60000);
+        bridgeGap();
       }, true);
       // A new source (the next video in the same player) gets another chance at the carrier.
       document.addEventListener('emptied', function (e) { if (e.target === noCarrier) noCarrier = null; }, true);
@@ -468,14 +511,20 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         }
       });
       // The sleep timer's pause: the user's, never undone.
+      // Also used when headphones are unplugged; players in frames are told too.
+      function userPause() {
+        userPausedAt = Date.now();
+        stopKeepAlive();
+        try { if (current) current.pause(); } catch (e) {}
+        for (var i = 0; i < window.frames.length; i++) {
+          try { window.frames[i].postMessage({ __stillwebUserPause: true }, '*'); } catch (e) {}
+        }
+      }
+      window.addEventListener('message', function (e) {
+        if (e.source === window.parent && window.parent !== window && e.data && e.data.__stillwebUserPause === true) userPause();
+      });
       try {
-        Object.defineProperty(window, '__stillwebUserPause', {
-          value: function () {
-            userPausedAt = Date.now();
-            stopKeepAlive();
-            try { if (current) current.pause(); } catch (e) {}
-          }
-        });
+        Object.defineProperty(window, '__stillwebUserPause', { value: userPause });
       } catch (e) {}
       try {
         Object.defineProperty(window, '__shieldAppState', {
@@ -611,6 +660,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     applyShields(for: nil)
   }
 
+  /// The media stopped because the user wanted it to (headphones unplugged): background play
+  /// must not start it again.
+  func markUserPause() {
+    webView?.evaluateJavaScript("window.__stillwebUserPause && window.__stillwebUserPause()")
+  }
+
   /// Sleep timer: pauses media in every frame, marked as the user's pause so background play
   /// doesn't resume it.
   func pauseAllMedia() {
@@ -625,6 +680,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// Hooks a web view (new, or a page's pop-up) up to this view.
   private func install(_ wv: WKWebView) {
     SleepTimer.shared.register(self)
+    HeadphoneWatcher.shared.start()
     wv.frame = bounds
     wv.navigationDelegate = self
     wv.uiDelegate = self
