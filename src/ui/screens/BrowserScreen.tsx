@@ -31,6 +31,7 @@ import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl } from '.
 import AddressBar from '../components/AddressBar';
 import BrowserTabView from '../components/BrowserTabView';
 import ContextMenuSheet, { type ContextAction, type ContextTarget } from '../components/ContextMenuSheet';
+import { ErrorBoundary, ProblemScreen } from '../components/ErrorBoundary';
 import MenuSheet, { type MenuAction } from '../components/MenuSheet';
 import { Icon, IconButton } from '../components/primitives';
 import ShieldPanel from '../components/ShieldPanel';
@@ -511,8 +512,22 @@ export default function BrowserScreen() {
         {tabs
           .filter((t) => liveIds.has(t.id))
           .map((tab) => (
-            <BrowserTabView
+            // One tab failing to draw doesn't take the others (or the browser) with it.
+            <ErrorBoundary
               key={tab.id}
+              fallback={(reset) => (
+                <View
+                  style={[StyleSheet.absoluteFill, tab.id !== activeTab?.id && styles.hiddenTab]}
+                  pointerEvents={tab.id === activeTab?.id ? 'auto' : 'none'}>
+                  <ProblemScreen
+                    theme={theme}
+                    title="This tab ran into a problem"
+                    body="Your other tabs are fine. Reloading usually fixes it."
+                    primary={{ label: 'Reload tab', onPress: reset }}
+                  />
+                </View>
+              )}>
+            <BrowserTabView
               tab={tab}
               active={tab.id === activeTab?.id}
               theme={theme}
@@ -528,6 +543,7 @@ export default function BrowserScreen() {
               onOpenReport={openReportFromPage}
               chromeCollapsed={tab.id === activeTab?.id && collapsed}
             />
+            </ErrorBoundary>
           ))}
         {incognito && privateLocked ? (
           <Pressable style={[StyleSheet.absoluteFill, styles.locked, { backgroundColor: theme.privateBackground }]} onPress={unlockPrivate}>
@@ -688,6 +704,17 @@ export default function BrowserScreen() {
 
       {overlay !== 'none' ? (
         <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: theme.background }]}>
+          <ErrorBoundary
+            key={overlay}
+            fallback={(reset) => (
+              <ProblemScreen
+                theme={theme}
+                title="This screen couldn’t open"
+                body="Something went wrong here. Your tabs are safe."
+                primary={{ label: 'Try again', onPress: reset }}
+                secondary={{ label: 'Close', onPress: () => setOverlay('none') }}
+              />
+            )}>
           {overlay === 'tabs' ? (
             <TabSwitcherScreen
               theme={theme}
@@ -743,6 +770,7 @@ export default function BrowserScreen() {
               }}
             />
           ) : null}
+          </ErrorBoundary>
         </View>
       ) : null}
     </View>
@@ -751,6 +779,7 @@ export default function BrowserScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  hiddenTab: { opacity: 0, zIndex: -1 },
   content: { flex: 1 },
   // Above the address bar (zIndex 10).
   overlay: { zIndex: 20, elevation: 20 },

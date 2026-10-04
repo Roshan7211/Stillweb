@@ -3,8 +3,10 @@
  * agreement must be active):
  *
  * - Subscription group "Stillweb Plus" with `yearly` (1 year, 14-day free trial as an
- *   introductory offer) and `monthly` (1 month), both with Family Sharing turned on.
- * - Non-consumable `lifetime`, with Family Sharing turned on.
+ *   introductory offer) and `monthly` (1 month).
+ * - Non-consumable `lifetime`.
+ *
+ * Family Sharing stays off for all three: Plus belongs to the Apple Account that bought it.
  *
  * Until they exist (or can't be reached) the Plus screen shows that plans couldn't be loaded.
  */

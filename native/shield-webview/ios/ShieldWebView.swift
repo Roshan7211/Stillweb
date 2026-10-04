@@ -918,8 +918,20 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     onCloseRequest(["reason": "script"])
   }
 
+  private var terminations: [Date] = []
+
+  /// The page's process crashed or was ended to free memory. Reload it, unless it keeps
+  /// crashing: after a third time within a minute the error page is shown instead.
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-    webView.reload()
+    let now = Date()
+    terminations = terminations.filter { now.timeIntervalSince($0) < 60 } + [now]
+    if terminations.count >= 3 {
+      terminations.removeAll()
+      webView.scrollView.refreshControl?.endRefreshing()
+      onLoadError(["url": webView.url?.absoluteString ?? initialUrl ?? "", "code": -10001, "description": "PAGE_CRASHED"])
+    } else {
+      webView.reload()
+    }
   }
 
   // MARK: - WKUIDelegate

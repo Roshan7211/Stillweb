@@ -11,7 +11,6 @@ export type PlusProduct = {
   price: number;
   currencyCode: string;
   type: 'subscription' | 'lifetime';
-  familyShareable: boolean;
   period?: PlusPeriod;
   /** Whether this Apple Account can still get the introductory offer (free trial). */
   introEligible?: boolean;
@@ -25,8 +24,6 @@ export type PlusProduct = {
 
 export type PlusEntitlement = {
   productId: string;
-  /** Shared by a family member through Family Sharing. */
-  familyShared: boolean;
   purchasedAt: number;
   /** Subscriptions only (ms since epoch). */
   expiresAt?: number;

@@ -20,7 +20,11 @@
         "NSCameraUsageDescription": "Websites you visit can ask to use the camera, for example to take a photo to upload or for a video call.",
         "NSMicrophoneUsageDescription": "Websites you visit can ask to use the microphone, for example for voice search or a call.",
         "NSLocationWhenInUseUsageDescription": "Websites you visit can ask for your location, for example to show nearby results or maps.",
-        "NSPhotoLibraryAddUsageDescription": "Save images from websites to your photo library."
+        "NSPhotoLibraryAddUsageDescription": "Save images from websites to your photo library.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoadsInWebContent": true,
+          "NSAllowsLocalNetworking": true
+        }
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -95,7 +99,14 @@
         }
       ],
       "expo-background-task",
-      "expo-build-properties",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       "expo-font"
     ],
     "splash": {

@@ -17,6 +17,28 @@ export function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function addCounts(a: Record<string, number>, b: Record<string, number>): Record<string, number> {
+  const sum = { ...a };
+  for (const [key, n] of Object.entries(b)) sum[key] = (sum[key] ?? 0) + n;
+  return sum;
+}
+
+/** Saved days plus what was recorded while they loaded, added up day by day. */
+export function mergeDays(saved: StatsByDay, recent: StatsByDay): StatsByDay {
+  const merged: StatsByDay = { ...saved };
+  for (const [key, day] of Object.entries(recent)) {
+    const old = merged[key];
+    merged[key] = old
+      ? {
+          blocked: old.blocked + day.blocked,
+          sites: trim(addCounts(old.sites, day.sites)),
+          domains: trim(addCounts(old.domains, day.domains)),
+        }
+      : day;
+  }
+  return merged;
+}
+
 function trim(map: Record<string, number>): Record<string, number> {
   const keys = Object.keys(map);
   if (keys.length <= MAX_ENTRIES) return map;
@@ -49,8 +71,7 @@ export function PrivacyStatsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        // Merge with anything recorded while loading.
-        if (raw) setDays((recent) => ({ ...(JSON.parse(raw) as StatsByDay), ...recent }));
+        if (raw) setDays((recent) => mergeDays(JSON.parse(raw) as StatsByDay, recent));
       })
       .catch(() => {})
       .finally(() => {
@@ -74,12 +95,7 @@ export function PrivacyStatsProvider({ children }: { children: ReactNode }) {
     setDays((prev) => {
       const day = prev[key] ?? { blocked: 0, sites: {}, domains: {} };
       const sites = site && count > 0 ? trim({ ...day.sites, [site]: (day.sites[site] ?? 0) + count }) : day.sites;
-      let dayDomains = day.domains;
-      if (domains && Object.keys(domains).length) {
-        dayDomains = { ...day.domains };
-        for (const [host, n] of Object.entries(domains)) dayDomains[host] = (dayDomains[host] ?? 0) + n;
-        dayDomains = trim(dayDomains);
-      }
+      const dayDomains = domains && Object.keys(domains).length ? trim(addCounts(day.domains, domains)) : day.domains;
       const next: StatsByDay = { ...prev, [key]: { blocked: day.blocked + Math.max(count, 0), sites, domains: dayDomains } };
       // Drop days past the history kept.
       const oldest = dayKey(new Date(Date.now() - KEEP_DAYS * 86400000));

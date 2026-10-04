@@ -14,7 +14,7 @@ public class PlusStoreModule: Module {
 
     OnCreate {
       // Purchases that complete outside the app's purchase flow: renewals, Ask to Buy
-      // approvals, Family Sharing, refunds, offer codes redeemed in the App Store.
+      // approvals, refunds, offer codes redeemed in the App Store.
       self.updates = Task.detached { [weak self] in
         for await update in Transaction.updates {
           if case .verified(let transaction) = update {
@@ -147,15 +147,16 @@ public class PlusStoreModule: Module {
     return scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
   }
 
-  /// Active, verified purchases: current subscriptions (incl. Family Sharing) and the lifetime unlock.
+  /// Active, verified purchases made with this Apple Account: the current subscription and the
+  /// lifetime unlock. Plus isn't shared with family members, so shared transactions don't count.
   private static func entitlements() async -> [[String: Any]] {
     var active: [[String: Any]] = []
     for await result in Transaction.currentEntitlements {
-      guard case .verified(let transaction) = result, transaction.revocationDate == nil else { continue }
+      guard case .verified(let transaction) = result, transaction.revocationDate == nil,
+            transaction.ownershipType == .purchased else { continue }
       if let expires = transaction.expirationDate, expires < Date() { continue }
       var entry: [String: Any] = [
         "productId": transaction.productID,
-        "familyShared": transaction.ownershipType == .familyShared,
         "purchasedAt": transaction.purchaseDate.timeIntervalSince1970 * 1000,
       ]
       if let expires = transaction.expirationDate {
@@ -175,7 +176,6 @@ public class PlusStoreModule: Module {
       "price": NSDecimalNumber(decimal: product.price).doubleValue,
       "currencyCode": product.priceFormatStyle.currencyCode,
       "type": product.type == .autoRenewable ? "subscription" : "lifetime",
-      "familyShareable": product.isFamilyShareable,
     ]
     if let subscription = product.subscription {
       info["period"] = period(subscription.subscriptionPeriod)

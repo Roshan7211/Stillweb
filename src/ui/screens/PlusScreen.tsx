@@ -107,15 +107,13 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
             <Icon name="check-circle" size={24} color={theme.accent} />
             <Text style={[styles.activeTitle, { color: theme.text }]}>You have Stillweb Plus</Text>
             <Text style={[styles.activeBody, { color: theme.muted }]}>
-              {entitlement.familyShared
-                ? 'Shared with you through Family Sharing.'
-                : isLifetime
-                  ? 'Yours for life. Thank you!'
-                  : entitlement.expiresAt
-                    ? `Current period ends ${new Date(entitlement.expiresAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}.`
-                    : 'Thank you for supporting Stillweb.'}
+              {isLifetime
+                ? 'Yours for life. Thank you!'
+                : entitlement.expiresAt
+                  ? `Current period ends ${new Date(entitlement.expiresAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}.`
+                  : 'Thank you for supporting Stillweb.'}
             </Text>
-            {!isLifetime && !entitlement.familyShared ? (
+            {!isLifetime ? (
               <Pressable onPress={plus.manageSubscription} accessibilityRole="button" hitSlop={8}>
                 <Text style={[styles.link, { color: theme.accent }]}>Manage subscription</Text>
               </Pressable>
@@ -147,9 +145,6 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
                       </View>
                       <Text style={[styles.planTerms, { color: theme.text }]}>{planTerms(product)}</Text>
                       {perMonth ? <Text style={[styles.planNote, { color: theme.muted }]}>{perMonth} a month</Text> : null}
-                      {product.familyShareable ? (
-                        <Text style={[styles.planNote, { color: theme.muted }]}>Share with up to 5 family members</Text>
-                      ) : null}
                     </View>
                   </Pressable>
                 );

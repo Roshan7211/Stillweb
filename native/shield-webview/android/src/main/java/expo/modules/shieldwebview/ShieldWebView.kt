@@ -711,6 +711,27 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       emitNavigationState()
     }
 
+    /**
+     * The page's renderer crashed or was killed to free memory. Unhandled, Android would close
+     * the whole app; instead this tab gets a fresh web view and shows the error page, whose
+     * Try again reloads the page.
+     */
+    override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+      if (view !== webView) {
+        (view.parent as? android.view.ViewGroup)?.removeView(view)
+        view.destroy()
+        return true
+      }
+      val url = pageUrl.takeIf { it != "about:blank" } ?: initialUrl.orEmpty()
+      val crashed = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && detail.didCrash()
+      destroy()
+      webView = createWebView()
+      onLoadError(
+        mapOf("url" to url, "code" to -10001, "description" to if (crashed) "PAGE_CRASHED" else "PAGE_OUT_OF_MEMORY")
+      )
+      return true
+    }
+
     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
       if (!request.isForMainFrame) return
       val url = request.url.toString()

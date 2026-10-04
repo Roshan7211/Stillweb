@@ -15,8 +15,8 @@ type PlusValue = {
   /** Plus can be bought on this device. */
   supported: boolean;
   /**
-   * Plus features are available: bought, or shared through Family Sharing. Where Plus can't
-   * be bought yet (Android) its features aren't locked.
+   * Plus features are available: bought with this Apple Account. Where Plus can't be bought
+   * yet (Android) its features aren't locked.
    */
   unlocked: boolean;
   /** The active purchase (lifetime first, then the subscription that runs longest). */

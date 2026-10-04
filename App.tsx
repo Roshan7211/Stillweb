@@ -1,3 +1,4 @@
+import { reloadAppAsync } from 'expo';
 import { useEffect, useState } from 'react';
 import { Appearance, AppState, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,9 +10,17 @@ import { LibraryProvider, useLibrary } from './src/browser/library';
 import { PrivacyStatsProvider, usePrivacyStatsActions } from './src/browser/privacyStats';
 import { SettingsProvider, useSettings } from './src/browser/settings';
 import { TabsProvider } from './src/browser/tabs';
+import { installGlobalErrorHandler, markAppReady } from './src/errors';
 import { PlusProvider } from './src/plus/plus';
+import { ErrorBoundary, ErrorNotice, ProblemScreen } from './src/ui/components/ErrorBoundary';
 import BrowserScreen from './src/ui/screens/BrowserScreen';
 import { useTheme } from './src/ui/theme';
+
+installGlobalErrorHandler();
+
+const restart = () => {
+  reloadAppAsync('Restart after an error').catch(() => {});
+};
 
 /** Waits for settings so start-up privacy work happens before any page loads. */
 function Root() {
@@ -53,26 +62,58 @@ function Root() {
     return () => sub.remove();
   }, []);
 
+  useEffect(() => {
+    if (ready) markAppReady();
+  }, [ready]);
+
   if (!ready) return <View style={{ flex: 1, backgroundColor: theme.background }} />;
   return (
     <TabsProvider clearOnStart={settings.clearDataOnExit}>
-      <BrowserScreen />
+      {/* Tabs live above this boundary, so trying again keeps them. */}
+      <ErrorBoundary
+        fallback={(reset) => (
+          <ProblemScreen
+            theme={theme}
+            title="Something went wrong"
+            body="Stillweb ran into a problem. Your tabs and bookmarks are safe."
+            primary={{ label: 'Try again', onPress: reset }}
+            secondary={{ label: 'Restart Stillweb', onPress: restart }}
+          />
+        )}>
+        <BrowserScreen />
+      </ErrorBoundary>
+      <ErrorNotice theme={theme} onRestart={restart} />
     </TabsProvider>
+  );
+}
+
+/** Shown if even settings or storage fail to start. */
+function StartupProblem() {
+  const theme = useTheme();
+  return (
+    <ProblemScreen
+      theme={theme}
+      title="Stillweb couldn’t start"
+      body="Something went wrong while opening the app. Restarting usually fixes it."
+      primary={{ label: 'Restart Stillweb', onPress: restart }}
+    />
   );
 }
 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <SettingsProvider>
-        <LibraryProvider>
-          <PrivacyStatsProvider>
-            <PlusProvider>
-              <Root />
-            </PlusProvider>
-          </PrivacyStatsProvider>
-        </LibraryProvider>
-      </SettingsProvider>
+      <ErrorBoundary fallback={() => <StartupProblem />}>
+        <SettingsProvider>
+          <LibraryProvider>
+            <PrivacyStatsProvider>
+              <PlusProvider>
+                <Root />
+              </PlusProvider>
+            </PrivacyStatsProvider>
+          </LibraryProvider>
+        </SettingsProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }
