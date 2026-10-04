@@ -214,6 +214,47 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     in: .defaultClient
   )
 
+  /// Videos play inline, like in Safari, unless the user asks for fullscreen. iPhone WebKit
+  /// opens a video without `playsinline` in fullscreen as soon as it plays; pages reloaded
+  /// with pull to refresh start playing before the site adds it.
+  private static let inlineVideoScript = WKUserScript(
+    source: """
+    (function () {
+      function inline(v) {
+        if (!v.hasAttribute('playsinline')) v.setAttribute('playsinline', '');
+        if (!v.hasAttribute('webkit-playsinline')) v.setAttribute('webkit-playsinline', '');
+      }
+      try {
+        var play = HTMLMediaElement.prototype.play;
+        HTMLMediaElement.prototype.play = function () {
+          if (this instanceof HTMLVideoElement) inline(this);
+          return play.apply(this, arguments);
+        };
+      } catch (e) {}
+      // Videos that start on their own (autoplay) get it as soon as they are added.
+      try {
+        new MutationObserver(function (records) {
+          for (var i = 0; i < records.length; i++) {
+            var added = records[i].addedNodes;
+            for (var j = 0; j < added.length; j++) {
+              var node = added[j];
+              if (node.nodeType !== 1) continue;
+              if (node.tagName === 'VIDEO') inline(node);
+              else if (node.firstElementChild) {
+                var videos = node.getElementsByTagName('video');
+                for (var k = 0; k < videos.length; k++) inline(videos[k]);
+              }
+            }
+          }
+        }).observe(document, { childList: true, subtree: true });
+      } catch (e) {}
+    })();
+    """,
+    injectionTime: .atDocumentStart,
+    forMainFrameOnly: false,
+    in: .page
+  )
+
   /// Global Privacy Control signal for every frame (see web/shieldjs/privacy.js).
   private static let privacyScript = WKUserScript(
     source: """
@@ -568,7 +609,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    webView?.frame = bounds
+    // A zero size (before the first layout) would reset the page's viewport.
+    if bounds.width > 0, bounds.height > 0, webView?.frame != bounds { webView?.frame = bounds }
   }
 
   // MARK: - Props
@@ -656,7 +698,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldTouch")
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldConsentFrame")
 
-    install(WKWebView(frame: bounds, configuration: config))
+    // The page's viewport is set up from the web view's first width; one created before the
+    // view is laid out (zero width) can leave pages slightly zoomed in. Start at the window's
+    // width; layoutSubviews applies the exact size.
+    let initialFrame = bounds.width > 0 ? bounds : (window?.bounds ?? UIScreen.main.bounds)
+    install(WKWebView(frame: initialFrame, configuration: config))
     applyShields(for: nil)
   }
 
@@ -681,7 +727,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private func install(_ wv: WKWebView) {
     SleepTimer.shared.register(self)
     HeadphoneWatcher.shared.start()
-    wv.frame = bounds
+    // Not laid out yet: keep the starting width (see createWebView); layoutSubviews sizes it.
+    if bounds.width > 0 { wv.frame = bounds }
     wv.navigationDelegate = self
     wv.uiDelegate = self
     wv.allowsBackForwardNavigationGestures = true
@@ -890,6 +937,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       controller.addUserScript(Self.statsScript)
       controller.addUserScript(Self.touchScript)
       controller.addUserScript(Self.privacyScript)
+      controller.addUserScript(Self.inlineVideoScript)
       if engine.backgroundPlay { controller.addUserScript(Self.backgroundPlayScript) }
       if active, let host, let source = engine.scriptletSource(forHost: host) {
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
@@ -1155,7 +1203,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   ) -> WKWebView? {
     // javaScriptCanOpenWindowsAutomatically=false means only user-initiated windows get here.
     let id = UUID().uuidString
-    let popup = WKWebView(frame: .zero, configuration: configuration)
+    let popup = WKWebView(frame: webView.bounds, configuration: configuration)
     Self.pendingPopups[id] = popup
     // Never shown (e.g. the tab couldn't open): let it go.
     DispatchQueue.main.asyncAfter(deadline: .now() + 30) { Self.pendingPopups.removeValue(forKey: id) }
