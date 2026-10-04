@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ShieldEngine, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
-import { rateScript, stopAtEndScript, type SleepChoice } from '../../browser/listen';
+import { rateScript, stopAtEndDoneScript, stopAtEndScript, type SleepChoice } from '../../browser/listen';
 import { pickerBiggerScript, pickerCancelScript, pickerFinishScript, pickerStartScript } from '../../browser/picker';
 import { refreshBlockedTotal } from '../../browser/blockedTotal';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
@@ -86,7 +86,8 @@ export default function BrowserScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   // Listen Mode (Stillweb Plus).
   const [listenOpen, setListenOpen] = useState(false);
-  const [sleep, setSleep] = useState<SleepState>(null);
+  // The timed sleep timer; "end of this one" is kept on its tab (Tab.stopAtEnd).
+  const [sleepEndsAt, setSleepEndsAt] = useState<number | null>(null);
   // "Hide an element" (Stillweb Plus): the page is in picking mode.
   const [picking, setPicking] = useState(false);
   const [shieldOpen, setShieldOpen] = useState(false);
@@ -155,7 +156,7 @@ export default function BrowserScreen() {
   // The sleep timer runs natively (it must fire in the background) and reports here.
   useEffect(() => {
     const sub = ShieldEngine.addListener('onSleepTimerFired', () => {
-      setSleep(null);
+      setSleepEndsAt(null);
       showToast('Sleep timer paused playback');
     });
     return () => sub.remove();
@@ -172,9 +173,13 @@ export default function BrowserScreen() {
 
   const unlockPrivate = useCallback(async (): Promise<boolean> => {
     if (!settings.lockPrivateTabs || privateUnlocked) return true;
-    const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Unlock private tabs' });
-    if (result.success) setPrivateUnlocked(true);
-    return result.success;
+    try {
+      const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Unlock private tabs' });
+      if (result.success) setPrivateUnlocked(true);
+      return result.success;
+    } catch {
+      return false;
+    }
   }, [settings.lockPrivateTabs, privateUnlocked]);
 
   const onPrivateTabsGone = useCallback(() => {
@@ -305,25 +310,48 @@ export default function BrowserScreen() {
     activeRef()?.evaluateJavaScript(rateScript(rate)).catch(() => {});
   };
 
+  const stopAtEndTab = tabs.find((t) => t.stopAtEnd);
+  const sleep: SleepState = sleepEndsAt
+    ? { endsAt: sleepEndsAt }
+    : stopAtEndTab
+      ? { endOfMedia: true, tabId: stopAtEndTab.id }
+      : null;
+
   const chooseSleep = (choice: SleepChoice | null) => {
     // Whatever was set before ends first.
     Promise.resolve(ShieldEngine.setSleepTimer(null)).catch(() => {});
-    if (sleep && 'endOfMedia' in sleep) activeRef()?.evaluateJavaScript(stopAtEndScript(false)).catch(() => {});
-    if (!choice) {
-      setSleep(null);
-      return;
+    setSleepEndsAt(null);
+    if (stopAtEndTab) {
+      refs.current.get(stopAtEndTab.id)?.evaluateJavaScript(stopAtEndScript('off')).catch(() => {});
+      updateTab(stopAtEndTab.id, { stopAtEnd: undefined });
     }
-    if (choice.endOfMedia) {
-      activeRef()?.evaluateJavaScript(stopAtEndScript(true)).catch(() => {});
-      setSleep({ endOfMedia: true });
+    if (choice?.endOfMedia && activeTab && !isBlank(activeTab.url)) {
+      activeRef()?.evaluateJavaScript(stopAtEndScript('start')).catch(() => {});
+      updateTab(activeTab.id, { stopAtEnd: siteKey(activeTab.url) });
       showToast('Playback pauses when this one ends');
-    } else if (choice.minutes) {
+    } else if (choice?.endOfMedia) {
+      showToast('Open a page that plays audio or video first');
+    } else if (choice?.minutes) {
       const seconds = choice.minutes * 60;
       Promise.resolve(ShieldEngine.setSleepTimer(seconds)).catch(() => {});
-      setSleep({ endsAt: Date.now() + seconds * 1000 });
+      setSleepEndsAt(Date.now() + seconds * 1000);
       showToast(`Playback pauses in ${choice.label}`);
     }
-    setListenOpen(false);
+    if (choice) setListenOpen(false);
+  };
+
+  /** Opens Listen; an "end of this one" that has already paused playback is shown as off. */
+  const openListen = () => {
+    setListenOpen(true);
+    if (!stopAtEndTab) return;
+    const ref = refs.current.get(stopAtEndTab.id);
+    const clear = () => updateTab(stopAtEndTab.id, { stopAtEnd: undefined });
+    // A tab whose page was unloaded has nothing left to pause.
+    if (!ref) return clear();
+    ref
+      .evaluateJavaScript(stopAtEndDoneScript())
+      .then((done) => done === 'true' && clear())
+      .catch(() => {});
   };
 
   const startPicking = () => {
@@ -468,7 +496,9 @@ export default function BrowserScreen() {
       activeRef()?.reload();
       return;
     }
-    const result = await activeRef()?.evaluateJavaScript(readerScript(theme));
+    const result = await activeRef()
+      ?.evaluateJavaScript(readerScript(theme))
+      .catch(() => null);
     if (result === 'true') updateTab(activeTab.id, { reader: true });
     else showToast("Reader view isn't available for this page");
   };
@@ -537,7 +567,7 @@ export default function BrowserScreen() {
       case 'listen':
         if (!plus.unlocked) return openPlus('none');
         // After the menu sheet has closed: iOS shows one sheet at a time.
-        setTimeout(() => setListenOpen(true), Platform.OS === 'ios' ? 350 : 0);
+        setTimeout(openListen, Platform.OS === 'ios' ? 350 : 0);
         return;
       case 'share':
         return Share.share(Platform.OS === 'ios' ? { url } : { message: url }).catch(() => {});

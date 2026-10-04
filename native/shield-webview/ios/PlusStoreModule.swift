@@ -149,12 +149,13 @@ public class PlusStoreModule: Module {
 
   /// Active, verified purchases made with this Apple Account: the current subscription and the
   /// lifetime unlock. Plus isn't shared with family members, so shared transactions don't count.
+  /// currentEntitlements only lists active subscriptions (including Apple's billing grace
+  /// period, past the expiration date), so dates aren't checked again here.
   private static func entitlements() async -> [[String: Any]] {
     var active: [[String: Any]] = []
     for await result in Transaction.currentEntitlements {
       guard case .verified(let transaction) = result, transaction.revocationDate == nil,
-            transaction.ownershipType == .purchased else { continue }
-      if let expires = transaction.expirationDate, expires < Date() { continue }
+            transaction.ownershipType == .purchased, !transaction.isUpgraded else { continue }
       var entry: [String: Any] = [
         "productId": transaction.productID,
         "purchasedAt": transaction.purchaseDate.timeIntervalSince1970 * 1000,

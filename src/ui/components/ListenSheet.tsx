@@ -5,7 +5,7 @@ import type { Theme } from '../theme';
 import { Icon, Sheet } from './primitives';
 
 /** The sleep timer that's running: until a time, or until the current audio or video ends. */
-export type SleepState = { endsAt: number } | { endOfMedia: true } | null;
+export type SleepState = { endsAt: number } | { endOfMedia: true; tabId: string } | null;
 
 type Props = {
   visible: boolean;

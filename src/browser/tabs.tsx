@@ -31,6 +31,8 @@ export type Tab = {
   popupId?: string;
   /** Listen Mode: playback speed for media in this tab (1 when unset). */
   playbackRate?: number;
+  /** Listen Mode's "end of this one" sleep timer: armed on this site (host without www.). */
+  stopAtEnd?: string;
 };
 
 type State = { tabs: Tab[]; activeId: string | null; restored: boolean };

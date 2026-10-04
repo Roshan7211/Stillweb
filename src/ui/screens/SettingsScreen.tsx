@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ShieldEngine, type EngineStatus } from '../../../native/shield-webview';
 import { FILTER_MANIFEST_URL } from '../../blocking/config';
 import { checkForFilterUpdate } from '../../blocking/filterUpdater';
-import { useLibrary } from '../../browser/library';
+import { useLibraryActions } from '../../browser/library';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { hasRemoteSuggestions } from '../../browser/suggest';
@@ -34,7 +34,7 @@ function formatVersion(v: string | null | undefined): string {
 
 export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShieldTest, onOpenPlus, onOpenReport, onClearedData }: Props) {
   const { settings, update, setSiteShields, setSiteFix } = useSettings();
-  const library = useLibrary();
+  const library = useLibraryActions();
   const stats = usePrivacyStatsActions();
   const plus = usePlus();
   const [status, setStatus] = useState<EngineStatus | null>(null);
@@ -44,7 +44,7 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
-    ShieldEngine.getStatus().then(setStatus);
+    ShieldEngine.getStatus().then(setStatus).catch(() => {});
     const sub = ShieldEngine.addListener('onEngineChanged', setStatus);
     return () => sub.remove();
   }, []);
@@ -72,16 +72,21 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
 
   const toggleLock = async (value: boolean) => {
     if (value) {
-      const [hardware, enrolled] = await Promise.all([
-        LocalAuthentication.hasHardwareAsync(),
-        LocalAuthentication.isEnrolledAsync(),
-      ]);
-      if (!hardware || !enrolled) {
-        Alert.alert('Set up a screen lock first', 'Add a fingerprint, face or PIN in your device settings to lock private tabs.');
+      try {
+        const [hardware, enrolled] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+        ]);
+        if (!hardware || !enrolled) {
+          Alert.alert('Set up a screen lock first', 'Add a fingerprint, face or PIN in your device settings to lock private tabs.');
+          return;
+        }
+        const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Lock private tabs' });
+        if (!result.success) return;
+      } catch {
+        Alert.alert('Couldn’t turn on the lock', 'Face ID or the passcode isn’t available right now. Try again.');
         return;
       }
-      const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Lock private tabs' });
-      if (!result.success) return;
     }
     update({ lockPrivateTabs: value });
   };
@@ -93,7 +98,12 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
         text: 'Clear',
         style: 'destructive',
         onPress: async () => {
-          await ShieldEngine.clearBrowsingData();
+          try {
+            await ShieldEngine.clearBrowsingData();
+          } catch {
+            Alert.alert('Couldn’t clear everything', 'Some website data may be left. Try again.');
+            return;
+          }
           library.clearHistory();
           stats.clear();
           onClearedData();

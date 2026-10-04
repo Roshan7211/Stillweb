@@ -27,8 +27,10 @@ export default function ShieldTestScreen({ onClose }: Props) {
   const [networkReady, setNetworkReady] = useState(false);
 
   useEffect(() => {
-    applyDevProxy().then(() => setNetworkReady(true));
-    ShieldEngine.getStatus().then(setStatus);
+    applyDevProxy()
+      .catch(() => {})
+      .then(() => setNetworkReady(true));
+    ShieldEngine.getStatus().then(setStatus).catch(() => {});
     const sub = ShieldEngine.addListener('onEngineChanged', setStatus);
     return () => sub.remove();
   }, []);

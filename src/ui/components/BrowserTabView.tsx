@@ -8,7 +8,7 @@ import { setBlockedTotal } from '../../browser/blockedTotal';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { useTabActions, type Tab } from '../../browser/tabs';
-import { rateScript } from '../../browser/listen';
+import { rateScript, stopAtEndScript } from '../../browser/listen';
 import type { LoadError } from '../../browser/loadErrors';
 import { isBlank, searchUrl, siteKey } from '../../browser/url';
 import type { Theme } from '../theme';
@@ -148,10 +148,20 @@ function BrowserTabView(props: Props) {
           // Like other browsers, pages may only close windows that a page opened.
           if (tab.openerId) closeTab(tab.id);
         }}
-        onLoadEnd={() => {
+        onLoadEnd={({ nativeEvent: { url } }) => {
           updateTab(tab.id, { loading: false, progress: 1 });
           // Listen Mode: the tab's playback speed carries over to the new page.
           if (tab.playbackRate && tab.playbackRate !== 1) ref.current?.evaluateJavaScript(rateScript(tab.playbackRate)).catch(() => {});
+          // "End of this one" follows a playlist onto its next page (same site only).
+          if (tab.stopAtEnd) {
+            if (tab.stopAtEnd !== siteKey(url)) updateTab(tab.id, { stopAtEnd: undefined });
+            else {
+              ref.current
+                ?.evaluateJavaScript(stopAtEndScript('resume'))
+                .then((state) => state === '"done"' && updateTab(tab.id, { stopAtEnd: undefined }))
+                .catch(() => {});
+            }
+          }
         }}
         onLoadProgress={({ nativeEvent: { progress } }) => {
           if (progress < 1 && Math.abs(progress - lastProgress.current) < 0.05) return;
@@ -190,7 +200,7 @@ function BrowserTabView(props: Props) {
             const result = await ShieldEngine.startDownload({ ...d, profileId: tab.profileId });
             if (!tab.incognito) library.addDownload({ url: d.url, fileName: result.fileName, nativeId: result.id });
             onToast(`Downloading ${result.fileName}`);
-          } catch (e) {
+          } catch {
             onToast('Download failed');
           }
         }}
@@ -217,9 +227,11 @@ function BrowserTabView(props: Props) {
             {
               text: 'Open',
               onPress: () =>
-                ShieldEngine.openExternal(nativeEvent.url).then((ok) => {
-                  if (!ok) onToast(Platform.OS === 'android' ? 'No app can open this link' : 'Could not open link');
-                }),
+                ShieldEngine.openExternal(nativeEvent.url)
+                  .then((ok) => {
+                    if (!ok) onToast(Platform.OS === 'android' ? 'No app can open this link' : 'Could not open link');
+                  })
+                  .catch(() => onToast('Could not open link')),
             },
           ]);
         }}

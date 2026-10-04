@@ -329,7 +329,7 @@ final class ShieldEngine {
   // MARK: - Site fixes
 
   /// Per-site changes the user made: desktop website, JavaScript off, hidden elements (CSS selectors).
-  struct SiteFix {
+  struct SiteFix: Equatable {
     var desktop = false
     var noScript = false
     var hidden: [String] = []
@@ -349,6 +349,8 @@ final class ShieldEngine {
       )
       if fix.desktop || fix.noScript || !fix.hidden.isEmpty { fixes[site.lowercased()] = fix }
     }
+    // Unchanged (most settings changes): tabs keep their rules and scripts.
+    guard fixes != siteFixes else { return }
     siteFixes = fixes
     generation += 1
   }
@@ -365,22 +367,27 @@ final class ShieldEngine {
   }
 
   func setDisabledSites(_ hosts: [String]) {
-    disabledSites = Set(hosts.map { $0.lowercased() })
+    let sites = Set(hosts.map { $0.lowercased() })
+    guard sites != disabledSites else { return }
+    disabledSites = sites
     defaults.set(Array(disabledSites), forKey: "shield.disabledSites")
     generation += 1
   }
 
   func setOptions(_ options: [String: Any]) {
+    let before = [enabled, httpsUpgrade, blockPopups, cosmeticFiltering, backgroundPlay, calmMode, vault]
     if let v = options["enabled"] as? Bool { enabled = v }
     if let v = options["httpsUpgrade"] as? Bool { httpsUpgrade = v }
     if let v = options["blockPopups"] as? Bool { blockPopups = v }
     if let v = options["cosmeticFiltering"] as? Bool { cosmeticFiltering = v }
-    if let v = options["backgroundPlay"] as? Bool {
+    if let v = options["backgroundPlay"] as? Bool, v != backgroundPlay {
       backgroundPlay = v
       configureAudioSession()
     }
     if let v = options["calmMode"] as? Bool { calmMode = v }
     if let v = options["vault"] as? Bool { vault = v }
+    // Unchanged (most settings changes): tabs keep their rules and scripts.
+    guard [enabled, httpsUpgrade, blockPopups, cosmeticFiltering, backgroundPlay, calmMode, vault] != before else { return }
     defaults.set(
       [
         "enabled": enabled, "httpsUpgrade": httpsUpgrade, "blockPopups": blockPopups,

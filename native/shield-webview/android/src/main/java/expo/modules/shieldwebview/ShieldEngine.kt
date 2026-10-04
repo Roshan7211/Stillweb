@@ -196,7 +196,7 @@ internal object ShieldEngine {
 
   /** `{ "example.com": { desktop, noScript, hidden: [selector] } }`, keyed by site (host without www). */
   fun setSiteFixes(raw: Map<String, Any?>) {
-    siteFixes = raw.mapNotNull { (site, value) ->
+    val fixes = raw.mapNotNull { (site, value) ->
       val entry = value as? Map<*, *> ?: return@mapNotNull null
       val fix = SiteFix(
         desktop = entry["desktop"] as? Boolean ?: false,
@@ -205,6 +205,8 @@ internal object ShieldEngine {
       )
       if (fix.desktop || fix.noScript || fix.hidden.isNotEmpty()) site.lowercase() to fix else null
     }.toMap()
+    if (fixes == siteFixes) return
+    siteFixes = fixes
     generation.incrementAndGet()
   }
 
@@ -221,20 +223,23 @@ internal object ShieldEngine {
   }
 
   fun setDisabledSites(hosts: Collection<String>) {
-    disabledSites = hosts.map { it.lowercase() }.toSet()
+    val sites = hosts.map { it.lowercase() }.toSet()
+    if (sites == disabledSites) return
+    disabledSites = sites
     prefs.edit().putStringSet("disabledSites", disabledSites).apply()
     generation.incrementAndGet()
   }
 
   fun setOptions(options: Map<String, Any?>) {
+    val before = listOf(enabled, httpsUpgrade, blockPopups, cosmeticFiltering, blockThirdPartyCookies, backgroundPlay, calmMode)
     (options["enabled"] as? Boolean)?.let { enabled = it }
     (options["httpsUpgrade"] as? Boolean)?.let { httpsUpgrade = it }
     (options["blockPopups"] as? Boolean)?.let { blockPopups = it }
     (options["cosmeticFiltering"] as? Boolean)?.let { cosmeticFiltering = it }
     (options["blockThirdPartyCookies"] as? Boolean)?.let { blockThirdPartyCookies = it }
     (options["backgroundPlay"] as? Boolean)?.let {
+      if (it != backgroundPlay && !it) main.post { MediaPlaybackController.stop(pause = false) }
       backgroundPlay = it
-      if (!it) main.post { MediaPlaybackController.stop(pause = false) }
     }
     (options["calmMode"] as? Boolean)?.let {
       if (it != calmMode) {
@@ -243,6 +248,8 @@ internal object ShieldEngine {
         executor.execute { runCatching { loadBest() }.onFailure { e -> Log.w(TAG, "rebuild for Calm Mode failed", e) } }
       }
     }
+    // Unchanged (most settings changes): tabs keep their scripts.
+    if (listOf(enabled, httpsUpgrade, blockPopups, cosmeticFiltering, blockThirdPartyCookies, backgroundPlay, calmMode) == before) return
     prefs.edit()
       .putBoolean("enabled", enabled)
       .putBoolean("httpsUpgrade", httpsUpgrade)

@@ -43,18 +43,35 @@ export function rateScript(rate: number): string {
 /**
  * Sleep timer "end of this one": when the current audio or video ends, whatever starts next
  * (a playlist's autoplay) is paused, as the user's own pause.
+ *
+ * `start` arms it on the page, `resume` re-arms it after the tab loads a new page of the same
+ * site (playlists that open the next video as a page; the session storage remembers whether
+ * the video before already ended) and `off` disarms it. Resolves (as JSON) to the state:
+ * 'waiting', 'ended', 'done' (it paused playback) or 'off'.
  */
-export function stopAtEndScript(on: boolean): string {
-  return `(function (on) {
-    window.__stillwebStopAtEnd = on ? 'waiting' : false;
+export function stopAtEndScript(mode: 'start' | 'resume' | 'off'): string {
+  return `(function (mode) {
+    var KEY = '__stillwebStopAtEnd';
+    function store(value) {
+      try { if (value) sessionStorage.setItem(KEY, value); else sessionStorage.removeItem(KEY); } catch (e) {}
+    }
+    var stored = null;
+    try { stored = sessionStorage.getItem(KEY); } catch (e) {}
+    if (mode === 'off') { window[KEY] = false; store(null); return 'off'; }
+    if (mode === 'resume' && stored === 'done') { window[KEY] = false; return 'done'; }
+    window[KEY] = mode === 'resume' && stored === 'ended' ? 'ended' : 'waiting';
+    store(window[KEY]);
     if (!window.__stillwebStopAtEndHooked) {
       window.__stillwebStopAtEndHooked = true;
       document.addEventListener('ended', function () {
-        if (window.__stillwebStopAtEnd === 'waiting') window.__stillwebStopAtEnd = 'ended';
+        if (window[KEY] !== 'waiting') return;
+        window[KEY] = 'ended';
+        store('ended');
       }, true);
       document.addEventListener('play', function (e) {
-        if (window.__stillwebStopAtEnd !== 'ended') return;
-        window.__stillwebStopAtEnd = false;
+        if (window[KEY] !== 'ended') return;
+        window[KEY] = false;
+        store('done');
         var m = e.target;
         setTimeout(function () {
           try { if (window.__stillwebUserPause) window.__stillwebUserPause(); } catch (err) {}
@@ -62,6 +79,14 @@ export function stopAtEndScript(on: boolean): string {
         }, 0);
       }, true);
     }
-    return true;
-  })(${on ? 'true' : 'false'})`;
+    return window[KEY];
+  })(${JSON.stringify(mode)})`;
+}
+
+/** Resolves (as JSON) to true once "end of this one" has paused playback on the page. */
+export function stopAtEndDoneScript(): string {
+  return `(function () {
+    try { if (sessionStorage.getItem('__stillwebStopAtEnd') === 'done') return true; } catch (e) {}
+    return window.__stillwebStopAtEnd === false;
+  })()`;
 }

@@ -164,9 +164,13 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
 
   const open = (item: (typeof downloads)[number]) => {
     if (Platform.OS === 'ios' && item.filePath) {
-      ShieldEngine.openFile(item.filePath).then((ok) => !ok && Alert.alert('File not found', 'It may have been deleted in the Files app.'));
+      ShieldEngine.openFile(item.filePath)
+        .then((ok) => !ok && Alert.alert('File not found', 'It may have been deleted in the Files app.'))
+        .catch(() => Alert.alert('Couldn’t open this file'));
     } else if (item.nativeId !== undefined) {
-      ShieldEngine.openDownload(item.nativeId).then((ok) => !ok && Alert.alert('No app can open this file'));
+      ShieldEngine.openDownload(item.nativeId)
+        .then((ok) => !ok && Alert.alert('No app can open this file'))
+        .catch(() => Alert.alert('Couldn’t open this file'));
     }
   };
 

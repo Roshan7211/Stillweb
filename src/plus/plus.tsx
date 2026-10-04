@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 
 import { PlusStore, type PlusEntitlement, type PlusProduct } from '../../native/shield-webview';
 import { PLUS_PRODUCTS } from './products';
@@ -51,7 +52,8 @@ export function PlusProvider({ children }: { children: ReactNode }) {
 
   const apply = useCallback((list: PlusEntitlement[]) => {
     const active = pickEntitlement(list);
-    setEntitlement(active);
+    // Unchanged (the usual case on every return to the app): nothing re-renders.
+    setEntitlement((prev) => (JSON.stringify(prev) === JSON.stringify(active) ? prev : active));
     setVerified(true);
     AsyncStorage.setItem(CACHE_KEY, active ? '1' : '0').catch(() => {});
   }, []);
@@ -61,9 +63,15 @@ export function PlusProvider({ children }: { children: ReactNode }) {
     AsyncStorage.getItem(CACHE_KEY)
       .then((value) => setCachedUnlocked(value === '1'))
       .catch(() => {});
-    PlusStore.getEntitlements().then(apply).catch(() => {});
+    const check = () => PlusStore?.getEntitlements().then(apply).catch(() => {});
+    check();
     const sub = PlusStore.addListener('onEntitlementsChanged', ({ entitlements }) => apply(entitlements));
-    return () => sub.remove();
+    // A subscription that ended (or was renewed elsewhere) while the app was away.
+    const appState = AppState.addEventListener('change', (state) => state === 'active' && check());
+    return () => {
+      sub.remove();
+      appState.remove();
+    };
   }, [apply]);
 
   const loadProducts = useCallback(() => {
