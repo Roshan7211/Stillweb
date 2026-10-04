@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DEFAULT_PROFILE_NAME, profileOf, type Profile } from '../../browser/profiles';
 import { useTabs, type Tab } from '../../browser/tabs';
 import { displayHost, hostOf, isBlank } from '../../browser/url';
 import { Icon, IconButton } from '../components/primitives';
@@ -14,15 +15,18 @@ type Props = {
   onUnlock: () => void;
   onClose: () => void;
   onPrivateClosed: () => void;
-  /** Opens a new tab with the address bar ready for typing. */
-  onNewTab: (asPrivate: boolean) => void;
+  /** Opens a new tab with the address bar ready for typing (in a profile when one is shown). */
+  onNewTab: (asPrivate: boolean, profileId?: string | null) => void;
+  /** Stillweb Plus profiles (empty without Plus): normal tabs are shown one profile at a time. */
+  profiles: Profile[];
 };
 
 const GAP = 12;
 const PADDING = 12;
 
-export default function TabSwitcherScreen({ theme, initialPrivate, privateLocked, onUnlock, onClose, onPrivateClosed, onNewTab }: Props) {
-  const { tabs, activeTab, activate, closeTab, closeAll } = useTabs();
+export default function TabSwitcherScreen(props: Props) {
+  const { theme, initialPrivate, privateLocked, onUnlock, onClose, onPrivateClosed, onNewTab, profiles } = props;
+  const { tabs, activeTab, activate, closeTab, closeAll, closeTabs } = useTabs();
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // The usable area, inside the system bars and display cut-outs.
@@ -31,7 +35,17 @@ export default function TabSwitcherScreen({ theme, initialPrivate, privateLocked
   // Two tabs side by side on phones; wider screens (landscape, tablets) fit more.
   const columns = width >= 900 ? 4 : width >= 600 ? 3 : 2;
   const [showPrivate, setShowPrivate] = useState(initialPrivate);
-  const list = tabs.filter((t) => t.incognito === showPrivate);
+  const byProfile = profiles.length > 0;
+  // Starts on the profile of the tab in use (or used last).
+  const [viewProfile, setViewProfile] = useState<string | null>(() => {
+    const normal =
+      activeTab && !activeTab.incognito
+        ? activeTab
+        : tabs.filter((t) => !t.incognito).sort((a, b) => b.lastActive - a.lastActive)[0];
+    return normal ? profileOf(normal, profiles) : null;
+  });
+  const inView = (t: Tab) => t.incognito === showPrivate && (showPrivate || !byProfile || profileOf(t, profiles) === viewProfile);
+  const list = tabs.filter(inView);
   const locked = showPrivate && privateLocked;
   const bg = showPrivate ? theme.privateBackground : theme.background;
   const card = showPrivate ? theme.privateSurface : theme.surface;
@@ -119,6 +133,30 @@ export default function TabSwitcherScreen({ theme, initialPrivate, privateLocked
         <IconButton name="x" label="Done" color={fg} onPress={onClose} />
       </View>
 
+      {byProfile && !showPrivate ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.profilesBar} contentContainerStyle={styles.profiles}>
+          {[{ id: null as string | null, name: DEFAULT_PROFILE_NAME }, ...profiles].map((p) => {
+            const selected = viewProfile === p.id;
+            const count = tabs.filter((t) => !t.incognito && profileOf(t, profiles) === p.id).length;
+            return (
+              <Pressable
+                key={p.id ?? 'default'}
+                onPress={() => setViewProfile(p.id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${p.name} profile, ${count} ${count === 1 ? 'tab' : 'tabs'}`}
+                style={[styles.profileChip, { backgroundColor: selected ? theme.accent : card }]}>
+                <Icon name="user" size={14} color={selected ? '#FFFFFF' : muted} />
+                <Text style={[styles.profileText, { color: selected ? '#FFFFFF' : fg }]} numberOfLines={1}>
+                  {p.name}
+                </Text>
+                <Text style={[styles.profileCount, { color: selected ? '#FFFFFF' : muted }]}>{count}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       {locked ? (
         <Pressable style={styles.locked} onPress={onUnlock}>
           <Icon name="lock" size={36} color={fg} />
@@ -147,10 +185,13 @@ export default function TabSwitcherScreen({ theme, initialPrivate, privateLocked
         <Pressable
           disabled={!list.length || locked}
           onPress={() => {
-            closeAll(showPrivate);
             if (showPrivate) {
+              closeAll(true);
               onPrivateClosed();
               setShowPrivate(false);
+            } else {
+              // Only the profile on screen.
+              closeTabs(list.map((t) => t.id));
             }
           }}
           hitSlop={8}>
@@ -158,7 +199,7 @@ export default function TabSwitcherScreen({ theme, initialPrivate, privateLocked
         </Pressable>
         <Pressable
           style={[styles.newTab, { backgroundColor: showPrivate ? '#5B3FA0' : theme.accent }]}
-          onPress={() => onNewTab(showPrivate)}
+          onPress={() => onNewTab(showPrivate, byProfile && !showPrivate ? viewProfile : undefined)}
           accessibilityLabel={showPrivate ? 'New private tab' : 'New tab'}>
           <Icon name="plus" size={24} color="#FFFFFF" />
         </Pressable>
@@ -173,6 +214,11 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   segment: { flex: 1, flexDirection: 'row', borderRadius: 12, padding: 3 },
   segmentItem: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
+  profilesBar: { flexGrow: 0 },
+  profiles: { paddingHorizontal: 12, paddingBottom: 4, gap: 8 },
+  profileChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 34, borderRadius: 17, maxWidth: 200 },
+  profileText: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  profileCount: { fontSize: 13, fontWeight: '600' },
   list: { padding: PADDING, gap: GAP, flexGrow: 1 },
   card: { borderRadius: 16, borderWidth: 2, overflow: 'hidden' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 10, height: 40 },

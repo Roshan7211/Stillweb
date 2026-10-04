@@ -34,6 +34,8 @@ type Props = {
   chromeCollapsed: boolean;
   /** Opens the privacy report (from the new tab page's stats). */
   onOpenReport: () => void;
+  /** Stillweb Plus: name of the tab's profile, shown on its new tab page. */
+  profileLabel?: string;
 };
 
 /** Maps an <input accept> list to MIME types the system picker understands. */
@@ -51,7 +53,7 @@ export default memo(BrowserTabView);
 
 function BrowserTabView(props: Props) {
   const { tab, active, theme, totalBlocked, onTotalBlocked, registerRef, onToast, onContextMenu, onFullscreenChange, onFindResult } = props;
-  const { onLinkAction, onChromeChange, chromeCollapsed, onOpenReport } = props;
+  const { onLinkAction, onChromeChange, chromeCollapsed, onOpenReport, profileLabel } = props;
   const { settings } = useSettings();
   const { updateTab, openTab, navigate, closeTab } = useTabActions();
   const library = useLibrary();
@@ -96,6 +98,7 @@ function BrowserTabView(props: Props) {
           active={active}
           onOpen={(url) => navigate(tab.id, url)}
           onOpenReport={onOpenReport}
+          profile={profileLabel}
         />
       </View>
     );
@@ -111,6 +114,7 @@ function BrowserTabView(props: Props) {
         active={active}
         chromeCollapsed={chromeCollapsed}
         incognito={tab.incognito}
+        profileId={tab.profileId}
         forceDark={theme.dark && settings.darkPages}
         textZoom={settings.textZoom}
         onNavigationStateChange={({ nativeEvent: s }) => {
@@ -185,7 +189,7 @@ function BrowserTabView(props: Props) {
             return;
           }
           try {
-            const result = await ShieldEngine.startDownload(d);
+            const result = await ShieldEngine.startDownload({ ...d, profileId: tab.profileId });
             if (!tab.incognito) library.addDownload({ url: d.url, fileName: result.fileName, nativeId: result.id });
             onToast(`Downloading ${result.fileName}`);
           } catch (e) {

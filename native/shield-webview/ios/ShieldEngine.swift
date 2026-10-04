@@ -182,6 +182,75 @@ final class ShieldEngine {
     store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast, completionHandler: completion)
   }
 
+  // MARK: - Profiles (Stillweb Plus)
+
+  /// Profiles need WebKit's named data stores (iOS 17).
+  static var profilesSupported: Bool {
+    #if compiler(>=5.9)
+    if #available(iOS 17.0, *) { return true }
+    #endif
+    return false
+  }
+
+  /// One store object per profile, shared by its tabs (like the private jar).
+  private static var profileStores: [UUID: WKWebsiteDataStore] = [:]
+
+  /// The persistent cookie and storage jar of a profile, or nil for the default one.
+  static func profileDataStore(_ id: String?) -> WKWebsiteDataStore? {
+    #if compiler(>=5.9)
+    if #available(iOS 17.0, *), let id, let uuid = UUID(uuidString: id) {
+      return profileStore(uuid)
+    }
+    #endif
+    return nil
+  }
+
+  #if compiler(>=5.9)
+  @available(iOS 17.0, *)
+  private static func profileStore(_ uuid: UUID) -> WKWebsiteDataStore {
+    if let store = profileStores[uuid] { return store }
+    let store = WKWebsiteDataStore(forIdentifier: uuid)
+    profileStores[uuid] = store
+    return store
+  }
+  #endif
+
+  /// Deletes a profile's jar (its tabs are closed by then). A store still held by a closing
+  /// web view can't be removed yet, so it is emptied instead.
+  static func deleteProfileData(_ id: String, completion: @escaping () -> Void) {
+    #if compiler(>=5.9)
+    if #available(iOS 17.0, *), let uuid = UUID(uuidString: id) {
+      profileStores[uuid] = nil
+      WKWebsiteDataStore.remove(forIdentifier: uuid) { error in
+        guard error != nil else { return completion() }
+        WKWebsiteDataStore(forIdentifier: uuid)
+          .removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast, completionHandler: completion)
+      }
+      return
+    }
+    #endif
+    completion()
+  }
+
+  /// Empties every profile's jar (Clear browsing data).
+  static func clearProfileData(completion: @escaping () -> Void) {
+    #if compiler(>=5.9)
+    if #available(iOS 17.0, *) {
+      WKWebsiteDataStore.fetchAllDataStoreIdentifiers { ids in
+        let group = DispatchGroup()
+        for uuid in ids {
+          group.enter()
+          profileStore(uuid)
+            .removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { group.leave() }
+        }
+        group.notify(queue: .main, execute: completion)
+      }
+      return
+    }
+    #endif
+    completion()
+  }
+
   // MARK: - Downloads
 
   struct DownloadState {

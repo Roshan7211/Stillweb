@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { ShieldEngine } from '../../native/shield-webview';
 import catalog from '../blocking/filter-catalog.json';
 import type { AccentId } from '../ui/theme';
+import type { Profile } from './profiles';
 import { DEFAULT_SEARCH_ENGINE, type SearchEngineId } from './url';
 
 export type ShieldSettings = {
@@ -46,6 +47,8 @@ export type Settings = {
   vault: boolean;
   /** Ask the search engine for suggestions while typing (never in private tabs). */
   searchSuggestions: boolean;
+  /** Stillweb Plus: profiles besides the default one, each with its own cookies and site data. */
+  profiles: Profile[];
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -72,6 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   addressBarPosition: Platform.OS === 'ios' ? 'bottom' : 'top',
   searchSuggestions: true,
   vault: true,
+  profiles: [],
 };
 
 const STORAGE_KEY = 'settings.v1';

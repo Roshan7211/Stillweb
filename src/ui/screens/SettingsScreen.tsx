@@ -13,6 +13,7 @@ import { hasRemoteSuggestions } from '../../browser/suggest';
 import { SEARCH_ENGINES } from '../../browser/url';
 import { usePlus } from '../../plus/plus';
 import { Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
+import ProfilesSection from '../components/ProfilesSection';
 import { ACCENTS, type AccentId, type Theme } from '../theme';
 
 type Props = {
@@ -86,7 +87,7 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
   };
 
   const clearAll = () =>
-    Alert.alert('Clear browsing data?', 'Deletes cookies, site data, cache and history.', [
+    Alert.alert('Clear browsing data?', `Deletes cookies, site data, cache and history${settings.profiles.length ? ' in every profile' : ''}.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear',
@@ -344,6 +345,8 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
           theme={theme}
         />
         <Row title="Clear browsing data now" icon="trash-2" theme={theme} danger onPress={clearAll} />
+
+        <ProfilesSection theme={theme} unlocked={plus.unlocked} onOpenPlus={onOpenPlus} />
 
         {Platform.OS === 'android' ? (
           <>

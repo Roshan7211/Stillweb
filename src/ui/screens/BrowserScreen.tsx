@@ -28,6 +28,7 @@ import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
 import { useSearchSuggestions } from '../../browser/suggest';
+import { profileName, profileOf, type Profile } from '../../browser/profiles';
 import { useTabs } from '../../browser/tabs';
 import { usePlus } from '../../plus/plus';
 import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl, siteKey } from '../../browser/url';
@@ -52,10 +53,14 @@ import VaultScreen from './VaultScreen';
 
 type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus' | 'vault';
 
+const NO_PROFILES: Profile[] = [];
+
 export default function BrowserScreen() {
   const { settings, setSiteFix } = useSettings();
   const plus = usePlus();
   const theme = useTheme(settings.theme, plus.unlocked ? settings.accent : 'blue');
+  // Stillweb Plus profiles; without Plus, every normal tab shows together (each keeps its data).
+  const profiles = plus.unlocked && ShieldEngine.profilesSupported === true ? settings.profiles : NO_PROFILES;
   const insets = useSafeAreaInsets();
   const tabsApi = useTabs();
   const { tabs, activeTab, liveIds, restored, openTab, closeTab, closeAll, navigate, updateTab } = tabsApi;
@@ -221,7 +226,11 @@ export default function BrowserScreen() {
         return;
       case 'downloadImage':
         try {
-          const result = await ShieldEngine.startDownload({ url: target.image, incognito: target.incognito });
+          const result = await ShieldEngine.startDownload({
+            url: target.image,
+            incognito: target.incognito,
+            profileId: target.incognito ? undefined : activeTab?.profileId,
+          });
           if (!target.incognito) library.addDownload({ url: target.image, fileName: result.fileName, nativeId: result.id });
           showToast(`Downloading ${result.fileName}`);
         } catch {
@@ -384,9 +393,9 @@ export default function BrowserScreen() {
     else openTab(url);
   };
 
-  const newTab = async (asPrivate: boolean) => {
+  const newTab = async (asPrivate: boolean, profileId?: string | null) => {
     if (asPrivate && !(await unlockPrivate())) return;
-    openTab('', { incognito: asPrivate });
+    openTab('', { incognito: asPrivate, profileId });
     startEditing('');
   };
 
@@ -646,6 +655,7 @@ export default function BrowserScreen() {
               onLinkAction={onLinkAction}
               onChromeChange={onChromeChange}
               onOpenReport={openReportFromPage}
+              profileLabel={profiles.length && !tab.incognito ? profileName(profileOf(tab, profiles), profiles) : undefined}
               chromeCollapsed={tab.id === activeTab?.id && collapsed}
             />
             </ErrorBoundary>
@@ -866,9 +876,10 @@ export default function BrowserScreen() {
                 if (!tabsApi.tabs.length) openTab('');
               }}
               onPrivateClosed={onPrivateTabsGone}
-              onNewTab={(asPrivate) => {
+              profiles={profiles}
+              onNewTab={(asPrivate, profileId) => {
                 setOverlay('none');
-                newTab(asPrivate);
+                newTab(asPrivate, profileId);
               }}
             />
           ) : overlay === 'bookmarks' ? (

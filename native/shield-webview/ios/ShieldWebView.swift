@@ -87,6 +87,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   var initialUrl: String?
   var incognito = false
+  /// Stillweb Plus profile (nil = the default one); fixed when the web view is created.
+  var profileId: String?
   var forceDark = false
   var textZoom = 100
   /// The tab on screen: only it may show page dialogs or scroll to top from the status bar.
@@ -559,7 +561,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private func createWebView() {
     let config = WKWebViewConfiguration()
     // Private tabs share one in-memory jar (cleared when the last one closes).
-    config.websiteDataStore = incognito ? ShieldEngine.shared.privateDataStore() : .default()
+    // Stillweb Plus profiles each have their own persistent store (iOS 17+).
+    config.websiteDataStore = incognito
+      ? ShieldEngine.shared.privateDataStore()
+      : ShieldEngine.profileDataStore(profileId) ?? .default()
     config.userContentController = ShieldContentController()
     config.applicationNameForUserAgent = Self.safariApplicationName
     config.allowsInlineMediaPlayback = true

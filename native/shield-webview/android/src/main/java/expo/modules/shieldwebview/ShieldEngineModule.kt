@@ -35,6 +35,9 @@ class ShieldEngineModule : Module() {
 
     Constant("privateTabsIsolated") { ShieldWebView.privateTabsIsolated }
 
+    // Stillweb Plus profiles need WebView's multi-profile support.
+    Constant("profilesSupported") { ShieldWebView.privateTabsIsolated }
+
     OnCreate {
       ShieldEngine.onEngineChanged = { status -> sendEvent("onEngineChanged", status) }
       SleepTimer.onFired = { sendEvent("onSleepTimerFired", emptyMap<String, Any>()) }
@@ -86,7 +89,23 @@ class ShieldEngineModule : Module() {
         // The HTTP cache is shared by all WebViews; any instance can clear it.
         WebView(context).apply { clearCache(true) }.destroy()
         clearPrivateProfile()
+        clearProfiles()
         promise.resolve(null)
+      }
+    }.runOnQueue(Queues.MAIN)
+
+    /** Deletes a Stillweb Plus profile's cookies and site data (call once its tabs are closed). */
+    AsyncFunction("deleteProfileData") { id: String ->
+      if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return@AsyncFunction
+      val store = ProfileStore.getInstance()
+      val name = ShieldWebView.profileNameFor(id)
+      try {
+        store.deleteProfile(name)
+      } catch (e: IllegalStateException) {
+        store.getProfile(name)?.let { profile ->
+          profile.cookieManager.removeAllCookies(null)
+          profile.webStorage.deleteAllData()
+        }
       }
     }.runOnQueue(Queues.MAIN)
 
@@ -100,19 +119,20 @@ class ShieldEngineModule : Module() {
       val contentDisposition = options["contentDisposition"] as? String
       val mimeType = options["mimeType"] as? String
       val incognito = options["incognito"] as? Boolean ?: false
+      val profileId = options["profileId"] as? String
       val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
 
       val request = DownloadManager.Request(Uri.parse(url)).apply {
         mimeType?.takeIf { it.isNotEmpty() }?.let { setMimeType(it) }
         (options["userAgent"] as? String)?.takeIf { it.isNotEmpty() }?.let { addRequestHeader("User-Agent", it) }
-        cookiesFor(url, incognito)?.let { addRequestHeader("Cookie", it) }
+        cookiesFor(url, incognito, profileId)?.let { addRequestHeader("Cookie", it) }
         setTitle(fileName)
         setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
         setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
       }
       val id = downloadManager().enqueue(request)
       mapOf("id" to id.toDouble(), "fileName" to fileName)
-    }
+    }.runOnQueue(Queues.MAIN) // WebView profiles are only available on the main thread
 
     AsyncFunction("getDownloads") { ids: List<Double> ->
       if (ids.isEmpty()) return@AsyncFunction emptyList<Map<String, Any?>>()
@@ -205,13 +225,26 @@ class ShieldEngineModule : Module() {
 
   private fun downloadManager() = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
-  private fun cookiesFor(url: String, incognito: Boolean): String? {
-    val manager = if (incognito && ShieldWebView.privateTabsIsolated) {
-      ProfileStore.getInstance().getProfile(ShieldWebView.PRIVATE_PROFILE)?.cookieManager
-    } else {
-      CookieManager.getInstance()
+  private fun cookiesFor(url: String, incognito: Boolean, profileId: String?): String? {
+    val manager = when {
+      !ShieldWebView.privateTabsIsolated -> CookieManager.getInstance()
+      incognito -> ProfileStore.getInstance().getProfile(ShieldWebView.PRIVATE_PROFILE)?.cookieManager
+      profileId != null -> ProfileStore.getInstance().getProfile(ShieldWebView.profileNameFor(profileId))?.cookieManager
+      else -> CookieManager.getInstance()
     }
     return manager?.getCookie(url)
+  }
+
+  /** Clear browsing data covers every profile's cookies and site data. */
+  private fun clearProfiles() {
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
+    val store = ProfileStore.getInstance()
+    store.allProfileNames.filter { it.startsWith("profile-") }.forEach { name ->
+      store.getProfile(name)?.let { profile ->
+        profile.cookieManager.removeAllCookies(null)
+        profile.webStorage.deleteAllData()
+      }
+    }
   }
 
   private fun clearPrivateProfile() {

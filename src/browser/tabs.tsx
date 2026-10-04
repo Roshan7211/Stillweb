@@ -8,6 +8,8 @@ export type Tab = {
   url: string;
   title: string;
   incognito: boolean;
+  /** Stillweb Plus profile (its own cookies and site data); unset = the default profile. */
+  profileId?: string;
   openerId?: string;
   lastActive: number;
   // Live page state, not persisted.
@@ -38,6 +40,7 @@ type Action =
   | { type: 'open'; tab: Tab; activate: boolean }
   | { type: 'close'; id: string }
   | { type: 'closeAll'; incognito: boolean }
+  | { type: 'closeMany'; ids: string[] }
   | { type: 'activate'; id: string }
   | { type: 'update'; id: string; patch: Partial<Tab> };
 
@@ -63,12 +66,13 @@ function deleteAllThumbnails() {
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export function makeTab(url: string, incognito: boolean, openerId?: string, popupId?: string): Tab {
+export function makeTab(url: string, incognito: boolean, openerId?: string, popupId?: string, profileId?: string): Tab {
   return {
     id: newId(),
     url,
     title: '',
     incognito,
+    profileId: incognito ? undefined : profileId,
     openerId,
     popupId,
     lastActive: Date.now(),
@@ -114,6 +118,12 @@ function reducer(state: State, action: Action): State {
       const active = tabs.find((t) => t.id === state.activeId);
       return { ...state, tabs, activeId: active ? active.id : (tabs[tabs.length - 1]?.id ?? null) };
     }
+    case 'closeMany': {
+      const tabs = state.tabs.filter((t) => !action.ids.includes(t.id));
+      const active = tabs.find((t) => t.id === state.activeId);
+      const recent = [...tabs].sort((a, b) => b.lastActive - a.lastActive)[0];
+      return { ...state, tabs, activeId: active ? active.id : (recent?.id ?? null) };
+    }
     case 'activate':
       return {
         ...state,
@@ -137,9 +147,18 @@ function reducer(state: State, action: Action): State {
 
 /** Tab actions; their identities never change, so using them doesn't re-render on tab updates. */
 type TabActions = {
-  openTab: (url: string, options?: { incognito?: boolean; openerId?: string; activate?: boolean; popupId?: string }) => string;
+  /**
+   * Opens a tab. Normal tabs open in `profileId` when given (null = the default profile),
+   * otherwise in the opener's profile, else the current tab's.
+   */
+  openTab: (
+    url: string,
+    options?: { incognito?: boolean; openerId?: string; activate?: boolean; popupId?: string; profileId?: string | null },
+  ) => string;
   closeTab: (id: string) => void;
   closeAll: (incognito: boolean) => void;
+  /** Closes these tabs (a profile's tabs, for example). */
+  closeTabs: (ids: string[]) => void;
   activate: (id: string) => void;
   updateTab: (id: string, patch: Partial<Tab>) => void;
   /** Loads a URL in a tab from the app (address bar, bookmarks, ...). */
@@ -170,8 +189,11 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
         try {
           const raw = await AsyncStorage.getItem(STORAGE_KEY);
           if (raw) {
-            const saved = JSON.parse(raw) as { tabs: { id: string; url: string; title: string }[]; activeId: string | null };
-            tabs = saved.tabs.map((t) => ({ ...makeTab(t.url, false), id: t.id, title: t.title }));
+            const saved = JSON.parse(raw) as {
+              tabs: { id: string; url: string; title: string; profileId?: string }[];
+              activeId: string | null;
+            };
+            tabs = saved.tabs.map((t) => ({ ...makeTab(t.url, false, undefined, undefined, t.profileId), id: t.id, title: t.title }));
             activeId = tabs.some((t) => t.id === saved.activeId) ? saved.activeId : (tabs[0]?.id ?? null);
           }
         } catch {}
@@ -191,7 +213,7 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
   const persisted = useMemo(
     () =>
       JSON.stringify({
-        tabs: state.tabs.filter((t) => !t.incognito).map(({ id, url, title }) => ({ id, url, title })),
+        tabs: state.tabs.filter((t) => !t.incognito).map(({ id, url, title, profileId }) => ({ id, url, title, profileId })),
         activeId: state.tabs.find((t) => t.id === state.activeId && !t.incognito)?.id ?? null,
       }),
     [state.tabs, state.activeId],
@@ -208,14 +230,28 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
     return new Set(live.current);
   }, [state.tabs, state.activeId]);
 
+  const tabsRef = useRef(state.tabs);
+  tabsRef.current = state.tabs;
+  const activeIdRef = useRef(state.activeId);
+  activeIdRef.current = state.activeId;
+
   const openTab = useCallback<TabsValue['openTab']>((url, options = {}) => {
-    const tab = makeTab(url, options.incognito ?? false, options.openerId, options.popupId);
+    let profileId = options.profileId;
+    if (profileId === undefined) {
+      // Links stay in their profile; otherwise the profile of the tab in use (or used last).
+      const all = tabsRef.current;
+      const opener = options.openerId ? all.find((t) => t.id === options.openerId) : undefined;
+      const current = all.find((t) => t.id === activeIdRef.current);
+      const source =
+        (opener && !opener.incognito ? opener : undefined) ??
+        (current && !current.incognito ? current : undefined) ??
+        all.filter((t) => !t.incognito).sort((a, b) => b.lastActive - a.lastActive)[0];
+      profileId = source?.profileId;
+    }
+    const tab = makeTab(url, options.incognito ?? false, options.openerId, options.popupId, profileId ?? undefined);
     dispatch({ type: 'open', tab, activate: options.activate ?? true });
     return tab.id;
   }, []);
-
-  const tabsRef = useRef(state.tabs);
-  tabsRef.current = state.tabs;
 
   const closeTab = useCallback((id: string) => {
     deleteThumbnail(tabsRef.current.find((t) => t.id === id)?.thumbnail);
@@ -224,6 +260,10 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
   const closeAll = useCallback((incognito: boolean) => {
     tabsRef.current.filter((t) => t.incognito === incognito).forEach((t) => deleteThumbnail(t.thumbnail));
     dispatch({ type: 'closeAll', incognito });
+  }, []);
+  const closeTabs = useCallback((ids: string[]) => {
+    tabsRef.current.filter((t) => ids.includes(t.id)).forEach((t) => deleteThumbnail(t.thumbnail));
+    dispatch({ type: 'closeMany', ids });
   }, []);
   const activate = useCallback((id: string) => dispatch({ type: 'activate', id }), []);
   const updateTab = useCallback((id: string, patch: Partial<Tab>) => dispatch({ type: 'update', id, patch }), []);
@@ -234,8 +274,8 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
   }, []);
 
   const actions = useMemo<TabActions>(
-    () => ({ openTab, closeTab, closeAll, activate, updateTab, navigate }),
-    [openTab, closeTab, closeAll, activate, updateTab, navigate],
+    () => ({ openTab, closeTab, closeAll, closeTabs, activate, updateTab, navigate }),
+    [openTab, closeTab, closeAll, closeTabs, activate, updateTab, navigate],
   );
   const value = useMemo<TabsValue>(
     () => ({

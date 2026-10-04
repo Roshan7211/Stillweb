@@ -29,6 +29,7 @@ class ShieldWebViewModule : Module() {
 
       Prop("initialUrl") { view: ShieldWebView, url: String? -> view.initialUrl = url }
       Prop("incognito") { view: ShieldWebView, value: Boolean? -> view.incognito = value ?: false }
+      Prop("profileId") { view: ShieldWebView, value: String? -> view.profileId = value }
       Prop("forceDark") { view: ShieldWebView, value: Boolean? -> view.forceDark = value ?: false }
       Prop("textZoom") { view: ShieldWebView, value: Int? -> view.textZoom = value ?: 100 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ShieldEngine } from '../../../native/shield-webview';
 import { PRIVACY_POLICY_URL } from '../../blocking/config';
 import { PLUS_PRODUCTS, usePlus } from '../../plus/plus';
 import { formatPrice, hasTrial, planTerms, planTitle } from '../../plus/pricing';
@@ -11,7 +12,7 @@ import type { Theme } from '../theme';
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
 
 /** What Plus includes today. Only features that exist are listed (App Store rule 3.1.2). */
-const PLUS_FEATURES: { icon: IconName; title: string; body: string }[] = [
+const PLUS_FEATURES: { icon: IconName; title: string; body: string; needsProfiles?: boolean }[] = [
   {
     icon: 'sun',
     title: 'Calm Mode',
@@ -26,6 +27,12 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string }[] = [
     icon: 'crosshair',
     title: 'Fix-it tools',
     body: 'Hide anything on a page with a tap, and turn JavaScript off for sites that misbehave.',
+  },
+  {
+    icon: 'users',
+    title: 'Profiles',
+    body: 'Separate tabs, logins and cookies for work, home or anything else, side by side.',
+    needsProfiles: true,
   },
   {
     icon: 'lock',
@@ -116,7 +123,7 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
         <Text style={[styles.subtitle, { color: theme.muted }]}>More from your browser. Ad blocking always stays free.</Text>
 
         <View style={styles.features}>
-          {PLUS_FEATURES.map((f) => (
+          {PLUS_FEATURES.filter((f) => !f.needsProfiles || ShieldEngine.profilesSupported === true).map((f) => (
             <View key={f.title} style={styles.feature}>
               <Icon name={f.icon} size={22} color={theme.accent} />
               <View style={{ flex: 1 }}>

@@ -68,6 +68,9 @@ internal class BrowserWebView(context: Context, private val keepVisible: () -> B
 class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   companion object {
     const val PRIVATE_PROFILE = "private"
+
+    /** Stillweb Plus profiles: their own cookies and site data. */
+    fun profileNameFor(id: String) = "profile-$id"
     private const val BRIDGE_NAME = "__shieldBridge"
     private const val MEDIA_BRIDGE_NAME = "__shieldMedia"
     private const val NOTIFICATION_PERMISSION_REQUEST = 0x5712
@@ -98,6 +101,8 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
 
   // ---- props (applied together in applyProps) ----
   var initialUrl: String? = null
+  /** Stillweb Plus profile (null = the default one); fixed when the web view is created. */
+  var profileId: String? = null
   var incognito = false
   var forceDark = false
   var textZoom = 100
@@ -187,9 +192,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       ShieldEngine.backgroundPlay && MediaPlaybackController.isSessionView(this)
     }
     // The profile has to be chosen before the WebView is used for anything else.
-    if (incognito && privateTabsIsolated) {
-      ProfileStore.getInstance().getOrCreateProfile(PRIVATE_PROFILE)
-      WebViewCompat.setProfile(wv, PRIVATE_PROFILE)
+    profileName()?.let { name ->
+      ProfileStore.getInstance().getOrCreateProfile(name)
+      WebViewCompat.setProfile(wv, name)
     }
     wv.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
     wv.setBackgroundColor(Color.TRANSPARENT)
@@ -320,7 +325,15 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   }
 
   private fun cookieManagerFor(wv: WebView): CookieManager =
-    if (incognito && privateTabsIsolated) WebViewCompat.getProfile(wv).cookieManager else CookieManager.getInstance()
+    if (profileName() != null) WebViewCompat.getProfile(wv).cookieManager else CookieManager.getInstance()
+
+  /** The WebView profile for this tab: the private one, a Stillweb Plus profile, or null (default). */
+  private fun profileName(): String? = when {
+    !privateTabsIsolated -> null
+    incognito -> PRIVATE_PROFILE
+    profileId != null -> profileNameFor(profileId!!)
+    else -> null
+  }
 
   // ---------------------------------------------------------------------------
   // Commands from JS (main thread)
@@ -860,7 +873,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       }
       // Capture the target URL with a throwaway WebView, then let JS open it as a new tab.
       val probe = WebView(view.context)
-      if (incognito && privateTabsIsolated) WebViewCompat.setProfile(probe, PRIVATE_PROFILE)
+      profileName()?.let { WebViewCompat.setProfile(probe, it) }
       var handled = false
       // Windows that never navigate (e.g. document.write into about:blank) are discarded.
       main.postDelayed({ if (!handled) { handled = true; probe.destroy() } }, 10_000)

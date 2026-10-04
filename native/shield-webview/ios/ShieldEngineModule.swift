@@ -81,6 +81,9 @@ public class ShieldEngineModule: Module {
     // Private tabs use a non-persistent WKWebsiteDataStore, which is always isolated.
     Constant("privateTabsIsolated") { true }
 
+    // Stillweb Plus profiles need named website data stores (iOS 17+).
+    Constant("profilesSupported") { ShieldEngine.profilesSupported }
+
     OnCreate {
       DispatchQueue.main.async {
         ShieldEngine.shared.onEngineChanged = { [weak self] status in
@@ -151,8 +154,13 @@ public class ShieldEngineModule: Module {
     AsyncFunction("clearBrowsingData") { (promise: Promise) in
       let store = WKWebsiteDataStore.default()
       store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {
-        promise.resolve(nil)
+        ShieldEngine.clearProfileData { promise.resolve(nil) }
       }
+    }.runOnQueue(.main)
+
+    // Deletes a Stillweb Plus profile's cookies and site data (its tabs are closed first).
+    AsyncFunction("deleteProfileData") { (id: String, promise: Promise) in
+      ShieldEngine.deleteProfileData(id) { promise.resolve(nil) }
     }.runOnQueue(.main)
 
     // Wipes the shared in-memory jar of private tabs (called once none are left).

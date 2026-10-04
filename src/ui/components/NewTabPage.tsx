@@ -14,9 +14,11 @@ type Props = {
   active: boolean;
   onOpen: (url: string) => void;
   onOpenReport: () => void;
+  /** Stillweb Plus: the profile this tab is in (only shown when there are profiles). */
+  profile?: string;
 };
 
-export default function NewTabPage({ theme, incognito, totalBlocked, active, onOpen, onOpenReport }: Props) {
+export default function NewTabPage({ theme, incognito, totalBlocked, active, onOpen, onOpenReport, profile }: Props) {
   const { bookmarks } = useLibrary();
   const bg = incognito ? theme.privateBackground : theme.background;
   const fg = incognito ? '#ECE6F7' : theme.text;
@@ -29,6 +31,14 @@ export default function NewTabPage({ theme, incognito, totalBlocked, active, onO
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       scrollsToTop={active}>
+      {profile && !incognito ? (
+        <View style={[styles.profile, { backgroundColor: card }]} accessibilityLabel={`${profile} profile`}>
+          <Icon name="user" size={14} color={muted} />
+          <Text style={[styles.profileText, { color: fg }]} numberOfLines={1}>
+            {profile}
+          </Text>
+        </View>
+      ) : null}
       {incognito ? (
         <View style={[styles.card, { backgroundColor: card }]}>
           <Icon name="eye-off" size={26} color={fg} />
@@ -77,6 +87,8 @@ export default function NewTabPage({ theme, incognito, totalBlocked, active, onO
 const styles = StyleSheet.create({
   content: { padding: 16, gap: 14, paddingTop: 24 },
   card: { borderRadius: 18, padding: 18, alignItems: 'center', gap: 6 },
+  profile: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 30, borderRadius: 15, maxWidth: 240 },
+  profileText: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
   cardTitle: { fontSize: 18, fontWeight: '600' },
   cardBody: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
   stat: { fontSize: 34, fontWeight: '700' },
