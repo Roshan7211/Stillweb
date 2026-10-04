@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PRIVACY_POLICY_URL } from '../../blocking/config';
@@ -9,6 +9,8 @@ import { Row, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
+
+const LOGO = require('../../../assets/logo.png');
 
 const SOFTWARE = [
   ...catalog.software,
@@ -25,6 +27,7 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
       <ScreenHeader title="About" onBack={onBack} theme={theme} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
+          <Image source={LOGO} style={styles.logo} accessible={false} />
           <Text style={[styles.name, { color: theme.text }]}>{Constants.expoConfig?.name ?? 'Browser'}</Text>
           <Text style={{ color: theme.muted }}>Version {Constants.expoConfig?.version ?? '—'}</Text>
           <Text style={[styles.body, { color: theme.muted }]}>
@@ -90,6 +93,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { paddingBottom: 40 },
   hero: { alignItems: 'center', padding: 24, gap: 6 },
+  logo: { width: 72, height: 72, borderRadius: 16, borderCurve: 'continuous', marginBottom: 6 },
   name: { fontSize: 24, fontWeight: '700' },
   body: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   pad: { paddingHorizontal: 16, textAlign: 'left' },

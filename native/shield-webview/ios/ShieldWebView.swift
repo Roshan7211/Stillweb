@@ -1244,13 +1244,18 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   }
 
   /// Fetches an image the page shows (completes on the main thread). Nothing is cached on
-  /// disk, and the page is sent as the referrer like the browser itself would.
+  /// disk and no cookies are sent; like browsers, only the page's site goes as the referrer
+  /// (never the full address, which can carry what was searched or read).
   private func loadImage(_ url: URL, completion: @escaping (UIImage?) -> Void) {
     if url.scheme?.lowercased() == "data" {
       return completion((try? Data(contentsOf: url)).flatMap(UIImage.init(data:)))
     }
     var request = URLRequest(url: url)
-    if let page = webView?.url?.absoluteString { request.setValue(page, forHTTPHeaderField: "Referer") }
+    if let page = webView?.url, let scheme = page.scheme, let host = page.host,
+       !(scheme == "https" && url.scheme?.lowercased() == "http") {
+      let port = page.port.map { ":\($0)" } ?? ""
+      request.setValue("\(scheme)://\(host)\(port)/", forHTTPHeaderField: "Referer")
+    }
     let session = URLSession(configuration: .ephemeral)
     session.dataTask(with: request) { data, _, _ in
       let image = data.flatMap(UIImage.init(data:))

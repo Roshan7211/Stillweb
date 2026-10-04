@@ -64,7 +64,12 @@ export function useSearchSuggestions(query: string, engine: SearchEngineId, enab
     const controller = new AbortController();
     const debounce = setTimeout(() => {
       const timeout = setTimeout(() => controller.abort(), 3000);
-      fetch(template.replace('%s', encodeURIComponent(q)), { signal: controller.signal, headers: { Accept: 'application/json' } })
+      // No cookies either way: the engine can't tie what's typed to a person or a session.
+      fetch(template.replace('%s', encodeURIComponent(q)), {
+        signal: controller.signal,
+        credentials: 'omit',
+        headers: { Accept: 'application/json' },
+      })
         .then((res) => (res.ok ? res.json() : null))
         .then((json) => {
           const items = parse(json);

@@ -46,7 +46,7 @@ async function runCheck(force: boolean): Promise<UpdateResult> {
   const status = await ShieldEngine.getStatus();
   if (!status.ready && !status.lastError) return { status: 'skipped' };
 
-  const response = await fetch(FILTER_MANIFEST_URL, { headers: { 'Cache-Control': 'no-cache' } });
+  const response = await fetch(FILTER_MANIFEST_URL, { credentials: 'omit', headers: { 'Cache-Control': 'no-cache' } });
   if (!response.ok) throw new Error(`Filter manifest request failed (HTTP ${response.status})`);
   const manifest = (await response.json()) as Manifest;
   await AsyncStorage.setItem(LAST_CHECK_KEY, String(Date.now()));

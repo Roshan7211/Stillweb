@@ -515,6 +515,8 @@ export default function BrowserScreen() {
   };
 
   const onMenu = async (action: MenuAction) => {
+    // iOS shows one sheet at a time: what opens from the menu waits until it has closed.
+    const afterMenu = Platform.OS === 'ios' && menuOpen ? 350 : 0;
     setMenuOpen(false);
     const url = activeTab?.url ?? '';
     switch (action) {
@@ -570,7 +572,10 @@ export default function BrowserScreen() {
         setTimeout(openListen, Platform.OS === 'ios' ? 350 : 0);
         return;
       case 'share':
-        return Share.share(Platform.OS === 'ios' ? { url } : { message: url }).catch(() => {});
+        setTimeout(() => {
+          Share.share(Platform.OS === 'ios' ? { url } : { message: url }).catch(() => showToast('Couldn’t open sharing'));
+        }, afterMenu);
+        return;
       case 'quit':
         return quit();
     }

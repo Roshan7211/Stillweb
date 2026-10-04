@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ShieldEngine } from '../../../native/shield-webview';
@@ -57,6 +57,8 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string; needsProfile
 ];
 
 /** Apple's standard licence agreement, used as Stillweb's Terms of Use. */
+const LOGO = require('../../../assets/logo.png');
+
 const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
 export default function PlusScreen({ theme, onBack, onOpen }: Props) {
@@ -116,9 +118,7 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
         <IconButton name="x" label="Close" color={theme.text} onPress={onBack} />
       </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.badge, { backgroundColor: theme.accentSoft }]}>
-          <Icon name="shield" size={30} color={theme.accent} />
-        </View>
+        <Image source={LOGO} style={styles.logo} accessibilityIgnoresInvertColors accessible={false} />
         <Text style={[styles.title, { color: theme.text }]}>Stillweb Plus</Text>
         <Text style={[styles.subtitle, { color: theme.muted }]}>More from your browser. Ad blocking always stays free.</Text>
 
@@ -242,7 +242,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   close: { alignItems: 'flex-end', paddingHorizontal: 4 },
   content: { paddingHorizontal: 20, paddingBottom: 40 },
-  badge: { alignSelf: 'center', width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  // The app icon, with the system's rounded-square shape.
+  logo: { alignSelf: 'center', width: 80, height: 80, borderRadius: 18, borderCurve: 'continuous' },
   title: { fontSize: 28, fontWeight: '700', textAlign: 'center', marginTop: 14 },
   subtitle: { fontSize: 15, textAlign: 'center', marginTop: 6, lineHeight: 21 },
   features: { marginTop: 24, gap: 18 },
