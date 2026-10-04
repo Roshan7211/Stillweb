@@ -10,10 +10,12 @@ type Props = {
   theme: Theme;
   incognito: boolean;
   totalBlocked: number;
+  /** The tab on screen: only one scroll view may answer the iOS status bar tap. */
+  active: boolean;
   onOpen: (url: string) => void;
 };
 
-export default function NewTabPage({ theme, incognito, totalBlocked, onOpen }: Props) {
+export default function NewTabPage({ theme, incognito, totalBlocked, active, onOpen }: Props) {
   const { bookmarks } = useLibrary();
   const bg = incognito ? theme.privateBackground : theme.background;
   const fg = incognito ? '#ECE6F7' : theme.text;
@@ -21,7 +23,11 @@ export default function NewTabPage({ theme, incognito, totalBlocked, onOpen }: P
   const card = incognito ? theme.privateSurface : theme.surface;
 
   return (
-    <ScrollView style={{ backgroundColor: bg }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      style={{ backgroundColor: bg }}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      scrollsToTop={active}>
       {incognito ? (
         <View style={[styles.card, { backgroundColor: card }]}>
           <Icon name="eye-off" size={26} color={fg} />

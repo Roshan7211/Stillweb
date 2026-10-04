@@ -109,7 +109,13 @@ function BrowserTabView(props: Props) {
   if (!showWeb) {
     return (
       <View style={[StyleSheet.absoluteFill, !active && styles.hidden]} pointerEvents={active ? 'auto' : 'none'}>
-        <NewTabPage theme={theme} incognito={tab.incognito} totalBlocked={totalBlocked} onOpen={(url) => navigate(tab.id, url)} />
+        <NewTabPage
+          theme={theme}
+          incognito={tab.incognito}
+          totalBlocked={totalBlocked}
+          active={active}
+          onOpen={(url) => navigate(tab.id, url)}
+        />
       </View>
     );
   }

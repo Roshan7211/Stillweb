@@ -108,6 +108,26 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     in: .defaultClient
   )
 
+  /// The image under the finger, for the long-press menu (WebKit only tells it about links).
+  /// One touch at a time across the app, so this is shared by all views.
+  private static var touchedImage: URL?
+
+  private static let touchScript = WKUserScript(
+    source: """
+    (function () {
+      document.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1) return;
+        var img = e.target && e.target.closest ? e.target.closest('img') : null;
+        var src = img ? (img.currentSrc || img.src || '') : '';
+        try { window.webkit.messageHandlers.shieldTouch.postMessage(src); } catch (err) {}
+      }, { capture: true, passive: true });
+    })();
+    """,
+    injectionTime: .atDocumentStart,
+    forMainFrameOnly: false,
+    in: .defaultClient
+  )
+
   /// Global Privacy Control signal for every frame (see web/shieldjs/privacy.js).
   private static let privacyScript = WKUserScript(
     source: """
@@ -145,36 +165,25 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         document.addEventListener(t, swallow, true);
       });
 
-      // In the background iOS pauses video with sound, and suspends the page as soon as
-      // nothing plays, so the next video of a playlist never starts. The app calls
-      // __shieldAppState(true/false) when it leaves / returns to the screen.
+      // In the background iOS pauses video with sound, suspends the page as soon as nothing
+      // plays (so the next video of a playlist never starts) and doesn't let video on a
+      // hidden page drive the lock screen (it keeps showing the previous video). The app
+      // calls __shieldAppState(true/false) when it leaves / returns to the screen; then a
+      // silent audio player keeps the page running and carries the lock screen, with the
+      // page's own title and artwork plus the real video's position and play state.
       var background = false;
       var resumeUntil = 0;
       var recent = [];
       var userPausedAt = 0;
+      var current = null; // the media being listened to
       function resume(m) {
         try { var r = m.play(); if (r && r.catch) r.catch(function () {}); } catch (e) {}
       }
 
-      // Pauses from the lock screen or Control Center are the user's: never undone.
-      try {
-        var setActionHandler = MediaSession.prototype.setActionHandler;
-        MediaSession.prototype.setActionHandler = function (action, handler) {
-          if ((action === 'pause' || action === 'stop') && typeof handler === 'function') {
-            var original = handler;
-            handler = function () {
-              userPausedAt = Date.now();
-              stopKeepAlive();
-              return original.apply(this, arguments);
-            };
-          }
-          return setActionHandler.call(this, action, handler);
-        };
-      } catch (e) {}
-
-      // Silence that keeps the page running between one video and the next.
       var keepAlive = null;
-      var keepAliveTimer = 0;
+      var keepAliveStarted = 0;
+      var gapTimer = 0;
+      var noCarrier = null; // media that can't play alongside the silent player
       function silentWav() {
         var rate = 8000, n = rate, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
         var text = function (at, str) { for (var i = 0; i < str.length; i++) v.setUint8(at + i, str.charCodeAt(i)); };
@@ -186,20 +195,87 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
       }
       function startKeepAlive() {
+        clearTimeout(gapTimer);
+        if (current && current === noCarrier) return;
         try {
           if (!keepAlive) {
             keepAlive = new Audio(silentWav());
             keepAlive.loop = true;
           }
-          resume(keepAlive);
-          clearTimeout(keepAliveTimer);
-          // Nothing followed (end of a playlist, autoplay off): let the page rest.
-          keepAliveTimer = setTimeout(stopKeepAlive, 60000);
+          if (keepAlive.paused) {
+            keepAliveStarted = Date.now();
+            resume(keepAlive);
+          }
         } catch (e) {}
       }
       function stopKeepAlive() {
-        clearTimeout(keepAliveTimer);
+        clearTimeout(gapTimer);
         if (keepAlive && !keepAlive.paused) keepAlive.pause();
+      }
+
+      // Lock screen and Control Center buttons. The page's own handlers are used as they
+      // are (its pause marked as the user's, which is never undone); for the basic buttons
+      // it doesn't handle, the app's act on the media being listened to (otherwise they
+      // would control the silent player).
+      var mediaSession = navigator.mediaSession;
+      var setActionHandler = null;
+      var setPositionState = null;
+      var pageHandlers = {};
+      var pageSetsPosition = false;
+      var ownPosition = false;
+      function userAction(action, handler) {
+        if (action !== 'pause' && action !== 'stop') return handler;
+        return function () {
+          userPausedAt = Date.now();
+          stopKeepAlive();
+          return handler.apply(this, arguments);
+        };
+      }
+      var fallbacks = {
+        play: function () { if (current) resume(current); },
+        pause: function () { if (current) current.pause(); },
+        seekto: function (details) {
+          if (current && details && isFinite(details.seekTime)) current.currentTime = details.seekTime;
+        },
+      };
+      function useFallbacks(on) {
+        if (!setActionHandler) return;
+        Object.keys(fallbacks).forEach(function (action) {
+          if (pageHandlers[action]) return;
+          try { setActionHandler.call(mediaSession, action, on ? userAction(action, fallbacks[action]) : null); } catch (e) {}
+        });
+      }
+      try {
+        setActionHandler = MediaSession.prototype.setActionHandler;
+        MediaSession.prototype.setActionHandler = function (action, handler) {
+          pageHandlers[action] = typeof handler === 'function' ? handler : null;
+          if (pageHandlers[action]) handler = userAction(action, handler);
+          else if (background && fallbacks[action]) handler = userAction(action, fallbacks[action]);
+          return setActionHandler.call(this, action, handler);
+        };
+        setPositionState = MediaSession.prototype.setPositionState;
+        MediaSession.prototype.setPositionState = function () {
+          pageSetsPosition = true;
+          return setPositionState.apply(this, arguments);
+        };
+      } catch (e) {}
+
+      // The lock screen's progress and play state follow the real media.
+      var lastSync = 0;
+      function syncLockScreen() {
+        var m = current;
+        if (!background || !m || !mediaSession) return;
+        lastSync = Date.now();
+        try { mediaSession.playbackState = m.paused ? 'paused' : 'playing'; } catch (e) {}
+        if (pageSetsPosition || !setPositionState || !isFinite(m.duration) || !(m.duration > 0)) return;
+        try {
+          setPositionState.call(mediaSession, {
+            duration: m.duration,
+            playbackRate: m.playbackRate || 1,
+            position: Math.min(Math.max(m.currentTime || 0, 0), m.duration),
+          });
+          ownPosition = true;
+        } catch (e) {}
       }
 
       // Hidden pages get no animation frames on iOS; players that wait for one to load the
@@ -241,7 +317,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         };
       } catch (e) {}
 
-      // Only media you can hear counts (muted previews neither need nor end the bridge).
+      // Only media you can hear counts (muted previews are ignored).
       function audible(m) {
         return !!m && typeof m.play === 'function' && m !== keepAlive && !m.muted;
       }
@@ -249,19 +325,48 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       document.addEventListener('pause', function (e) {
         var m = e.target;
         if (!audible(m) || m.ended) return;
-        if (Date.now() - userPausedAt < 1500) return;
-        if (Date.now() < resumeUntil) return resume(m);
-        recent.push({ m: m, t: Date.now() });
+        var now = Date.now();
+        // Starting the silent player stopped this media (it can't play alongside it): give
+        // way, and leave this media to drive the lock screen itself.
+        if (background && m === current && keepAlive && !keepAlive.paused && now - keepAliveStarted < 1000) {
+          noCarrier = m;
+          stopKeepAlive();
+          return resume(m);
+        }
+        if (now - userPausedAt < 1500) return syncLockScreen();
+        if (now < resumeUntil) return resume(m);
+        recent.push({ m: m, t: now });
         if (recent.length > 4) recent.shift();
+        if (background && m === current) {
+          // Paused by the page itself (not the user, not the system): show it as paused.
+          stopKeepAlive();
+          syncLockScreen();
+        }
       }, true);
       document.addEventListener('playing', function (e) {
-        if (!audible(e.target)) return;
-        stopKeepAlive();
+        var m = e.target;
+        if (!audible(m)) return;
+        current = m;
+        if (!background) return;
         // A video started in the background can be stopped by the system right away.
-        if (background) resumeUntil = Date.now() + 2000;
+        resumeUntil = Date.now() + 2000;
+        startKeepAlive();
+        syncLockScreen();
       }, true);
       document.addEventListener('ended', function (e) {
-        if (background && audible(e.target)) startKeepAlive();
+        if (!background || !audible(e.target)) return;
+        // Bridge the gap to the next video; nothing followed after a minute: let the page rest.
+        startKeepAlive();
+        syncLockScreen();
+        gapTimer = setTimeout(stopKeepAlive, 60000);
+      }, true);
+      // A new source (the next video in the same player) gets another chance at the carrier.
+      document.addEventListener('emptied', function (e) { if (e.target === noCarrier) noCarrier = null; }, true);
+      ['seeked', 'ratechange', 'durationchange'].forEach(function (type) {
+        document.addEventListener(type, function (e) { if (e.target === current) syncLockScreen(); }, true);
+      });
+      document.addEventListener('timeupdate', function (e) {
+        if (e.target === current && Date.now() - lastSync > 10000) syncLockScreen();
       }, true);
 
       function applyAppState(isBackground) {
@@ -270,11 +375,22 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         background = isBackground;
         resumeUntil = background ? now + 3000 : 0;
         if (background && !wasBackground) {
+          useFallbacks(true);
           // The system pause can land just before the app is told it went to the background.
           recent.forEach(function (r) { if (now - r.t < 1500 && r.m.paused) resume(r.m); });
+          if (current && !current.paused && !current.ended) {
+            startKeepAlive();
+            syncLockScreen();
+          }
           moveFramesToTimers();
-        } else if (!background) {
+        } else if (!background && wasBackground) {
           stopKeepAlive();
+          useFallbacks(false);
+          // Back on screen the media drives the lock screen itself again.
+          if (ownPosition) {
+            ownPosition = false;
+            try { setPositionState.call(mediaSession); } catch (e) {}
+          }
         }
         recent = [];
         // Players inside frames (embedded videos) get the news too.
@@ -338,7 +454,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     if webView == nil {
       if let popupId, let popup = Self.pendingPopups.removeValue(forKey: popupId) {
         install(popup)
-        applyShields(for: popup.url)
+        // Its first page may not have committed yet; the address it was opened with counts.
+        applyShields(for: popup.url ?? initialUrl.flatMap { URL(string: $0) })
         emitNavigationState()
       } else {
         createWebView()
@@ -377,6 +494,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     // native video fullscreen, which rotates, supports picture in picture and keeps playing.
     config.preferences.isElementFullscreenEnabled = UIDevice.current.userInterfaceIdiom == .pad
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldStats")
+    config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldTouch")
 
     install(WKWebView(frame: bounds, configuration: config))
     applyShields(for: nil)
@@ -582,6 +700,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     if host != controller.appliedHost || controller.appliedGeneration != engine.generation {
       controller.removeAllUserScripts()
       controller.addUserScript(Self.statsScript)
+      controller.addUserScript(Self.touchScript)
       controller.addUserScript(Self.privacyScript)
       if engine.backgroundPlay { controller.addUserScript(Self.backgroundPlayScript) }
       if active, let host, let source = engine.scriptletSource(forHost: host) {
@@ -635,6 +754,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
     if message.name == "shieldStats", shieldsActive, let n = message.body as? Int, n > 0 {
       countBlocked(n)
+    } else if message.name == "shieldTouch" {
+      let src = message.body as? String ?? ""
+      let url = URL(string: src)
+      Self.touchedImage = ["http", "https", "data"].contains(url?.scheme?.lowercased() ?? "") ? url : nil
     }
   }
 
@@ -855,43 +978,97 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     return true
   }
 
-  // Long-press on a link: Safari's menu, with the app opening new tabs.
+  // Long-press menu like Safari's: links (new tabs open in the app) and images.
 
   func webView(
     _ webView: WKWebView,
     contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
     completionHandler: @escaping (UIContextMenuConfiguration?) -> Void
   ) {
-    guard let url = elementInfo.linkURL else { return completionHandler(nil) }
-    let link = url.absoluteString
-    let isWeb = ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+    let link = elementInfo.linkURL
+    let image = Self.touchedImage
+    guard link != nil || image != nil else { return completionHandler(nil) }
     let configuration = UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-      var items: [UIMenuElement] = []
-      if isWeb {
-        items.append(UIAction(title: self?.incognito == true ? "Open in New Private Tab" : "Open in New Tab",
-                              image: UIImage(systemName: "plus.square.on.square")) { _ in
-          self?.onLinkAction(["action": "open", "url": link])
-        })
-        if self?.incognito != true {
-          items.append(UIAction(title: "Open in Private Tab", image: UIImage(systemName: "hand.raised")) { _ in
-            self?.onLinkAction(["action": "openPrivate", "url": link])
-          })
-        }
-        items.append(UIAction(title: "Download Linked File", image: UIImage(systemName: "arrow.down.circle")) { _ in
-          self?.webView?.startDownload(using: URLRequest(url: url)) { download in
-            download.delegate = self
-          }
-        })
+      var sections: [UIMenuElement] = []
+      if let link, let items = self?.linkMenuItems(link) {
+        sections.append(UIMenu(title: "", options: .displayInline, children: items))
       }
-      items.append(UIAction(title: "Copy Link", image: UIImage(systemName: "doc.on.doc")) { _ in
-        UIPasteboard.general.url = url
-      })
-      items.append(UIAction(title: "Share…", image: UIImage(systemName: "square.and.arrow.up")) { _ in
-        self?.present(UIActivityViewController(activityItems: [url], applicationActivities: nil))
-      })
-      return UIMenu(title: link, children: items)
+      if let image, let items = self?.imageMenuItems(image) {
+        sections.append(UIMenu(title: "", options: .displayInline, children: items))
+      }
+      return UIMenu(title: link?.absoluteString ?? "", children: sections)
     }
     completionHandler(configuration)
+  }
+
+  private func linkMenuItems(_ url: URL) -> [UIMenuElement] {
+    var items: [UIMenuElement] = []
+    if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+      let link = url.absoluteString
+      items.append(UIAction(title: incognito ? "Open in New Private Tab" : "Open in New Tab",
+                            image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in
+        self?.onLinkAction(["action": "open", "url": link])
+      })
+      if !incognito {
+        items.append(UIAction(title: "Open in Private Tab", image: UIImage(systemName: "hand.raised")) { [weak self] _ in
+          self?.onLinkAction(["action": "openPrivate", "url": link])
+        })
+      }
+      items.append(UIAction(title: "Download Linked File", image: UIImage(systemName: "arrow.down.circle")) { [weak self] _ in
+        self?.webView?.startDownload(using: URLRequest(url: url)) { download in
+          download.delegate = self
+        }
+      })
+    }
+    items.append(UIAction(title: "Copy Link", image: UIImage(systemName: "doc.on.doc")) { _ in
+      UIPasteboard.general.url = url
+    })
+    items.append(UIAction(title: "Share…", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+      self?.present(UIActivityViewController(activityItems: [url], applicationActivities: nil))
+    })
+    return items
+  }
+
+  private func imageMenuItems(_ url: URL) -> [UIMenuElement] {
+    var items: [UIMenuElement] = []
+    if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+      items.append(UIAction(title: "Open Image in New Tab", image: UIImage(systemName: "photo")) { [weak self] _ in
+        self?.onLinkAction(["action": "open", "url": url.absoluteString])
+      })
+    }
+    items.append(UIAction(title: "Save to Photos", image: UIImage(systemName: "square.and.arrow.down")) { [weak self] _ in
+      self?.loadImage(url) { image in
+        if let image { UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil) }
+      }
+    })
+    items.append(UIAction(title: "Copy Image", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
+      self?.loadImage(url) { image in
+        if let image { UIPasteboard.general.image = image }
+      }
+    })
+    items.append(UIAction(title: "Share Image…", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+      self?.loadImage(url) { image in
+        guard let self, let image else { return }
+        self.present(UIActivityViewController(activityItems: [image], applicationActivities: nil))
+      }
+    })
+    return items
+  }
+
+  /// Fetches an image the page shows (completes on the main thread). Nothing is cached on
+  /// disk, and the page is sent as the referrer like the browser itself would.
+  private func loadImage(_ url: URL, completion: @escaping (UIImage?) -> Void) {
+    if url.scheme?.lowercased() == "data" {
+      return completion((try? Data(contentsOf: url)).flatMap(UIImage.init(data:)))
+    }
+    var request = URLRequest(url: url)
+    if let page = webView?.url?.absoluteString { request.setValue(page, forHTTPHeaderField: "Referer") }
+    let session = URLSession(configuration: .ephemeral)
+    session.dataTask(with: request) { data, _, _ in
+      let image = data.flatMap(UIImage.init(data:))
+      DispatchQueue.main.async { completion(image) }
+    }.resume()
+    session.finishTasksAndInvalidate()
   }
 
   /// Tapping the menu's preview opens the link here.
