@@ -21,16 +21,8 @@ export type DownloadRecord = {
 const KEYS = { bookmarks: 'library.bookmarks', history: 'library.history', downloads: 'library.downloads' };
 const MAX_HISTORY = 2000;
 
-type LibraryValue = {
-  /** Normal bookmarks; the vault's are only in `vaultBookmarks`. */
-  bookmarks: Bookmark[];
-  vaultBookmarks: Bookmark[];
-  history: HistoryEntry[];
-  /** Normal downloads; the vault's are only in `vaultDownloads`. */
-  downloads: DownloadRecord[];
-  vaultDownloads: DownloadRecord[];
-  /** Bookmarked anywhere (normal or vault). */
-  isBookmarked: (url: string) => boolean;
+/** Changes to the library; their identities never change, so using them doesn't re-render. */
+type LibraryActions = {
   /** Adds (to the vault when `vault`) or removes the bookmark for this page. */
   toggleBookmark: (url: string, title: string, vault?: boolean) => void;
   removeBookmark: (id: string) => void;
@@ -40,21 +32,82 @@ type LibraryValue = {
   clearHistory: () => void;
   addDownload: (record: Omit<DownloadRecord, 'id' | 'startedAt'>) => void;
   removeDownload: (id: string) => void;
+};
+
+type LibraryValue = LibraryActions & {
+  /** Normal bookmarks; the vault's are only in `vaultBookmarks`. */
+  bookmarks: Bookmark[];
+  vaultBookmarks: Bookmark[];
+  history: HistoryEntry[];
+  /** Normal downloads; the vault's are only in `vaultDownloads`. */
+  downloads: DownloadRecord[];
+  vaultDownloads: DownloadRecord[];
+  /** Bookmarked anywhere (normal or vault). */
+  isBookmarked: (url: string) => boolean;
   /** Sites whose name starts with the text first, then other bookmark and history matches. */
   suggest: (query: string, limit?: number) => { url: string; title: string; kind: 'bookmark' | 'history' }[];
 };
 
 const LibraryContext = createContext<LibraryValue | null>(null);
+const LibraryActionsContext = createContext<LibraryActions | null>(null);
 
-function usePersistentState<T>(key: string, initial: T): [T, (update: (prev: T) => T) => void, boolean] {
+/** What suggestions match against, worked out once per entry instead of on every keystroke. */
+type IndexEntry = {
+  url: string;
+  title: string;
+  kind: 'bookmark' | 'history';
+  host: string;
+  site: string;
+  root: string;
+  isRoot: boolean;
+  lowerUrl: string;
+  lowerTitle: string;
+  words: string[];
+  display: string;
+};
+
+/** Runs `make` the first time the result is needed, then keeps it. */
+function once<T>(make: () => T): () => T {
+  let made: { value: T } | null = null;
+  return () => {
+    if (!made) made = { value: make() };
+    return made.value;
+  };
+}
+
+function indexEntry(url: string, title: string, kind: 'bookmark' | 'history'): IndexEntry {
+  const host = hostOf(url).replace(/^www\./, '');
+  const root = /^[a-z]+:\/\/[^/?#]+/i.exec(url)?.[0] ?? url;
+  const lowerTitle = title.toLowerCase();
+  return {
+    url,
+    title,
+    kind,
+    host,
+    site: host.replace(/^(m|mobile)\./, ''),
+    root,
+    isRoot: url.replace(/\/$/, '') === root,
+    lowerUrl: url.toLowerCase(),
+    lowerTitle,
+    words: lowerTitle.split(/\s+/),
+    display: displayUrl(url).toLowerCase(),
+  };
+}
+
+function usePersistentState<T>(
+  key: string,
+  initial: T,
+): [T, (update: (prev: T) => T) => void, () => void] {
   const [value, setValue] = useState<T>(initial);
   const [loaded, setLoaded] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cleared before the saved value finished loading (clear data at launch): it stays cleared.
+  const cleared = useRef(false);
 
   useEffect(() => {
     AsyncStorage.getItem(key)
       .then((raw) => {
-        if (raw) setValue(JSON.parse(raw) as T);
+        if (raw && !cleared.current) setValue(JSON.parse(raw) as T);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -69,26 +122,24 @@ function usePersistentState<T>(key: string, initial: T): [T, (update: (prev: T) 
   }, [key, value, loaded]);
 
   const update = useCallback((fn: (prev: T) => T) => setValue(fn), []);
-  return [value, update, loaded];
+  const reset = useCallback(() => {
+    cleared.current = true;
+    setValue(initial);
+    // Only the first value counts as the initial one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return [value, update, reset];
 }
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 export function LibraryProvider({ children }: { children: ReactNode }) {
   const [bookmarks, setBookmarks] = usePersistentState<Bookmark[]>(KEYS.bookmarks, []);
-  const [history, setHistory] = usePersistentState<HistoryEntry[]>(KEYS.history, []);
+  const [history, setHistory, resetHistory] = usePersistentState<HistoryEntry[]>(KEYS.history, []);
   const [downloads, setDownloads] = usePersistentState<DownloadRecord[]>(KEYS.downloads, []);
 
-  const value = useMemo<LibraryValue>(() => {
-    const bookmarkedUrls = new Set(bookmarks.map((b) => b.url));
-    const normalBookmarks = bookmarks.filter((b) => !b.vault);
-    return {
-      bookmarks: normalBookmarks,
-      vaultBookmarks: bookmarks.filter((b) => b.vault),
-      history,
-      downloads: downloads.filter((d) => !d.vault),
-      vaultDownloads: downloads.filter((d) => d.vault),
-      isBookmarked: (url) => bookmarkedUrls.has(url),
+  const actions = useMemo<LibraryActions>(
+    () => ({
       toggleBookmark: (url, title, vault) =>
         setBookmarks((list) =>
           list.some((b) => b.url === url)
@@ -111,10 +162,31 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         );
       },
       removeHistory: (url) => setHistory((list) => list.filter((h) => h.url !== url)),
-      clearHistory: () => setHistory(() => []),
+      clearHistory: resetHistory,
       addDownload: (record) =>
         setDownloads((list) => [{ ...record, id: newId(), startedAt: Date.now() }, ...list].slice(0, 200)),
       removeDownload: (id) => setDownloads((list) => list.filter((d) => d.id !== id)),
+    }),
+    [setBookmarks, setHistory, resetHistory, setDownloads],
+  );
+
+  const value = useMemo<LibraryValue>(() => {
+    const bookmarkedUrls = new Set(bookmarks.map((b) => b.url));
+    const normalBookmarks = bookmarks.filter((b) => !b.vault);
+    // Built on the first suggestion request after a change (not on every visit).
+    const index = once(() => [
+      // The vault never shows up in suggestions.
+      ...normalBookmarks.map((b) => indexEntry(b.url, b.title, 'bookmark')),
+      ...history.map((h) => indexEntry(h.url, h.title, 'history')),
+    ]);
+    return {
+      ...actions,
+      bookmarks: normalBookmarks,
+      vaultBookmarks: bookmarks.filter((b) => b.vault),
+      history,
+      downloads: downloads.filter((d) => !d.vault),
+      vaultDownloads: downloads.filter((d) => d.vault),
+      isBookmarked: (url) => bookmarkedUrls.has(url),
       suggest: (query, limit = 6) => {
         const q = query.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
         if (!q) return [];
@@ -123,13 +195,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         // Typing the start of a site's name offers the site itself (its home page) first,
         // once per site (www. and mobile m. versions count as one), like Safari's top hit.
         const sites = new Map<string, Match>();
-        const consider = (url: string, title: string, kind: 'bookmark' | 'history') => {
-          const host = hostOf(url).replace(/^www\./, '');
-          const site = host.replace(/^(m|mobile)\./, '');
-          const lowerTitle = title.toLowerCase();
+        for (const { url, title, kind, host, site, root, isRoot, lowerUrl, lowerTitle, words, display } of index()) {
           if (host.startsWith(q) || site.startsWith(q)) {
-            const root = /^[a-z]+:\/\/[^/?#]+/i.exec(url)?.[0] ?? url;
-            const isRoot = url.replace(/\/$/, '') === root;
             const known = sites.get(site);
             if (!known) {
               const match: Match = { url: `${root}/`, title: isRoot ? title : host, kind, rank: kind === 'bookmark' ? 0 : 1 };
@@ -140,17 +207,14 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
               known.title = title;
             }
             // The home page is the top hit; other pages of the site are listed as matches too.
-            if (isRoot) return;
+            if (isRoot) continue;
           }
-          if (displayUrl(url).toLowerCase().startsWith(q) || lowerTitle.split(/\s+/).some((w) => w.startsWith(q))) {
+          if (display.startsWith(q) || words.some((w) => w.startsWith(q))) {
             matches.push({ url, title, kind, rank: 2 });
-          } else if (url.toLowerCase().includes(q) || lowerTitle.includes(q)) {
+          } else if (lowerUrl.includes(q) || lowerTitle.includes(q)) {
             matches.push({ url, title, kind, rank: 3 });
           }
-        };
-        // The vault never shows up in suggestions.
-        normalBookmarks.forEach((b) => consider(b.url, b.title, 'bookmark'));
-        history.forEach((h) => consider(h.url, h.title, 'history'));
+        }
         const seen = new Set<string>();
         return matches
           .sort((a, b) => a.rank - b.rank) // stable: bookmarks, then most recent history
@@ -159,9 +223,20 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           .map(({ url, title, kind }) => ({ url, title, kind }));
       },
     };
-  }, [bookmarks, history, downloads, setBookmarks, setHistory, setDownloads]);
+  }, [bookmarks, history, downloads, actions]);
 
-  return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
+  return (
+    <LibraryActionsContext.Provider value={actions}>
+      <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>
+    </LibraryActionsContext.Provider>
+  );
+}
+
+/** Library changes only: unlike useLibrary, history updates don't re-render the caller. */
+export function useLibraryActions(): LibraryActions {
+  const ctx = useContext(LibraryActionsContext);
+  if (!ctx) throw new Error('useLibraryActions must be used inside LibraryProvider');
+  return ctx;
 }
 
 export function useLibrary(): LibraryValue {

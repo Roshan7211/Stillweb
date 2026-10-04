@@ -67,11 +67,13 @@ export function PrivacyStatsProvider({ children }: { children: ReactNode }) {
   const [days, setDays] = useState<StatsByDay>({});
   const loaded = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cleared before the saved days finished loading (clear data at launch): they stay gone.
+  const cleared = useRef(false);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        if (raw) setDays((recent) => mergeDays(JSON.parse(raw) as StatsByDay, recent));
+        if (raw && !cleared.current) setDays((recent) => mergeDays(JSON.parse(raw) as StatsByDay, recent));
       })
       .catch(() => {})
       .finally(() => {
@@ -105,6 +107,7 @@ export function PrivacyStatsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clear = useCallback(() => {
+    cleared.current = true;
     setDays({});
     AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
   }, []);

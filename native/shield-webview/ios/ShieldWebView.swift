@@ -97,6 +97,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   var popupId: String?
 
   private var webView: WKWebView?
+  /// Last load progress sent to the app.
+  private var sentProgress = 0.0
   private var observations: [NSKeyValueObservation] = []
   private var appObservers: [NSObjectProtocol] = []
   private var shieldsActive = true
@@ -162,6 +164,27 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         var src = img ? (img.currentSrc || img.src || '') : '';
         try { window.webkit.messageHandlers.shieldTouch.postMessage(src); } catch (err) {}
       }, { capture: true, passive: true });
+    })();
+    """,
+    injectionTime: .atDocumentStart,
+    forMainFrameOnly: false,
+    in: .defaultClient
+  )
+
+  /// Calm Mode's cookie pop-up script is large (it takes 10-25 ms to compile), so it runs in
+  /// the main frame only. Frames ask for it here when they look like a consent dialog: a
+  /// consent platform's address, or a site whose consent rules run in its frames (the
+  /// frame rules of scripts/gen-autoconsent.mjs's autoconsent build).
+  private static let consentFrameScript = WKUserScript(
+    source: """
+    (function () {
+      if (window === window.top) return;
+      var url = location.href;
+      if (!/^https?:/.test(url)) return;
+      if (/consent|cookie|gdpr|privacy|cmp|message_id|sp-prod|trustarc|tinypass|piano\\.io|clym-sdk/i.test(url) ||
+          /(^|\\.)(dropbox|tumblr|coinbase|gmx|thisismoney|interpolis|swisscare|coasthotels|village-hotels|natureconservancy|combell|huss-licht-ton|modellbau-berlinski)\\.[a-z.]+$|(^|\\.)(web\\.de|gmx\\.net|webarchive\\.nationalarchives\\.gov\\.uk)$/i.test(location.hostname)) {
+        try { window.webkit.messageHandlers.shieldConsentFrame.postMessage(1); } catch (e) {}
+      }
     })();
     """,
     injectionTime: .atDocumentStart,
@@ -513,11 +536,16 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         if let url = initialUrl { navigate(url) }
       }
     }
-    webView?.pageZoom = CGFloat(textZoom) / 100
+    guard let webView else { return }
+    // Props arrive with every re-render; only real changes reach the page (a zoom change
+    // relayouts it).
+    let zoom = CGFloat(textZoom) / 100
+    if webView.pageZoom != zoom { webView.pageZoom = zoom }
     // Lets pages that support prefers-color-scheme pick their dark theme.
-    webView?.overrideUserInterfaceStyle = forceDark ? .dark : .unspecified
+    let style: UIUserInterfaceStyle = forceDark ? .dark : .unspecified
+    if webView.overrideUserInterfaceStyle != style { webView.overrideUserInterfaceStyle = style }
     // Only one scroll view may answer the status bar tap.
-    webView?.scrollView.scrollsToTop = active
+    if webView.scrollView.scrollsToTop != active { webView.scrollView.scrollsToTop = active }
   }
 
   /// Safari's user agent tokens. WKWebView's default UA leaves out "Version/x Safari/y", so
@@ -577,6 +605,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     config.preferences.isElementFullscreenEnabled = UIDevice.current.userInterfaceIdiom == .pad
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldStats")
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldTouch")
+    config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldConsentFrame")
 
     install(WKWebView(frame: bounds, configuration: config))
     applyShields(for: nil)
@@ -628,7 +657,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         emit(v)
       },
       wv.observe(\.estimatedProgress) { [weak self] v, _ in
-        self?.onLoadProgress(["progress": v.estimatedProgress])
+        // WebKit reports tiny steps many times a second; the bar only needs visible ones.
+        guard let self else { return }
+        let progress = v.estimatedProgress
+        guard progress >= 1 || progress < self.sentProgress || progress - self.sentProgress >= 0.05 else { return }
+        self.sentProgress = progress
+        self.onLoadProgress(["progress": progress])
       },
     ]
 
@@ -686,17 +720,19 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     let config = WKSnapshotConfiguration()
     config.snapshotWidth = 360
     webView.takeSnapshot(with: config) { image, _ in
-      guard let data = image?.jpegData(compressionQuality: 0.7) else { return completion(nil) }
-      let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("thumbs", isDirectory: true)
-      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-      let safe = key.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_" }
-      let file = dir.appendingPathComponent(String(safe) + ".jpg")
-      do {
-        try data.write(to: file, options: .atomic)
-        completion(file.absoluteString)
-      } catch {
-        completion(nil)
+      guard let image else { return completion(nil) }
+      // Encoding and writing stay off the main thread, so switching tabs doesn't stutter.
+      DispatchQueue.global(qos: .userInitiated).async {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+          .appendingPathComponent("thumbs", isDirectory: true)
+        let safe = key.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_" }
+        let file = dir.appendingPathComponent(String(safe) + ".jpg")
+        var written = false
+        if let data = image.jpegData(compressionQuality: 0.7) {
+          try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+          written = (try? data.write(to: file, options: .atomic)) != nil
+        }
+        DispatchQueue.main.async { completion(written ? file.absoluteString : nil) }
       }
     }
   }
@@ -807,9 +843,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         controller.addUserScript(
           WKUserScript(source: Self.hideScript(fix.hidden), injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
       }
-      // Calm Mode: reject cookie pop-ups (consent dialogs also live in frames).
+      // Calm Mode: reject cookie pop-ups; consent dialogs in frames ask for it (consentFrameScript).
       if active, engine.calmMode, let source = engine.autoconsentSource {
-        controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+        controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
+        controller.addUserScript(Self.consentFrameScript)
       }
     }
     controller.appliedHost = host
@@ -868,6 +905,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       let n = (body?["count"] as? Int) ?? (message.body as? Int) ?? 0
       let hosts = (body?["hosts"] as? [String: Any])?.compactMapValues { $0 as? Int } ?? [:]
       if n > 0 { countBlocked(n, hosts: hosts) }
+    } else if message.name == "shieldConsentFrame" {
+      // A consent dialog's frame: Calm Mode's script runs in that frame alone.
+      let engine = ShieldEngine.shared
+      guard shieldsActive, engine.calmMode, let source = engine.autoconsentSource, let target = message.webView else { return }
+      target.evaluateJavaScript(source + "\n;void 0;", in: message.frameInfo, in: .page, completionHandler: nil)
     } else if message.name == "shieldTouch" {
       let src = message.body as? String ?? ""
       let url = URL(string: src)

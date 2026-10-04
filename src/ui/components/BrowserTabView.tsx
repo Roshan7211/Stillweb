@@ -3,7 +3,8 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 
 import { ShieldEngine, ShieldWebView, type ShieldWebViewRef } from '../../../native/shield-webview';
-import { useLibrary } from '../../browser/library';
+import { useLibraryActions } from '../../browser/library';
+import { setBlockedTotal } from '../../browser/blockedTotal';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { useTabActions, type Tab } from '../../browser/tabs';
@@ -19,8 +20,6 @@ type Props = {
   tab: Tab;
   active: boolean;
   theme: Theme;
-  totalBlocked: number;
-  onTotalBlocked: (n: number) => void;
   registerRef: (id: string, ref: ShieldWebViewRef | null) => void;
   onToast: (message: string) => void;
   onContextMenu: (target: ContextTarget) => void;
@@ -52,11 +51,11 @@ function pickerTypes(accept: string): string[] {
 export default memo(BrowserTabView);
 
 function BrowserTabView(props: Props) {
-  const { tab, active, theme, totalBlocked, onTotalBlocked, registerRef, onToast, onContextMenu, onFullscreenChange, onFindResult } = props;
+  const { tab, active, theme, registerRef, onToast, onContextMenu, onFullscreenChange, onFindResult } = props;
   const { onLinkAction, onChromeChange, chromeCollapsed, onOpenReport, profileLabel } = props;
   const { settings } = useSettings();
   const { updateTab, openTab, navigate, closeTab } = useTabActions();
-  const library = useLibrary();
+  const library = useLibraryActions();
   const stats = usePrivacyStatsActions();
   const ref = useRef<ShieldWebViewRef>(null);
   // The page's running count, to turn each update into the newly blocked requests.
@@ -94,7 +93,6 @@ function BrowserTabView(props: Props) {
         <NewTabPage
           theme={theme}
           incognito={tab.incognito}
-          totalBlocked={totalBlocked}
           active={active}
           onOpen={(url) => navigate(tab.id, url)}
           onOpenReport={onOpenReport}
@@ -168,7 +166,7 @@ function BrowserTabView(props: Props) {
           if (tab.incognito) stats.record(added);
           else stats.record(added, isBlank(tab.url) ? null : siteKey(tab.url), hosts);
           updateTab(tab.id, { blocked });
-          onTotalBlocked(nativeEvent.totalBlocked);
+          setBlockedTotal(nativeEvent.totalBlocked);
         }}
         onOpenWindow={({ nativeEvent }) => {
           openTab(nativeEvent.url, { incognito: tab.incognito, openerId: tab.id, popupId: nativeEvent.popupId });

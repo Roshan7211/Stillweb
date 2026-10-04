@@ -1,5 +1,6 @@
 import { StyleSheet, Switch, Text, View } from 'react-native';
 
+import { useBlockedTotal } from '../../browser/blockedTotal';
 import { useSettings } from '../../browser/settings';
 import { usePlus } from '../../plus/plus';
 import { siteKey } from '../../browser/url';
@@ -12,7 +13,6 @@ type Props = {
   theme: Theme;
   url: string;
   blocked: number;
-  totalBlocked: number;
   /** Reload so the new shield state takes effect. */
   onChanged: () => void;
   onOpenSettings: () => void;
@@ -27,7 +27,6 @@ export default function ShieldPanel({
   theme,
   url,
   blocked,
-  totalBlocked,
   onChanged,
   onOpenSettings,
   onOpenReport,
@@ -35,6 +34,7 @@ export default function ShieldPanel({
 }: Props) {
   const { settings, setSiteShields, setSiteFix } = useSettings();
   const plus = usePlus();
+  const totalBlocked = useBlockedTotal();
   const site = siteKey(url);
   const globallyOn = settings.shields.enabled;
   const siteOn = globallyOn && !settings.disabledSites.includes(site);

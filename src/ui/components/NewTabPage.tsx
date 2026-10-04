@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ShieldEngine } from '../../../native/shield-webview';
+import { useBlockedTotal } from '../../browser/blockedTotal';
 import { useLibrary } from '../../browser/library';
 import { displayUrl, hostOf } from '../../browser/url';
 import type { Theme } from '../theme';
@@ -9,7 +10,6 @@ import { Icon } from './primitives';
 type Props = {
   theme: Theme;
   incognito: boolean;
-  totalBlocked: number;
   /** The tab on screen: only one scroll view may answer the iOS status bar tap. */
   active: boolean;
   onOpen: (url: string) => void;
@@ -18,7 +18,8 @@ type Props = {
   profile?: string;
 };
 
-export default function NewTabPage({ theme, incognito, totalBlocked, active, onOpen, onOpenReport, profile }: Props) {
+export default function NewTabPage({ theme, incognito, active, onOpen, onOpenReport, profile }: Props) {
+  const totalBlocked = useBlockedTotal();
   const { bookmarks } = useLibrary();
   const bg = incognito ? theme.privateBackground : theme.background;
   const fg = incognito ? '#ECE6F7' : theme.text;

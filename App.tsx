@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ShieldEngine } from './native/shield-webview';
 import { applyDevProxy } from './src/blocking/devProxy';
 import { checkForFilterUpdate, registerFilterUpdateTask } from './src/blocking/filterUpdater';
-import { LibraryProvider, useLibrary } from './src/browser/library';
+import { LibraryProvider, useLibraryActions } from './src/browser/library';
 import { PrivacyStatsProvider, usePrivacyStatsActions } from './src/browser/privacyStats';
 import { SettingsProvider, useSettings } from './src/browser/settings';
 import { TabsProvider } from './src/browser/tabs';
@@ -25,7 +25,7 @@ const restart = () => {
 /** Waits for settings so start-up privacy work happens before any page loads. */
 function Root() {
   const { settings, loaded } = useSettings();
-  const library = useLibrary();
+  const library = useLibraryActions();
   const stats = usePrivacyStatsActions();
   const plus = usePlus();
   const theme = useTheme(settings.theme, plus.unlocked ? settings.accent : 'blue');

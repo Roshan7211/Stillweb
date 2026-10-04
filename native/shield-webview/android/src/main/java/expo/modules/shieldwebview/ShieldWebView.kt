@@ -155,8 +155,11 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       webView = created
       initialUrl?.let { navigate(it) }
     }
-    wv.settings.textZoom = textZoom
-    if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+    // Props arrive with every re-render; only real changes reach the page.
+    if (wv.settings.textZoom != textZoom) wv.settings.textZoom = textZoom
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING) &&
+      WebSettingsCompat.isAlgorithmicDarkeningAllowed(wv.settings) != forceDark
+    ) {
       WebSettingsCompat.setAlgorithmicDarkeningAllowed(wv.settings, forceDark)
     }
   }

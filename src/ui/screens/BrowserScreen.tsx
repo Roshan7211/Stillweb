@@ -24,6 +24,7 @@ import { ShieldEngine, type ShieldWebViewRef } from '../../../native/shield-webv
 import { useLibrary } from '../../browser/library';
 import { rateScript, stopAtEndScript, type SleepChoice } from '../../browser/listen';
 import { pickerBiggerScript, pickerCancelScript, pickerFinishScript, pickerStartScript } from '../../browser/picker';
+import { refreshBlockedTotal } from '../../browser/blockedTotal';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
@@ -95,7 +96,6 @@ export default function BrowserScreen() {
   const [addressText, setAddressText] = useState('');
   const [toolbarHeight, setToolbarHeight] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
-  const [totalBlocked, setTotalBlocked] = useState(0);
   const [privateUnlocked, setPrivateUnlocked] = useState(false);
   const [contextTarget, setContextTarget] = useState<ContextTarget | null>(null);
   const [fullscreenTabId, setFullscreenTabId] = useState<string | null>(null);
@@ -149,7 +149,7 @@ export default function BrowserScreen() {
   }, []);
 
   useEffect(() => {
-    ShieldEngine.getStatus().then((s) => setTotalBlocked(s.totalBlocked));
+    refreshBlockedTotal();
   }, []);
 
   // The sleep timer runs natively (it must fire in the background) and reports here.
@@ -254,7 +254,9 @@ export default function BrowserScreen() {
   );
 
   const openTabSwitcher = async () => {
-    if (activeTab) await captureThumbnail(activeTab.id);
+    // A fresh snapshot if it's quick; the switcher never waits long for it (it shows up
+    // there as soon as it's ready).
+    if (activeTab) await Promise.race([captureThumbnail(activeTab.id), new Promise((resolve) => setTimeout(resolve, 150))]);
     setOverlay('tabs');
   };
 
@@ -645,8 +647,6 @@ export default function BrowserScreen() {
               tab={tab}
               active={tab.id === activeTab?.id}
               theme={theme}
-              totalBlocked={totalBlocked}
-              onTotalBlocked={setTotalBlocked}
               registerRef={registerRef}
               onToast={showToast}
               onContextMenu={setContextTarget}
@@ -836,7 +836,6 @@ export default function BrowserScreen() {
         theme={theme}
         url={visibleUrl}
         blocked={activeTab?.blocked ?? 0}
-        totalBlocked={totalBlocked}
         onChanged={() => setTimeout(() => activeRef()?.reload(), 50)}
         onOpenSettings={() => {
           setShieldOpen(false);
@@ -896,7 +895,7 @@ export default function BrowserScreen() {
               onOpenShieldTest={() => setOverlay('shieldTest')}
               onOpenPlus={() => openPlus('settings')}
               onOpenReport={() => openReport('settings')}
-              onClearedData={() => ShieldEngine.getStatus().then((s) => setTotalBlocked(s.totalBlocked))}
+              onClearedData={refreshBlockedTotal}
             />
           ) : overlay === 'about' ? (
             <AboutScreen
