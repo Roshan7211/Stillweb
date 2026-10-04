@@ -7,6 +7,7 @@ import { useLibrary } from '../../browser/library';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { useTabActions, type Tab } from '../../browser/tabs';
+import { rateScript } from '../../browser/listen';
 import type { LoadError } from '../../browser/loadErrors';
 import { isBlank, searchUrl, siteKey } from '../../browser/url';
 import type { Theme } from '../theme';
@@ -145,7 +146,11 @@ function BrowserTabView(props: Props) {
           // Like other browsers, pages may only close windows that a page opened.
           if (tab.openerId) closeTab(tab.id);
         }}
-        onLoadEnd={() => updateTab(tab.id, { loading: false, progress: 1 })}
+        onLoadEnd={() => {
+          updateTab(tab.id, { loading: false, progress: 1 });
+          // Listen Mode: the tab's playback speed carries over to the new page.
+          if (tab.playbackRate && tab.playbackRate !== 1) ref.current?.evaluateJavaScript(rateScript(tab.playbackRate)).catch(() => {});
+        }}
         onLoadProgress={({ nativeEvent: { progress } }) => {
           if (progress < 1 && Math.abs(progress - lastProgress.current) < 0.05) return;
           lastProgress.current = progress;

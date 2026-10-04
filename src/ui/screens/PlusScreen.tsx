@@ -18,6 +18,11 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string }[] = [
     body: 'Cookie pop-ups rejected for you, and newsletter pop-ups, chat bubbles and floating videos hidden.',
   },
   {
+    icon: 'headphones',
+    title: 'Listen Mode',
+    body: 'Playback speed and a sleep timer for audio and video on any site, also with the screen locked.',
+  },
+  {
     icon: 'bar-chart-2',
     title: 'Full privacy report',
     body: 'A year of history, the sites you’re protected on most and the trackers blocked most often.',

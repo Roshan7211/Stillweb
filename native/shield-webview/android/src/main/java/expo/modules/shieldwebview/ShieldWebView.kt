@@ -151,6 +151,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   }
 
   fun destroy() {
+    SleepTimer.unregister(this)
     MediaPlaybackController.onViewDestroyed(this)
     extraScripts.forEach { it.remove() }
     extraScripts.clear()
@@ -171,6 +172,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   }
 
   private fun createWebView(): WebView {
+    SleepTimer.register(this)
     // An Activity context lets pages show alert()/confirm() dialogs and <select> pickers.
     val wv = BrowserWebView(appContext.currentActivity ?: context) {
       ShieldEngine.backgroundPlay && MediaPlaybackController.isSessionView(this)
@@ -346,6 +348,11 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   }
   fun stopLoading() = webView?.stopLoading()
   fun clearHistory() = webView?.clearHistory()
+
+  /** Sleep timer: pause everything playing in this tab. */
+  fun pauseMedia() {
+    webView?.evaluateJavascript(SleepTimer.PAUSE_SCRIPT, null)
+  }
 
   fun evaluate(script: String, callback: (String?) -> Unit) {
     val wv = webView ?: return callback(null)

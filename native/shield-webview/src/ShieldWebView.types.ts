@@ -127,4 +127,6 @@ export type ShieldOptions = {
 
 export type ShieldEngineEvents = {
   onEngineChanged: (status: EngineStatus) => void;
+  /** The sleep timer paused playback. */
+  onSleepTimerFired: () => void;
 };

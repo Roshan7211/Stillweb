@@ -22,11 +22,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ShieldEngine, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
+import { rateScript, stopAtEndScript, type SleepChoice } from '../../browser/listen';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
 import { useSearchSuggestions } from '../../browser/suggest';
 import { useTabs } from '../../browser/tabs';
+import { usePlus } from '../../plus/plus';
 import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl } from '../../browser/url';
 import AddressBar from '../components/AddressBar';
 import BrowserTabView from '../components/BrowserTabView';
@@ -34,6 +36,7 @@ import ContextMenuSheet, { type ContextAction, type ContextTarget } from '../com
 import { ErrorBoundary, ProblemScreen } from '../components/ErrorBoundary';
 import MenuSheet, { type MenuAction } from '../components/MenuSheet';
 import { Icon, IconButton } from '../components/primitives';
+import ListenSheet, { type SleepState } from '../components/ListenSheet';
 import ShieldPanel from '../components/ShieldPanel';
 import SuggestionsPanel from '../components/SuggestionsPanel';
 import { useTheme } from '../theme';
@@ -55,6 +58,7 @@ export default function BrowserScreen() {
   const { tabs, activeTab, liveIds, restored, openTab, closeTab, closeAll, navigate, updateTab } = tabsApi;
   const library = useLibrary();
   const stats = usePrivacyStatsActions();
+  const plus = usePlus();
 
   const refs = useRef(new Map<string, ShieldWebViewRef>());
   const [overlay, setOverlay] = useState<Overlay>('none');
@@ -72,6 +76,9 @@ export default function BrowserScreen() {
   // From the new tab page (stable: tab views are memoized).
   const openReportFromPage = useCallback(() => openReport('none'), [openReport]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Listen Mode (Stillweb Plus).
+  const [listenOpen, setListenOpen] = useState(false);
+  const [sleep, setSleep] = useState<SleepState>(null);
   const [shieldOpen, setShieldOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState('');
@@ -135,6 +142,15 @@ export default function BrowserScreen() {
   useEffect(() => {
     ShieldEngine.getStatus().then((s) => setTotalBlocked(s.totalBlocked));
   }, []);
+
+  // The sleep timer runs natively (it must fire in the background) and reports here.
+  useEffect(() => {
+    const sub = ShieldEngine.addListener('onSleepTimerFired', () => {
+      setSleep(null);
+      showToast('Sleep timer paused playback');
+    });
+    return () => sub.remove();
+  }, [showToast]);
 
   // Re-lock private tabs whenever the app goes to the background. ('inactive' is iOS's
   // passing state for Control Center, notifications and the Face ID prompt itself.)
@@ -266,6 +282,33 @@ export default function BrowserScreen() {
     (target: ContextTarget, action: 'open' | 'openPrivate') => contextActionRef.current(action, target),
     [],
   );
+
+  const setPlaybackRate = (rate: number) => {
+    if (!activeTab) return;
+    updateTab(activeTab.id, { playbackRate: rate });
+    activeRef()?.evaluateJavaScript(rateScript(rate)).catch(() => {});
+  };
+
+  const chooseSleep = (choice: SleepChoice | null) => {
+    // Whatever was set before ends first.
+    Promise.resolve(ShieldEngine.setSleepTimer(null)).catch(() => {});
+    if (sleep && 'endOfMedia' in sleep) activeRef()?.evaluateJavaScript(stopAtEndScript(false)).catch(() => {});
+    if (!choice) {
+      setSleep(null);
+      return;
+    }
+    if (choice.endOfMedia) {
+      activeRef()?.evaluateJavaScript(stopAtEndScript(true)).catch(() => {});
+      setSleep({ endOfMedia: true });
+      showToast('Playback pauses when this one ends');
+    } else if (choice.minutes) {
+      const seconds = choice.minutes * 60;
+      Promise.resolve(ShieldEngine.setSleepTimer(seconds)).catch(() => {});
+      setSleep({ endsAt: Date.now() + seconds * 1000 });
+      showToast(`Playback pauses in ${choice.label}`);
+    }
+    setListenOpen(false);
+  };
 
   /** Swiping the address bar moves between tabs (in the same mode), like Safari. */
   const switchTab = (direction: 'next' | 'previous') => {
@@ -423,8 +466,13 @@ export default function BrowserScreen() {
         }, Platform.OS === 'ios' ? 350 : 0);
         return;
       }
+      case 'listen':
+        if (!plus.unlocked) return openPlus('none');
+        // After the menu sheet has closed: iOS shows one sheet at a time.
+        setTimeout(() => setListenOpen(true), Platform.OS === 'ios' ? 350 : 0);
+        return;
       case 'share':
-        return Share.share(Platform.OS === 'ios' ? { url } : { message: url });
+        return Share.share(Platform.OS === 'ios' ? { url } : { message: url }).catch(() => {});
       case 'quit':
         return quit();
     }
@@ -682,6 +730,15 @@ export default function BrowserScreen() {
         showQuit={Platform.OS === 'android'}
         clearsOnQuit={settings.clearDataOnExit}
         onAction={onMenu}
+      />
+      <ListenSheet
+        visible={listenOpen}
+        onClose={() => setListenOpen(false)}
+        theme={theme}
+        rate={activeTab?.playbackRate ?? 1}
+        onRate={setPlaybackRate}
+        sleep={sleep}
+        onSleep={chooseSleep}
       />
       <ContextMenuSheet target={contextTarget} theme={theme} onClose={() => setContextTarget(null)} onAction={onContextAction} />
       <ShieldPanel

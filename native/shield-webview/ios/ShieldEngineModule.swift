@@ -76,7 +76,7 @@ public class ShieldEngineModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ShieldEngine")
 
-    Events("onEngineChanged")
+    Events("onEngineChanged", "onSleepTimerFired")
 
     // Private tabs use a non-persistent WKWebsiteDataStore, which is always isolated.
     Constant("privateTabsIsolated") { true }
@@ -85,6 +85,9 @@ public class ShieldEngineModule: Module {
       DispatchQueue.main.async {
         ShieldEngine.shared.onEngineChanged = { [weak self] status in
           self?.sendEvent("onEngineChanged", status.compactMapValues { $0 })
+        }
+        SleepTimer.shared.onFired = { [weak self] in
+          self?.sendEvent("onSleepTimerFired", [:])
         }
         ShieldEngine.shared.initialize()
       }
@@ -117,6 +120,11 @@ public class ShieldEngineModule: Module {
     Function("setOptions") { (options: [String: Any]) in
       DispatchQueue.main.async { ShieldEngine.shared.setOptions(options) }
     }
+
+    // Listen Mode: pause all media after this many seconds (nil cancels).
+    AsyncFunction("setSleepTimer") { (seconds: Double?) in
+      SleepTimer.shared.set(seconds: seconds)
+    }.runOnQueue(.main)
 
     Function("resetStats") {
       DispatchQueue.main.async { ShieldEngine.shared.resetStats() }

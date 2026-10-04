@@ -14,6 +14,7 @@ export type MenuAction =
   | 'reader'
   | 'find'
   | 'share'
+  | 'listen'
   | 'quit';
 
 type Props = {
@@ -32,6 +33,7 @@ export default function MenuSheet({ visible, onClose, theme, hasPage, bookmarked
   const quick: { action: MenuAction; icon: IconName; label: string; active?: boolean }[] = [
     { action: 'toggleBookmark', icon: 'star', label: bookmarked ? 'Saved' : 'Bookmark', active: bookmarked },
     { action: 'reader', icon: 'book-open', label: readerActive ? 'Exit reader' : 'Reader', active: readerActive },
+    { action: 'listen', icon: 'headphones', label: 'Listen' },
     { action: 'find', icon: 'search', label: 'Find' },
     { action: 'share', icon: 'share-2', label: 'Share' },
   ];
@@ -82,7 +84,7 @@ export default function MenuSheet({ visible, onClose, theme, hasPage, bookmarked
 }
 
 const styles = StyleSheet.create({
-  quick: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 12, paddingBottom: 8 },
-  quickButton: { width: 76, height: 66, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  quick: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 8 },
+  quickButton: { flex: 1, maxWidth: 76, height: 66, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 4 },
   quickLabel: { fontSize: 11, fontWeight: '500' },
 });

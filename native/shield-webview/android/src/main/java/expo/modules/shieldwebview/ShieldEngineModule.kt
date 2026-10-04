@@ -31,17 +31,19 @@ class ShieldEngineModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ShieldEngine")
 
-    Events("onEngineChanged")
+    Events("onEngineChanged", "onSleepTimerFired")
 
     Constant("privateTabsIsolated") { ShieldWebView.privateTabsIsolated }
 
     OnCreate {
       ShieldEngine.onEngineChanged = { status -> sendEvent("onEngineChanged", status) }
+      SleepTimer.onFired = { sendEvent("onSleepTimerFired", emptyMap<String, Any>()) }
       ShieldEngine.initialize(context)
     }
 
     OnDestroy {
       ShieldEngine.onEngineChanged = null
+      SleepTimer.onFired = null
     }
 
     OnActivityEntersForeground {
@@ -67,6 +69,9 @@ class ShieldEngineModule : Module() {
     Function("setDisabledSites") { hosts: List<String> -> ShieldEngine.setDisabledSites(hosts) }
 
     Function("setOptions") { options: Map<String, Any?> -> ShieldEngine.setOptions(options) }
+
+    // Listen Mode: pause all media after this many seconds (null cancels).
+    Function("setSleepTimer") { seconds: Double? -> SleepTimer.set(seconds) }
 
     Function("resetStats") { ShieldEngine.resetStats() }
 

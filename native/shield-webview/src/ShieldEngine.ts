@@ -38,6 +38,8 @@ declare class ShieldEngineModule extends NativeModule<ShieldEngineEvents> {
   setDebugProxy(hostPort: string | null): Promise<boolean>;
   /** Opens a link in another app (mailto:, tel:, intent:, ...). */
   openExternal(url: string): Promise<boolean>;
+  /** Listen Mode: pauses all media in every tab after `seconds` (null cancels); fires onSleepTimerFired. */
+  setSleepTimer(seconds: number | null): Promise<void> | void;
 }
 
 export default requireNativeModule<ShieldEngineModule>('ShieldEngine');

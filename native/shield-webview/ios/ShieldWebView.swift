@@ -32,6 +32,33 @@ func topViewController(for view: UIView?) -> UIViewController? {
   return top
 }
 
+/// Listen Mode's sleep timer (Stillweb Plus). A native timer keeps running while the app plays
+/// audio in the background; when it fires, media in every tab is paused.
+final class SleepTimer {
+  static let shared = SleepTimer()
+  private var timer: Timer?
+  private let views = NSHashTable<ShieldWebView>.weakObjects()
+  var onFired: (() -> Void)?
+
+  func register(_ view: ShieldWebView) { views.add(view) }
+
+  /// Pauses everything after `seconds`; nil or 0 cancels.
+  func set(seconds: Double?) {
+    timer?.invalidate()
+    timer = nil
+    guard let seconds, seconds > 0 else { return }
+    let t = Timer(timeInterval: seconds, repeats: false) { [weak self] _ in self?.fire() }
+    RunLoop.main.add(t, forMode: .common)
+    timer = t
+  }
+
+  private func fire() {
+    timer = nil
+    views.allObjects.forEach { $0.pauseAllMedia() }
+    onFired?()
+  }
+}
+
 /// WKWebView with EasyList/EasyPrivacy-derived WKContentRuleLists attached and per-host
 /// scriptlets injected at document start.
 final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate,
@@ -415,6 +442,16 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
           applyAppState(e.data.__shieldAppState);
         }
       });
+      // The sleep timer's pause: the user's, never undone.
+      try {
+        Object.defineProperty(window, '__stillwebUserPause', {
+          value: function () {
+            userPausedAt = Date.now();
+            stopKeepAlive();
+            try { if (current) current.pause(); } catch (e) {}
+          }
+        });
+      } catch (e) {}
       try {
         Object.defineProperty(window, '__shieldAppState', {
           value: function (isBackground) { applyAppState(!!isBackground); }
@@ -512,8 +549,20 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     applyShields(for: nil)
   }
 
+  /// Sleep timer: pauses media in every frame, marked as the user's pause so background play
+  /// doesn't resume it.
+  func pauseAllMedia() {
+    guard let webView else { return }
+    webView.evaluateJavaScript(
+      "(function(){try{if(window.__stillwebUserPause)window.__stillwebUserPause();}catch(e){}" +
+        "document.querySelectorAll('video,audio').forEach(function(m){try{m.pause();}catch(e){}});})();"
+    )
+    webView.pauseAllMediaPlayback(completionHandler: nil)
+  }
+
   /// Hooks a web view (new, or a page's pop-up) up to this view.
   private func install(_ wv: WKWebView) {
+    SleepTimer.shared.register(self)
     wv.frame = bounds
     wv.navigationDelegate = self
     wv.uiDelegate = self

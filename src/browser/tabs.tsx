@@ -27,6 +27,8 @@ export type Tab = {
   thumbAspect?: number;
   /** iOS: the window a page opened, waiting in native code to be shown by this tab's view. */
   popupId?: string;
+  /** Listen Mode: playback speed for media in this tab (1 when unset). */
+  playbackRate?: number;
 };
 
 type State = { tabs: Tab[]; activeId: string | null; restored: boolean };
