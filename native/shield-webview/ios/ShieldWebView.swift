@@ -126,8 +126,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   /// Keeps pages reporting "visible" so audio continues in the background (web/shieldjs/background-play.js).
   /// iOS also pauses video with sound when the app leaves the screen and suspends a page once
-  /// nothing plays; with `__shieldAppState`, called by the app, the script plays again what
-  /// the system paused and bridges the gap to the next video of a playlist with silence.
+  /// nothing plays; with `__shieldAppState`, called by the app (and passed on to frames), the
+  /// script plays again what the system paused, keeps animation-frame callbacks running and
+  /// bridges the gap to the next video of a playlist with silence.
   private static let backgroundPlayScript = WKUserScript(
     source: """
     (function () {
@@ -202,50 +203,93 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       }
 
       // Hidden pages get no animation frames on iOS; players that wait for one to load the
-      // next video would stall. While in the background, frames come from a slow timer.
+      // next video would stall. In the background, frames come from a slow timer, including
+      // the ones already requested when the app left the screen.
+      var pendingFrames = {};
+      function moveFramesToTimers() {}
       try {
         var raf = window.requestAnimationFrame.bind(window);
         var cancelRaf = window.cancelAnimationFrame.bind(window);
         window.requestAnimationFrame = function (callback) {
-          if (!background) return raf(callback);
-          return -setTimeout(function () { callback(performance.now()); }, 100);
+          if (background) return -setTimeout(function () { callback(performance.now()); }, 100);
+          var id = raf(function (time) {
+            delete pendingFrames[id];
+            callback(time);
+          });
+          pendingFrames[id] = { callback: callback, timer: 0 };
+          return id;
         };
         window.cancelAnimationFrame = function (id) {
-          if (id < 0) clearTimeout(-id); else cancelRaf(id);
+          if (id < 0) return clearTimeout(-id);
+          var frame = pendingFrames[id];
+          if (frame) {
+            clearTimeout(frame.timer);
+            delete pendingFrames[id];
+          }
+          cancelRaf(id);
+        };
+        moveFramesToTimers = function () {
+          Object.keys(pendingFrames).forEach(function (key) {
+            var frame = pendingFrames[key];
+            if (frame.timer) return;
+            cancelRaf(Number(key));
+            frame.timer = setTimeout(function () {
+              delete pendingFrames[key];
+              frame.callback(performance.now());
+            }, 100);
+          });
         };
       } catch (e) {}
 
+      // Only media you can hear counts (muted previews neither need nor end the bridge).
+      function audible(m) {
+        return !!m && typeof m.play === 'function' && m !== keepAlive && !m.muted;
+      }
+
       document.addEventListener('pause', function (e) {
         var m = e.target;
-        if (!m || typeof m.play !== 'function' || m.ended) return;
+        if (!audible(m) || m.ended) return;
         if (Date.now() - userPausedAt < 1500) return;
         if (Date.now() < resumeUntil) return resume(m);
         recent.push({ m: m, t: Date.now() });
         if (recent.length > 4) recent.shift();
       }, true);
-      document.addEventListener('playing', function () {
+      document.addEventListener('playing', function (e) {
+        if (!audible(e.target)) return;
         stopKeepAlive();
         // A video started in the background can be stopped by the system right away.
         if (background) resumeUntil = Date.now() + 2000;
       }, true);
-      document.addEventListener('ended', function () {
-        if (background) startKeepAlive();
+      document.addEventListener('ended', function (e) {
+        if (background && audible(e.target)) startKeepAlive();
       }, true);
 
+      function applyAppState(isBackground) {
+        var now = Date.now();
+        var wasBackground = background;
+        background = isBackground;
+        resumeUntil = background ? now + 3000 : 0;
+        if (background && !wasBackground) {
+          // The system pause can land just before the app is told it went to the background.
+          recent.forEach(function (r) { if (now - r.t < 1500 && r.m.paused) resume(r.m); });
+          moveFramesToTimers();
+        } else if (!background) {
+          stopKeepAlive();
+        }
+        recent = [];
+        // Players inside frames (embedded videos) get the news too.
+        for (var i = 0; i < window.frames.length; i++) {
+          try { window.frames[i].postMessage({ __shieldAppState: background }, '*'); } catch (e) {}
+        }
+      }
+      window.addEventListener('message', function (e) {
+        if (e.source === window.parent && window.parent !== window && e.data && typeof e.data.__shieldAppState === 'boolean') {
+          applyAppState(e.data.__shieldAppState);
+        }
+      });
       try {
         Object.defineProperty(window, '__shieldAppState', {
-          value: function (isBackground) {
-            var now = Date.now();
-            background = !!isBackground;
-            resumeUntil = background ? now + 3000 : 0;
-            if (background) {
-              // The system pause can land just before the app is told it went to the background.
-              recent.forEach(function (r) { if (now - r.t < 1500 && r.m.paused) resume(r.m); });
-            } else {
-              stopKeepAlive();
-            }
-            recent = [];
-          }
+          value: function (isBackground) { applyAppState(!!isBackground); }
         });
       } catch (e) {}
 
@@ -378,14 +422,19 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
     // Tells the page when the app leaves or returns to the screen (background play).
     let center = NotificationCenter.default
-    let notify: (Bool) -> Void = { [weak self] background in
-      guard ShieldEngine.shared.backgroundPlay else { return }
-      self?.webView?.evaluateJavaScript("window.__shieldAppState && window.__shieldAppState(\(background))")
-    }
     appObservers = [
-      center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in notify(true) },
-      center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in notify(false) },
+      center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+        self?.sendAppState(background: true)
+      },
+      center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+        self?.sendAppState(background: false)
+      },
     ]
+  }
+
+  private func sendAppState(background: Bool) {
+    guard ShieldEngine.shared.backgroundPlay else { return }
+    webView?.evaluateJavaScript("window.__shieldAppState && window.__shieldAppState(\(background))")
   }
 
   // MARK: - Commands
@@ -657,6 +706,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
     setChrome(collapsed: false)
     onLoadStart(["url": webView.url?.absoluteString ?? ""])
+  }
+
+  /// A page that loads while the app is in the background (the next video of a playlist on
+  /// a site without in-page navigation) must know it from the start.
+  func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    if UIApplication.shared.applicationState == .background { sendAppState(background: true) }
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
