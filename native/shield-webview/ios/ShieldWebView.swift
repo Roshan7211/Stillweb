@@ -125,8 +125,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   )
 
   /// Keeps pages reporting "visible" so audio continues in the background (web/shieldjs/background-play.js).
-  /// iOS also pauses video with sound when the app leaves the screen; `__shieldAppState`,
-  /// called by the app, plays again what that pause stopped.
+  /// iOS also pauses video with sound when the app leaves the screen and suspends a page once
+  /// nothing plays; with `__shieldAppState`, called by the app, the script plays again what
+  /// the system paused and bridges the gap to the next video of a playlist with silence.
   private static let backgroundPlayScript = WKUserScript(
     source: """
     (function () {
@@ -143,26 +144,105 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         document.addEventListener(t, swallow, true);
       });
 
+      // In the background iOS pauses video with sound, and suspends the page as soon as
+      // nothing plays, so the next video of a playlist never starts. The app calls
+      // __shieldAppState(true/false) when it leaves / returns to the screen.
+      var background = false;
       var resumeUntil = 0;
       var recent = [];
+      var userPausedAt = 0;
       function resume(m) {
         try { var r = m.play(); if (r && r.catch) r.catch(function () {}); } catch (e) {}
       }
+
+      // Pauses from the lock screen or Control Center are the user's: never undone.
+      try {
+        var setActionHandler = MediaSession.prototype.setActionHandler;
+        MediaSession.prototype.setActionHandler = function (action, handler) {
+          if ((action === 'pause' || action === 'stop') && typeof handler === 'function') {
+            var original = handler;
+            handler = function () {
+              userPausedAt = Date.now();
+              stopKeepAlive();
+              return original.apply(this, arguments);
+            };
+          }
+          return setActionHandler.call(this, action, handler);
+        };
+      } catch (e) {}
+
+      // Silence that keeps the page running between one video and the next.
+      var keepAlive = null;
+      var keepAliveTimer = 0;
+      function silentWav() {
+        var rate = 8000, n = rate, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+        var text = function (at, str) { for (var i = 0; i < str.length; i++) v.setUint8(at + i, str.charCodeAt(i)); };
+        text(0, 'RIFF'); v.setUint32(4, 36 + n, true); text(8, 'WAVE'); text(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+        text(36, 'data'); v.setUint32(40, n, true);
+        for (var i = 0; i < n; i++) v.setUint8(44 + i, 128);
+        return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+      }
+      function startKeepAlive() {
+        try {
+          if (!keepAlive) {
+            keepAlive = new Audio(silentWav());
+            keepAlive.loop = true;
+          }
+          resume(keepAlive);
+          clearTimeout(keepAliveTimer);
+          // Nothing followed (end of a playlist, autoplay off): let the page rest.
+          keepAliveTimer = setTimeout(stopKeepAlive, 60000);
+        } catch (e) {}
+      }
+      function stopKeepAlive() {
+        clearTimeout(keepAliveTimer);
+        if (keepAlive && !keepAlive.paused) keepAlive.pause();
+      }
+
+      // Hidden pages get no animation frames on iOS; players that wait for one to load the
+      // next video would stall. While in the background, frames come from a slow timer.
+      try {
+        var raf = window.requestAnimationFrame.bind(window);
+        var cancelRaf = window.cancelAnimationFrame.bind(window);
+        window.requestAnimationFrame = function (callback) {
+          if (!background) return raf(callback);
+          return -setTimeout(function () { callback(performance.now()); }, 100);
+        };
+        window.cancelAnimationFrame = function (id) {
+          if (id < 0) clearTimeout(-id); else cancelRaf(id);
+        };
+      } catch (e) {}
+
       document.addEventListener('pause', function (e) {
         var m = e.target;
         if (!m || typeof m.play !== 'function' || m.ended) return;
+        if (Date.now() - userPausedAt < 1500) return;
         if (Date.now() < resumeUntil) return resume(m);
         recent.push({ m: m, t: Date.now() });
         if (recent.length > 4) recent.shift();
       }, true);
+      document.addEventListener('playing', function () {
+        stopKeepAlive();
+        // A video started in the background can be stopped by the system right away.
+        if (background) resumeUntil = Date.now() + 2000;
+      }, true);
+      document.addEventListener('ended', function () {
+        if (background) startKeepAlive();
+      }, true);
+
       try {
         Object.defineProperty(window, '__shieldAppState', {
-          value: function (background) {
+          value: function (isBackground) {
             var now = Date.now();
+            background = !!isBackground;
             resumeUntil = background ? now + 3000 : 0;
             if (background) {
               // The system pause can land just before the app is told it went to the background.
               recent.forEach(function (r) { if (now - r.t < 1500 && r.m.paused) resume(r.m); });
+            } else {
+              stopKeepAlive();
             }
             recent = [];
           }
