@@ -117,6 +117,11 @@ public class ShieldEngineModule: Module {
       DispatchQueue.main.async { ShieldEngine.shared.setDisabledSites(hosts) }
     }
 
+    // Per-site desktop website / JavaScript off / hidden elements.
+    Function("setSiteFixes") { (fixes: [String: Any]) in
+      DispatchQueue.main.async { ShieldEngine.shared.setSiteFixes(fixes) }
+    }
+
     Function("setOptions") { (options: [String: Any]) in
       DispatchQueue.main.async { ShieldEngine.shared.setOptions(options) }
     }

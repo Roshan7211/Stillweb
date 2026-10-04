@@ -1,9 +1,10 @@
 import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useSettings } from '../../browser/settings';
+import { usePlus } from '../../plus/plus';
 import { siteKey } from '../../browser/url';
 import type { Theme } from '../theme';
-import { Icon, Row, Sheet } from './primitives';
+import { Icon, IconButton, Row, Sheet, SwitchRow } from './primitives';
 
 type Props = {
   visible: boolean;
@@ -16,13 +17,29 @@ type Props = {
   onChanged: () => void;
   onOpenSettings: () => void;
   onOpenReport: () => void;
+  /** A Plus switch was used without Plus. */
+  onOpenPlus: () => void;
 };
 
-export default function ShieldPanel({ visible, onClose, theme, url, blocked, totalBlocked, onChanged, onOpenSettings, onOpenReport }: Props) {
-  const { settings, setSiteShields } = useSettings();
+export default function ShieldPanel({
+  visible,
+  onClose,
+  theme,
+  url,
+  blocked,
+  totalBlocked,
+  onChanged,
+  onOpenSettings,
+  onOpenReport,
+  onOpenPlus,
+}: Props) {
+  const { settings, setSiteShields, setSiteFix } = useSettings();
+  const plus = usePlus();
   const site = siteKey(url);
   const globallyOn = settings.shields.enabled;
   const siteOn = globallyOn && !settings.disabledSites.includes(site);
+  const fix = settings.siteFixes[site] ?? {};
+  const hiddenCount = fix.hidden?.length ?? 0;
 
   return (
     <Sheet visible={visible} onClose={onClose} theme={theme}>
@@ -65,6 +82,49 @@ export default function ShieldPanel({ visible, onClose, theme, url, blocked, tot
       <Text style={[styles.note, { color: theme.muted }]}>
         If this site doesn't work properly, turn protection off. It's remembered for {site || 'this site'}.
       </Text>
+      {site ? (
+        <>
+          <SwitchRow
+            title="Desktop website"
+            value={!!fix.desktop}
+            onValueChange={(v) => {
+              setSiteFix(site, { desktop: v });
+              onChanged();
+            }}
+            theme={theme}
+          />
+          <SwitchRow
+            title={plus.unlocked ? 'JavaScript' : 'JavaScript · Plus'}
+            subtitle="Turn off for a site that keeps showing pop-ups or won't stop moving"
+            value={plus.unlocked ? !fix.noScript : true}
+            onValueChange={(v) => {
+              if (!plus.unlocked) return onOpenPlus();
+              setSiteFix(site, { noScript: !v });
+              onChanged();
+            }}
+            theme={theme}
+          />
+          {hiddenCount > 0 && plus.unlocked ? (
+            <Row
+              title={`${hiddenCount} hidden element${hiddenCount === 1 ? '' : 's'}`}
+              subtitle="Elements you hid on this site"
+              icon="eye-off"
+              theme={theme}
+              right={
+                <IconButton
+                  name="rotate-ccw"
+                  label="Show hidden elements again"
+                  color={theme.accent}
+                  onPress={() => {
+                    setSiteFix(site, { hidden: [] });
+                    onChanged();
+                  }}
+                />
+              }
+            />
+          ) : null}
+        </>
+      ) : null}
       <Row title="Privacy report" icon="bar-chart-2" theme={theme} onPress={onOpenReport} />
       <Row title="Settings" icon="sliders" theme={theme} onPress={onOpenSettings} />
     </Sheet>

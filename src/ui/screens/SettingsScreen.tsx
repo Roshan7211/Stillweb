@@ -32,7 +32,7 @@ function formatVersion(v: string | null | undefined): string {
 }
 
 export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShieldTest, onOpenPlus, onOpenReport, onClearedData }: Props) {
-  const { settings, update, setSiteShields } = useSettings();
+  const { settings, update, setSiteShields, setSiteFix } = useSettings();
   const library = useLibrary();
   const stats = usePrivacyStatsActions();
   const plus = usePlus();
@@ -161,6 +161,30 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
                     color={theme.muted}
                     onPress={() => setSiteShields(site, true)}
                   />
+                }
+              />
+            ))}
+          </>
+        ) : null}
+
+        {Object.keys(settings.siteFixes).length ? (
+          <>
+            <Text style={[styles.subhead, { color: theme.muted }]}>Site changes</Text>
+            {Object.entries(settings.siteFixes).map(([site, fix]) => (
+              <Row
+                key={site}
+                title={site}
+                subtitle={[
+                  fix.desktop ? 'Desktop website' : null,
+                  fix.noScript ? 'JavaScript off' : null,
+                  fix.hidden?.length ? `${fix.hidden.length} hidden element${fix.hidden.length === 1 ? '' : 's'}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                theme={theme}
+                icon="tool"
+                right={
+                  <IconButton name="x" label={`Undo changes for ${site}`} size={18} color={theme.muted} onPress={() => setSiteFix(site, null)} />
                 }
               />
             ))}

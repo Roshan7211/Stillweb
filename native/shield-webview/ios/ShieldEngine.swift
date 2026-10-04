@@ -243,6 +243,44 @@ final class ShieldEngine {
 
   // MARK: - Settings
 
+  // MARK: - Site fixes
+
+  /// Per-site changes the user made: desktop website, JavaScript off, hidden elements (CSS selectors).
+  struct SiteFix {
+    var desktop = false
+    var noScript = false
+    var hidden: [String] = []
+  }
+
+  private(set) var siteFixes: [String: SiteFix] = [:]
+
+  /// `{ "example.com": { desktop, noScript, hidden: [selector] } }`, keyed by site (host without www).
+  func setSiteFixes(_ raw: [String: Any]) {
+    var fixes: [String: SiteFix] = [:]
+    for (site, value) in raw {
+      guard let entry = value as? [String: Any] else { continue }
+      let fix = SiteFix(
+        desktop: entry["desktop"] as? Bool ?? false,
+        noScript: entry["noScript"] as? Bool ?? false,
+        hidden: (entry["hidden"] as? [String] ?? []).filter { !$0.isEmpty }
+      )
+      if fix.desktop || fix.noScript || !fix.hidden.isEmpty { fixes[site.lowercased()] = fix }
+    }
+    siteFixes = fixes
+    generation += 1
+  }
+
+  /// The fix for a host or the closest parent site that has one.
+  func siteFix(forHost host: String?) -> SiteFix? {
+    guard var h = host?.lowercased(), !h.isEmpty else { return nil }
+    if h.hasPrefix("www.") { h.removeFirst(4) }
+    while true {
+      if let fix = siteFixes[h] { return fix }
+      guard let dot = h.firstIndex(of: ".") else { return nil }
+      h = String(h[h.index(after: dot)...])
+    }
+  }
+
   func setDisabledSites(_ hosts: [String]) {
     disabledSites = Set(hosts.map { $0.lowercased() })
     defaults.set(Array(disabledSites), forKey: "shield.disabledSites")

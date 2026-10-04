@@ -189,6 +189,37 @@ internal object ShieldEngine {
   // ---------------------------------------------------------------------------
   // Settings
 
+  /** Per-site changes the user made: desktop website, JavaScript off, hidden elements (CSS selectors). */
+  data class SiteFix(val desktop: Boolean, val noScript: Boolean, val hidden: List<String>)
+
+  @Volatile private var siteFixes: Map<String, SiteFix> = emptyMap()
+
+  /** `{ "example.com": { desktop, noScript, hidden: [selector] } }`, keyed by site (host without www). */
+  fun setSiteFixes(raw: Map<String, Any?>) {
+    siteFixes = raw.mapNotNull { (site, value) ->
+      val entry = value as? Map<*, *> ?: return@mapNotNull null
+      val fix = SiteFix(
+        desktop = entry["desktop"] as? Boolean ?: false,
+        noScript = entry["noScript"] as? Boolean ?: false,
+        hidden = (entry["hidden"] as? List<*>)?.filterIsInstance<String>()?.filter { it.isNotEmpty() } ?: emptyList()
+      )
+      if (fix.desktop || fix.noScript || fix.hidden.isNotEmpty()) site.lowercase() to fix else null
+    }.toMap()
+    generation.incrementAndGet()
+  }
+
+  /** The fix for a host or the closest parent site that has one. */
+  fun siteFixFor(host: String?): SiteFix? {
+    if (host.isNullOrEmpty()) return null
+    var h = host.lowercase().removePrefix("www.")
+    while (true) {
+      siteFixes[h]?.let { return it }
+      val dot = h.indexOf('.')
+      if (dot < 0) return null
+      h = h.substring(dot + 1)
+    }
+  }
+
   fun setDisabledSites(hosts: Collection<String>) {
     disabledSites = hosts.map { it.lowercase() }.toSet()
     prefs.edit().putStringSet("disabledSites", disabledSites).apply()

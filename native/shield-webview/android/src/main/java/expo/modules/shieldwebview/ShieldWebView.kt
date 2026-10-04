@@ -118,6 +118,12 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   private val hostScripts = ConcurrentHashMap<String, Any>()
   @Volatile private var scriptsGeneration = -1
   private var genericScript: ScriptHandler? = null
+  /** The page's own mobile user agent (desktop website swaps it per site). */
+  private var mobileAgent: String? = null
+  /** Elements the user hid on the current site, and which site/engine state they're for. */
+  private var hiddenScript: ScriptHandler? = null
+  private var hiddenKey = ""
+
   /** Calm Mode's cookie pop-up script, registered while it's on (and shields are on here). */
   private var calmScript: ScriptHandler? = null
   private var privacyScript: ScriptHandler? = null
@@ -163,6 +169,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       privacyScript?.remove()
       calmScript?.remove()
       calmScript = null
+      hiddenScript?.remove()
+      hiddenScript = null
+      hiddenKey = ""
       wv.stopLoading()
       wv.webChromeClient = null
       removeView(wv)
@@ -201,6 +210,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       // Drop the "; wv" WebView marker so sites serve their normal mobile pages.
       userAgentString = userAgentString.replace("; wv", "").replace(Regex("Version/\\S+ "), "")
     }
+    mobileAgent = wv.settings.userAgentString
 
     cookieManagerFor(wv).setAcceptThirdPartyCookies(wv, !ShieldEngine.blockThirdPartyCookies)
 
@@ -331,6 +341,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       return
     }
     val target = upgradeIfNeeded(url)
+    applySiteFix(wv, target)
     beginMainFrame(target)
     registerHostScript(target)
     wv.loadUrl(target, mapOf("Sec-GPC" to "1"))
@@ -342,6 +353,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     val url = it.url ?: pageUrl
     resetHostScriptsIfStale(force = true)
     pageUrl = "about:blank" // so the reload counts as a new page
+    applySiteFix(it, url)
     beginMainFrame(url)
     registerHostScript(url)
     it.reload()
@@ -488,6 +500,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     val wv = webView ?: return
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
     syncCalmScript(wv, url)
+    syncHiddenScript(wv, url)
     resetHostScriptsIfStale()
     val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
     val host = uri.host?.lowercase() ?: return
@@ -502,6 +515,50 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     } else {
       WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("https://$host", "http://$host"))
     }
+  }
+
+  /**
+   * Main thread, before a page loads: the site's desktop-website and JavaScript settings.
+   * Returns true when they changed, so a page that is already loading must be loaded again.
+   */
+  private fun applySiteFix(wv: WebView, url: String): Boolean {
+    val fix = ShieldEngine.siteFixFor(hostOf(url))
+    val mobile = mobileAgent ?: return false
+    val agent = if (fix?.desktop == true) desktopAgent(mobile) else mobile
+    val javaScript = fix?.noScript != true
+    var changed = false
+    if (wv.settings.userAgentString != agent) {
+      wv.settings.userAgentString = agent
+      changed = true
+    }
+    if (wv.settings.javaScriptEnabled != javaScript) {
+      wv.settings.javaScriptEnabled = javaScript
+      changed = true
+    }
+    return changed
+  }
+
+  /** Chrome on a desktop, with the same Chrome version as the page's mobile agent. */
+  private fun desktopAgent(mobile: String): String {
+    val chrome = Regex("Chrome/([\\d.]+)").find(mobile)?.groupValues?.get(1) ?: "120.0.0.0"
+    return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$chrome Safari/537.36"
+  }
+
+  /** Main thread, before a page starts: the style that hides the elements the user picked on this site. */
+  private fun syncHiddenScript(wv: WebView, url: String) {
+    val host = hostOf(url) ?: return
+    val hidden = ShieldEngine.siteFixFor(host)?.hidden.orEmpty()
+    val key = if (hidden.isEmpty()) "" else "$host|${hidden.joinToString("\u0000")}"
+    if (key == hiddenKey) return
+    hiddenScript?.remove()
+    hiddenScript = null
+    hiddenKey = key
+    if (hidden.isEmpty()) return
+    val css = hidden.joinToString("\n") { "$it { display: none !important; }" }
+    val script = "(function(){var css=" + JSONObject.quote(css) + ";function add(){var s=document.createElement('style');" +
+      "s.setAttribute('data-stillweb','hidden');s.textContent=css;(document.head||document.documentElement).appendChild(s);}" +
+      "if(document.documentElement)add();else document.addEventListener('DOMContentLoaded',add);})();"
+    hiddenScript = WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("https://$host", "http://$host"))
   }
 
   /** Main thread, before a page starts: adds or removes Calm Mode's cookie pop-up script. */
@@ -704,9 +761,17 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       if (request.method.equals("GET", ignoreCase = true)) {
         val upgraded = upgradeIfNeeded(url)
         if (upgraded != url) {
+          applySiteFix(view, upgraded)
           beginMainFrame(upgraded)
           registerHostScript(upgraded)
           view.loadUrl(upgraded)
+          return true
+        }
+        // Another site's desktop/JavaScript settings: load it again with them.
+        if (applySiteFix(view, url)) {
+          beginMainFrame(url)
+          registerHostScript(url)
+          view.loadUrl(url)
           return true
         }
       }

@@ -11,6 +11,8 @@ declare class ShieldEngineModule extends NativeModule<ShieldEngineEvents> {
   /** Rebuilds the engine with only these filter list ids (null = all). */
   setEnabledLists(ids: string[] | null): Promise<string | null>;
   setDisabledSites(hosts: string[]): void;
+  /** Per-site desktop website, JavaScript off and hidden elements (by site, host without www.). */
+  setSiteFixes(fixes: Record<string, { desktop?: boolean; noScript?: boolean; hidden?: string[] }>): void;
   setOptions(options: ShieldOptions): void;
   resetStats(): void;
   clearBrowsingData(): Promise<void>;

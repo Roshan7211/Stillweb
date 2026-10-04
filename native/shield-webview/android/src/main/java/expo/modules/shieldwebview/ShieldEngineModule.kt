@@ -68,6 +68,9 @@ class ShieldEngineModule : Module() {
 
     Function("setDisabledSites") { hosts: List<String> -> ShieldEngine.setDisabledSites(hosts) }
 
+    // Per-site desktop website / JavaScript off / hidden elements.
+    Function("setSiteFixes") { fixes: Map<String, Any?> -> ShieldEngine.setSiteFixes(fixes) }
+
     Function("setOptions") { options: Map<String, Any?> -> ShieldEngine.setOptions(options) }
 
     // Listen Mode: pause all media after this many seconds (null cancels).

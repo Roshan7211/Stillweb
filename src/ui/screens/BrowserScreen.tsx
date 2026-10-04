@@ -23,13 +23,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShieldEngine, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
 import { rateScript, stopAtEndScript, type SleepChoice } from '../../browser/listen';
+import { pickerBiggerScript, pickerCancelScript, pickerFinishScript, pickerStartScript } from '../../browser/picker';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
 import { useSearchSuggestions } from '../../browser/suggest';
 import { useTabs } from '../../browser/tabs';
 import { usePlus } from '../../plus/plus';
-import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl } from '../../browser/url';
+import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl, siteKey } from '../../browser/url';
 import AddressBar from '../components/AddressBar';
 import BrowserTabView from '../components/BrowserTabView';
 import ContextMenuSheet, { type ContextAction, type ContextTarget } from '../components/ContextMenuSheet';
@@ -51,7 +52,7 @@ import TabSwitcherScreen from './TabSwitcherScreen';
 type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus';
 
 export default function BrowserScreen() {
-  const { settings } = useSettings();
+  const { settings, setSiteFix } = useSettings();
   const theme = useTheme(settings.theme);
   const insets = useSafeAreaInsets();
   const tabsApi = useTabs();
@@ -79,6 +80,8 @@ export default function BrowserScreen() {
   // Listen Mode (Stillweb Plus).
   const [listenOpen, setListenOpen] = useState(false);
   const [sleep, setSleep] = useState<SleepState>(null);
+  // "Hide an element" (Stillweb Plus): the page is in picking mode.
+  const [picking, setPicking] = useState(false);
   const [shieldOpen, setShieldOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState('');
@@ -260,6 +263,7 @@ export default function BrowserScreen() {
     if (prev && prev !== activeTab?.id) captureThumbnail(prev);
     setFindOpen(false);
     setChromeCollapsed(false);
+    setPicking(false);
   }, [activeTab?.id, captureThumbnail]);
 
   const registerRef = useCallback((id: string, ref: ShieldWebViewRef | null) => {
@@ -308,6 +312,37 @@ export default function BrowserScreen() {
       showToast(`Playback pauses in ${choice.label}`);
     }
     setListenOpen(false);
+  };
+
+  const startPicking = () => {
+    const ref = activeRef();
+    if (!ref) return;
+    ref
+      .evaluateJavaScript(pickerStartScript())
+      .then((result) => (result === 'true' ? setPicking(true) : showToast('This page can’t be changed')))
+      .catch(() => showToast('This page can’t be changed'));
+  };
+
+  const finishPicking = async () => {
+    const site = activeTab ? siteKey(activeTab.url) : '';
+    let selector: string | null = null;
+    try {
+      const raw = await activeRef()?.evaluateJavaScript(pickerFinishScript());
+      selector = raw ? (JSON.parse(raw) as string | null) : null;
+    } catch {
+      selector = null;
+    }
+    if (!selector) return showToast('Tap something on the page first');
+    setPicking(false);
+    if (!site) return;
+    const hidden = settings.siteFixes[site]?.hidden ?? [];
+    if (!hidden.includes(selector)) setSiteFix(site, { hidden: [...hidden, selector] });
+    showToast(`Hidden on ${site}. Undo it from the shield.`);
+  };
+
+  const cancelPicking = () => {
+    activeRef()?.evaluateJavaScript(pickerCancelScript()).catch(() => {});
+    setPicking(false);
   };
 
   /** Swiping the address bar moves between tabs (in the same mode), like Safari. */
@@ -466,6 +501,20 @@ export default function BrowserScreen() {
         }, Platform.OS === 'ios' ? 350 : 0);
         return;
       }
+      case 'desktop': {
+        const site = siteKey(url);
+        if (!site) return;
+        const desktop = !settings.siteFixes[site]?.desktop;
+        setSiteFix(site, { desktop });
+        showToast(desktop ? 'Showing the desktop website' : 'Showing the mobile website');
+        // After the native side has the new setting.
+        setTimeout(() => activeRef()?.reload(), 100);
+        return;
+      }
+      case 'hideElement':
+        if (!plus.unlocked) return openPlus('none');
+        setTimeout(startPicking, Platform.OS === 'ios' ? 350 : 0);
+        return;
       case 'listen':
         if (!plus.unlocked) return openPlus('none');
         // After the menu sheet has closed: iOS shows one sheet at a time.
@@ -499,7 +548,7 @@ export default function BrowserScreen() {
   const visibleUrl = incognito && privateLocked ? '' : (activeTab?.url ?? '');
   const muted = incognito ? '#B3A8CC' : theme.muted;
   // Shrunk bars give way whenever the browser chrome is needed.
-  const collapsed = chromeCollapsed && hasPage && !editing && !findOpen && keyboardHeight === 0 && overlay === 'none';
+  const collapsed = chromeCollapsed && hasPage && !editing && !findOpen && !picking && keyboardHeight === 0 && overlay === 'none';
 
   const addressBar = (
     <AddressBar
@@ -659,19 +708,40 @@ export default function BrowserScreen() {
 
       {/* Safari-style bottom bar: the address above the toolbar, in thumb reach. The find bar
           takes its place while open. */}
-      {bottomBar && !findOpen && collapsed ? (
+      {/* Picking an element to hide: the bar replaces the browser's bars. */}
+      {picking ? (
+        <View style={[styles.pickerBar, { backgroundColor: chrome, borderColor: theme.border, paddingBottom: insets.bottom + 8 }]}>
+          <Text style={[styles.pickerHint, { color: fg }]}>Tap what to hide. “Bigger” selects what’s around it.</Text>
+          <View style={styles.pickerButtons}>
+            <Pressable onPress={cancelPicking} style={[styles.pickerButton, { backgroundColor: theme.surface }]} accessibilityRole="button">
+              <Text style={[styles.pickerButtonText, { color: fg }]}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => activeRef()?.evaluateJavaScript(pickerBiggerScript()).catch(() => {})}
+              style={[styles.pickerButton, { backgroundColor: theme.surface }]}
+              accessibilityRole="button">
+              <Text style={[styles.pickerButtonText, { color: fg }]}>Bigger</Text>
+            </Pressable>
+            <Pressable onPress={finishPicking} style={[styles.pickerButton, { backgroundColor: theme.accent }]} accessibilityRole="button">
+              <Text style={[styles.pickerButtonText, { color: '#FFFFFF' }]}>Hide</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {bottomBar && !findOpen && !picking && collapsed ? (
         <View style={[styles.compactBottom, { paddingBottom: insets.bottom, backgroundColor: chrome }]}>{compactBar}</View>
       ) : null}
       {/* Top bar layout, shrunk: the page reaches the bottom edge, clear of the home indicator. */}
       {!bottomBar && collapsed ? <View style={{ height: insets.bottom, backgroundColor: chrome }} /> : null}
 
-      {bottomBar && !findOpen && !collapsed ? (
+      {bottomBar && !findOpen && !picking && !collapsed ? (
         <View style={[styles.bottomBar, { top: -barShift, backgroundColor: chrome, borderColor: incognito ? theme.privateSurface : theme.border }]}>
           {addressBar}
         </View>
       ) : null}
 
-      {showToolbar && !collapsed ? (
+      {showToolbar && !collapsed && !picking ? (
         <View
           onLayout={(e) => setToolbarHeight(e.nativeEvent.layout.height)}
           // Safari hides the toolbar while the address is edited; on iOS it stays laid out so
@@ -727,6 +797,7 @@ export default function BrowserScreen() {
         hasPage={hasPage}
         bookmarked={!!activeTab && library.isBookmarked(activeTab.url)}
         readerActive={!!activeTab?.reader}
+        desktop={!!activeTab && !!settings.siteFixes[siteKey(activeTab.url)]?.desktop}
         showQuit={Platform.OS === 'android'}
         clearsOnQuit={settings.clearDataOnExit}
         onAction={onMenu}
@@ -756,6 +827,10 @@ export default function BrowserScreen() {
         onOpenReport={() => {
           setShieldOpen(false);
           openReport('none');
+        }}
+        onOpenPlus={() => {
+          setShieldOpen(false);
+          openPlus('none');
         }}
       />
 
@@ -852,6 +927,11 @@ const styles = StyleSheet.create({
   compact: { height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 16 },
   compactText: { fontSize: 13, fontWeight: '500', flexShrink: 1 },
   compactBottom: { paddingTop: 2 },
+  pickerBar: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 12, gap: 10 },
+  pickerHint: { fontSize: 14, textAlign: 'center' },
+  pickerButtons: { flexDirection: 'row', gap: 10 },
+  pickerButton: { flex: 1, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  pickerButtonText: { fontSize: 16, fontWeight: '600' },
   findBar: { flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingLeft: 14 },
   findInput: { flex: 1, height: 48, fontSize: 16 },
   findCount: { fontSize: 13, marginRight: 4 },

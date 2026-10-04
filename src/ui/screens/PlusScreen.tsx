@@ -23,6 +23,11 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string }[] = [
     body: 'Playback speed and a sleep timer for audio and video on any site, also with the screen locked.',
   },
   {
+    icon: 'crosshair',
+    title: 'Fix-it tools',
+    body: 'Hide anything on a page with a tap, and turn JavaScript off for sites that misbehave.',
+  },
+  {
     icon: 'bar-chart-2',
     title: 'Full privacy report',
     body: 'A year of history, the sites you’re protected on most and the trackers blocked most often.',

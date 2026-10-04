@@ -528,6 +528,34 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     return "Version/\(major).\(minor) Mobile/15E148 Safari/604.1"
   }()
 
+  /// Safari on a Mac, for sites the user asked to see as the desktop website.
+  private static let desktopUserAgent: String = {
+    let parts = UIDevice.current.systemVersion.split(separator: ".")
+    let major = parts.first.map(String.init) ?? "18"
+    let minor = parts.count > 1 ? String(parts[1]) : "0"
+    return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+      "Version/\(major).\(minor) Safari/605.1.15"
+  }()
+
+  /// Hides the elements the user picked on this site (display: none, like a filter rule).
+  private static func hideScript(_ selectors: [String]) -> String {
+    let css = selectors.map { "\($0) { display: none !important; }" }.joined(separator: "\n")
+    let literal = (try? JSONSerialization.data(withJSONObject: [css], options: []))
+      .flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+    return """
+    (function () {
+      var css = \(literal)[0];
+      function add() {
+        var style = document.createElement('style');
+        style.setAttribute('data-stillweb', 'hidden');
+        style.textContent = css;
+        (document.head || document.documentElement).appendChild(style);
+      }
+      if (document.documentElement) add(); else document.addEventListener('DOMContentLoaded', add);
+    })();
+    """
+  }
+
   private func createWebView() {
     let config = WKWebViewConfiguration()
     // Private tabs share one in-memory jar (cleared when the last one closes).
@@ -769,6 +797,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       if active, let host, let source = engine.scriptletSource(forHost: host) {
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
       }
+      // Elements the user hid on this site (kept even with protection off for it).
+      if let fix = engine.siteFix(forHost: host), !fix.hidden.isEmpty {
+        controller.addUserScript(
+          WKUserScript(source: Self.hideScript(fix.hidden), injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
+      }
       // Calm Mode: reject cookie pop-ups (consent dialogs also live in frames).
       if active, engine.calmMode, let source = engine.autoconsentSource {
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
@@ -838,6 +871,26 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   }
 
   // MARK: - WKNavigationDelegate
+
+  /// Per-site fixes for the page about to load (desktop website, JavaScript off); then the
+  /// usual navigation decision. WebKit calls this variant when it's implemented.
+  func webView(
+    _ webView: WKWebView,
+    decidePolicyFor action: WKNavigationAction,
+    preferences: WKWebpagePreferences,
+    decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
+  ) {
+    if action.targetFrame?.isMainFrame ?? true, let url = action.request.url,
+       ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+      let fix = ShieldEngine.shared.siteFix(forHost: url.host)
+      let desktop = fix?.desktop ?? false
+      preferences.preferredContentMode = desktop ? .desktop : .recommended
+      preferences.allowsContentJavaScript = !(fix?.noScript ?? false)
+      let agent = desktop ? Self.desktopUserAgent : nil
+      if webView.customUserAgent != agent { webView.customUserAgent = agent }
+    }
+    self.webView(webView, decidePolicyFor: action) { policy in decisionHandler(policy, preferences) }
+  }
 
   func webView(
     _ webView: WKWebView,

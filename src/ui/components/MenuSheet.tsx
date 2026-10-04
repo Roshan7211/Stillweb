@@ -15,6 +15,8 @@ export type MenuAction =
   | 'find'
   | 'share'
   | 'listen'
+  | 'desktop'
+  | 'hideElement'
   | 'quit';
 
 type Props = {
@@ -24,12 +26,25 @@ type Props = {
   hasPage: boolean;
   bookmarked: boolean;
   readerActive: boolean;
+  /** The current site is shown as its desktop website. */
+  desktop: boolean;
   showQuit: boolean;
   clearsOnQuit: boolean;
   onAction: (action: MenuAction) => void;
 };
 
-export default function MenuSheet({ visible, onClose, theme, hasPage, bookmarked, readerActive, showQuit, clearsOnQuit, onAction }: Props) {
+export default function MenuSheet({
+  visible,
+  onClose,
+  theme,
+  hasPage,
+  bookmarked,
+  readerActive,
+  desktop,
+  showQuit,
+  clearsOnQuit,
+  onAction,
+}: Props) {
   const quick: { action: MenuAction; icon: IconName; label: string; active?: boolean }[] = [
     { action: 'toggleBookmark', icon: 'star', label: bookmarked ? 'Saved' : 'Bookmark', active: bookmarked },
     { action: 'reader', icon: 'book-open', label: readerActive ? 'Exit reader' : 'Reader', active: readerActive },
@@ -63,6 +78,17 @@ export default function MenuSheet({ visible, onClose, theme, hasPage, bookmarked
         })}
       </View>
       <ScrollView>
+        {hasPage ? (
+          <>
+            <Row
+              title={desktop ? 'Mobile website' : 'Desktop website'}
+              icon={desktop ? 'smartphone' : 'monitor'}
+              theme={theme}
+              onPress={() => onAction('desktop')}
+            />
+            <Row title="Hide an element" icon="crosshair" theme={theme} onPress={() => onAction('hideElement')} />
+          </>
+        ) : null}
         <Row title="New tab" icon="plus" theme={theme} onPress={() => onAction('newTab')} />
         <Row title="New private tab" icon="eye-off" theme={theme} onPress={() => onAction('newPrivateTab')} />
         <Row title="Bookmarks" icon="bookmark" theme={theme} onPress={() => onAction('bookmarks')} />

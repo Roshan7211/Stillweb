@@ -20,6 +20,9 @@ export type ShieldSettings = {
   calmMode: boolean;
 };
 
+/** Changes for one site: desktop website (free), JavaScript off and hidden elements (Plus). */
+export type SiteFix = { desktop?: boolean; noScript?: boolean; hidden?: string[] };
+
 export type Settings = {
   searchEngine: SearchEngineId;
   customSearchTemplate: string;
@@ -30,6 +33,8 @@ export type Settings = {
   shields: ShieldSettings;
   /** Sites (host, without www.) where shields are off. */
   disabledSites: string[];
+  /** Per-site fixes, by site (host without www.). */
+  siteFixes: Record<string, SiteFix>;
   clearDataOnExit: boolean;
   lockPrivateTabs: boolean;
   /** Bottom keeps the address bar in thumb reach, like Safari. */
@@ -55,6 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
     calmMode: false,
   },
   disabledSites: [],
+  siteFixes: {},
   clearDataOnExit: false,
   lockPrivateTabs: false,
   addressBarPosition: Platform.OS === 'ios' ? 'bottom' : 'top',
@@ -69,6 +75,8 @@ type SettingsContextValue = {
   loaded: boolean;
   update: (patch: Partial<Omit<Settings, 'shields'>> & { shields?: Partial<ShieldSettings> }) => void;
   setSiteShields: (site: string, enabled: boolean) => void;
+  /** Merges a change into a site's fixes; null removes them all. */
+  setSiteFix: (site: string, patch: Partial<SiteFix> | null) => void;
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -141,7 +149,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [apply],
   );
 
-  const value = useMemo(() => ({ settings, loaded, update, setSiteShields }), [settings, loaded, update, setSiteShields]);
+  const setSiteFix = useCallback(
+    (site: string, patch: Partial<SiteFix> | null) => {
+      const s = current.current;
+      const fixes = { ...s.siteFixes };
+      const next: SiteFix = patch ? { ...fixes[site], ...patch } : {};
+      if (next.desktop || next.noScript || next.hidden?.length) fixes[site] = next;
+      else delete fixes[site];
+      apply({ ...s, siteFixes: fixes });
+    },
+    [apply],
+  );
+
+  const value = useMemo(
+    () => ({ settings, loaded, update, setSiteShields, setSiteFix }),
+    [settings, loaded, update, setSiteShields, setSiteFix],
+  );
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 

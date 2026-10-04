@@ -72,6 +72,14 @@ function Root() {
   useEffect(() => {
     ShieldEngine.setOptions({ calmMode });
   }, [calmMode]);
+  // Desktop website is free; JavaScript off and hidden elements are Plus.
+  const { siteFixes } = settings;
+  useEffect(() => {
+    const fixes = Object.fromEntries(
+      Object.entries(siteFixes).map(([site, fix]) => [site, plus.unlocked ? fix : { desktop: fix.desktop }]),
+    );
+    ShieldEngine.setSiteFixes(fixes);
+  }, [siteFixes, plus.unlocked]);
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: theme.background }} />;
   return (
