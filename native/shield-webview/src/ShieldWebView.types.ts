@@ -41,6 +41,11 @@ export type ShieldWebViewProps = ViewProps & {
   initialUrl?: string;
   /** Private tab: isolated cookies/storage where the platform supports it. */
   incognito?: boolean;
+  /**
+   * iOS edge to edge: the page fills the screen and scrolls under the status bar and the app's
+   * bars; these are what the bars cover beyond the safe area (points).
+   */
+  chromeInsets?: { top: number; bottom: number };
   /** Stillweb Plus profile id (UUID) with its own cookies and site data; read once, at creation. */
   profileId?: string;
   /** Darken pages that have no dark theme of their own. */

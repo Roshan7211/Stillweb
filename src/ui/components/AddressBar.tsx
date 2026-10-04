@@ -28,6 +28,8 @@ type Props = {
   onStop: () => void;
   /** Horizontal swipe on the bar: next (swipe left) or previous (swipe right) tab. */
   onSwipe?: (direction: 'next' | 'previous') => void;
+  /** Sits between buttons in the single bottom bar (no side margins of its own). */
+  inline?: boolean;
 };
 
 export default function AddressBar(props: Props) {
@@ -86,7 +88,7 @@ export default function AddressBar(props: Props) {
     );
 
   return (
-    <View style={position === 'top' ? styles.wrapTop : styles.wrapBottom}>
+    <View style={[position === 'top' ? styles.wrapTop : styles.wrapBottom, props.inline && styles.inline]}>
       {position === 'bottom' ? progressLine : null}
       <Animated.View
         style={[styles.row, { transform: [{ translateX: shift }] }]}
@@ -181,6 +183,7 @@ export default function AddressBar(props: Props) {
 const styles = StyleSheet.create({
   wrapTop: { paddingHorizontal: 10, paddingTop: 6 },
   wrapBottom: { paddingHorizontal: 10, paddingBottom: 4 },
+  inline: { paddingHorizontal: 0 },
   row: { flexDirection: 'row', alignItems: 'center' },
   bar: { flex: 1, flexDirection: 'row', alignItems: 'center', height: 44, borderRadius: Platform.OS === 'ios' ? 14 : 22, paddingRight: 2 },
   leading: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingLeft: 12, paddingRight: 6, height: 44, minWidth: 44 },

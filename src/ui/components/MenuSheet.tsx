@@ -18,7 +18,9 @@ export type MenuAction =
   | 'desktop'
   | 'hideElement'
   | 'vault'
-  | 'quit';
+  | 'quit'
+  | 'back'
+  | 'forward';
 
 type Props = {
   visible: boolean;
@@ -31,6 +33,8 @@ type Props = {
   desktop: boolean;
   showQuit: boolean;
   clearsOnQuit: boolean;
+  /** Single bottom bar: forward (and back, for the long reach) live in the menu. */
+  navigation?: { canGoBack: boolean; canGoForward: boolean };
   onAction: (action: MenuAction) => void;
 };
 
@@ -44,6 +48,7 @@ export default function MenuSheet({
   desktop,
   showQuit,
   clearsOnQuit,
+  navigation,
   onAction,
 }: Props) {
   const quick: { action: MenuAction; icon: IconName; label: string; active?: boolean }[] = [
@@ -79,6 +84,28 @@ export default function MenuSheet({
         })}
       </View>
       <ScrollView>
+        {navigation && hasPage ? (
+          <View style={styles.nav}>
+            {(['back', 'forward'] as const).map((direction) => {
+              const enabled = direction === 'back' ? navigation.canGoBack : navigation.canGoForward;
+              return (
+                <Pressable
+                  key={direction}
+                  disabled={!enabled}
+                  onPress={() => onAction(direction)}
+                  accessibilityRole="button"
+                  accessibilityLabel={direction === 'back' ? 'Back' : 'Forward'}
+                  style={({ pressed }) => [
+                    styles.navButton,
+                    { backgroundColor: theme.background, opacity: !enabled ? 0.35 : pressed ? 0.6 : 1 },
+                  ]}>
+                  <Icon name={direction === 'back' ? 'chevron-left' : 'chevron-right'} size={22} color={theme.text} />
+                  <Text style={[styles.navLabel, { color: theme.text }]}>{direction === 'back' ? 'Back' : 'Forward'}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
         {hasPage ? (
           <>
             <Row
@@ -115,4 +142,7 @@ const styles = StyleSheet.create({
   quick: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 8 },
   quickButton: { flex: 1, maxWidth: 76, height: 66, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 4 },
   quickLabel: { fontSize: 11, fontWeight: '500' },
+  nav: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  navButton: { flex: 1, height: 44, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  navLabel: { fontSize: 15, fontWeight: '500' },
 });

@@ -84,6 +84,9 @@ public class ShieldEngineModule: Module {
     // Stillweb Plus profiles need named website data stores (iOS 17+).
     Constant("profilesSupported") { ShieldEngine.profilesSupported }
 
+    // The page can scroll under the app's bars with fixed elements kept clear (iOS 26).
+    Constant("obscuredInsetsSupported") { ShieldWebView.obscuredInsetsSupported }
+
     OnCreate {
       DispatchQueue.main.async {
         ShieldEngine.shared.onEngineChanged = { [weak self] status in

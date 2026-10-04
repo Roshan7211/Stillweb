@@ -25,6 +25,8 @@ export type ShieldSettings = {
 /** Changes for one site: desktop website (free), JavaScript off and hidden elements (Plus). */
 export type SiteFix = { desktop?: boolean; noScript?: boolean; hidden?: string[] };
 
+export type BarLayout = 'single' | 'bottom' | 'top';
+
 export type Settings = {
   searchEngine: SearchEngineId;
   customSearchTemplate: string;
@@ -41,8 +43,13 @@ export type Settings = {
   siteFixes: Record<string, SiteFix>;
   clearDataOnExit: boolean;
   lockPrivateTabs: boolean;
-  /** Bottom keeps the address bar in thumb reach, like Safari. */
-  addressBarPosition: 'top' | 'bottom';
+  /**
+   * Single: one bottom bar with back, the address, tabs and the menu (Safari's compact
+   * layout). Bottom: the address above a toolbar. Top: the address at the top, Chrome-style.
+   */
+  addressBarPosition: BarLayout;
+  /** Settings layout version: 2 brought the single bar (iOS installs move to it once). */
+  layoutVersion?: number;
   /** Stillweb Plus: bookmarks and (iOS) downloads from private tabs go to the locked vault. */
   vault: boolean;
   /** Ask the search engine for suggestions while typing (never in private tabs). */
@@ -72,7 +79,8 @@ export const DEFAULT_SETTINGS: Settings = {
   siteFixes: {},
   clearDataOnExit: false,
   lockPrivateTabs: false,
-  addressBarPosition: Platform.OS === 'ios' ? 'bottom' : 'top',
+  addressBarPosition: Platform.OS === 'ios' ? 'single' : 'top',
+  layoutVersion: 2,
   searchSuggestions: true,
   vault: true,
   profiles: [],
@@ -113,6 +121,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       .then((raw) => {
         if (!raw) return;
         const saved = JSON.parse(raw) as Partial<Settings>;
+        // The single bar replaced the two-row bottom layout as the iPhone default; installs
+        // still on that old default move to it once (a top bar stays where it was chosen).
+        if ((saved.layoutVersion ?? 1) < 2) {
+          if (Platform.OS === 'ios' && saved.addressBarPosition !== 'top') saved.addressBarPosition = 'single';
+          saved.layoutVersion = 2;
+        }
+        if (!['single', 'bottom', 'top'].includes(saved.addressBarPosition as string)) delete saved.addressBarPosition;
         setSettings({
           ...DEFAULT_SETTINGS,
           ...saved,

@@ -1,4 +1,5 @@
 import ExpoModulesCore
+import UIKit
 
 public class ShieldWebViewModule: Module {
   public func definition() -> ModuleDefinition {
@@ -28,6 +29,11 @@ public class ShieldWebViewModule: Module {
       Prop("initialUrl") { (view: ShieldWebView, url: String?) in view.initialUrl = url }
       Prop("incognito") { (view: ShieldWebView, value: Bool?) in view.incognito = value ?? false }
       Prop("profileId") { (view: ShieldWebView, value: String?) in view.profileId = value }
+      Prop("chromeInsets") { (view: ShieldWebView, value: [String: Double]?) in
+        view.chromeInsets = value.map {
+          UIEdgeInsets(top: CGFloat($0["top"] ?? 0), left: 0, bottom: CGFloat($0["bottom"] ?? 0), right: 0)
+        }
+      }
       Prop("forceDark") { (view: ShieldWebView, value: Bool?) in view.forceDark = value ?? false }
       Prop("textZoom") { (view: ShieldWebView, value: Int?) in view.textZoom = value ?? 100 }
       Prop("active") { (view: ShieldWebView, value: Bool?) in view.active = value ?? true }

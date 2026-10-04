@@ -12,17 +12,19 @@ type Props = {
   onRetry: () => void;
   onBack: () => void;
   onSearch: (query: string) => void;
+  /** Space the browser's bars cover at the top and bottom (edge-to-edge layout). */
+  insets?: { top: number; bottom: number };
 };
 
 /** Stillweb's page for a site that couldn't be loaded, with the next steps that fit the problem. */
-export default function LoadErrorPage({ theme, error, canGoBack, onRetry, onBack, onSearch }: Props) {
+export default function LoadErrorPage({ theme, error, canGoBack, onRetry, onBack, onSearch, insets }: Props) {
   const info = describeLoadError(error);
   const host = displayHost(error.url);
   const secondary = { backgroundColor: theme.surface };
   return (
     <ScrollView
       style={[StyleSheet.absoluteFill, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, insets && { paddingTop: 32 + insets.top, paddingBottom: 32 + insets.bottom }]}
       accessibilityRole="alert">
       <View style={[styles.badge, { backgroundColor: theme.surface }]}>
         <Icon name={info.icon} size={34} color={theme.muted} />

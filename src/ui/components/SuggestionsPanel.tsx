@@ -18,6 +18,8 @@ type Props = {
   engineLabel: string;
   /** Space covered at the bottom (keyboard and a bottom address bar). */
   bottomInset: number;
+  /** Space covered at the top (the status bar, edge-to-edge layout). */
+  topInset?: number;
   onOpen: (url: string) => void;
   onSearch: (text: string) => void;
   /** Puts a suggestion into the address field to keep typing. */
@@ -43,7 +45,7 @@ function Completion({ text, query, color }: { text: string; query: string; color
 
 /** Covers the page while the address is being edited: suggestions, or a dimmed page to tap away. */
 export default function SuggestionsPanel(props: Props) {
-  const { theme, incognito, query, sites, remote, engineLabel, bottomInset } = props;
+  const { theme, incognito, query, sites, remote, engineLabel, bottomInset, topInset = 0 } = props;
   const fg = incognito ? '#ECE6F7' : theme.text;
   const muted = incognito ? '#B3A8CC' : theme.muted;
   const bg = incognito ? theme.privateBackground : theme.background;
@@ -81,7 +83,7 @@ export default function SuggestionsPanel(props: Props) {
 
   return (
     <View style={[StyleSheet.absoluteFill, { backgroundColor: bg }]}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: bottomInset + 12 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset + 12 }}>
         <Pressable
           style={({ pressed }) => [styles.row, { backgroundColor: pressed ? highlight : 'transparent' }]}
           onPress={() => (isUrl ? props.onOpen(query) : props.onSearch(query))}

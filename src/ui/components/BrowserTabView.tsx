@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 
 import { ShieldEngine, ShieldWebView, type ShieldWebViewRef } from '../../../native/shield-webview';
@@ -35,6 +35,11 @@ type Props = {
   onOpenReport: () => void;
   /** Stillweb Plus: name of the tab's profile, shown on its new tab page. */
   profileLabel?: string;
+  /**
+   * iOS edge to edge: the page fills the screen; `top`/`bottom` is what the status bar and the
+   * app's bars cover, `safeBottom` the home indicator area within `bottom`. Memoized by the caller.
+   */
+  edge?: { top: number; bottom: number; safeBottom: number } | null;
 };
 
 /** Maps an <input accept> list to MIME types the system picker understands. */
@@ -52,7 +57,10 @@ export default memo(BrowserTabView);
 
 function BrowserTabView(props: Props) {
   const { tab, active, theme, registerRef, onToast, onContextMenu, onFullscreenChange, onFindResult } = props;
-  const { onLinkAction, onChromeChange, chromeCollapsed, onOpenReport, profileLabel } = props;
+  const { onLinkAction, onChromeChange, chromeCollapsed, onOpenReport, profileLabel, edge } = props;
+  // WebKit adds the safe area itself; it's told only what the app's bars cover beyond it.
+  const chromeInsets = useMemo(() => (edge ? { top: 0, bottom: Math.max(0, edge.bottom - edge.safeBottom) } : undefined), [edge]);
+  const pageInsets = edge ?? undefined;
   const { settings } = useSettings();
   const { updateTab, openTab, navigate, closeTab } = useTabActions();
   const library = useLibraryActions();
@@ -97,6 +105,7 @@ function BrowserTabView(props: Props) {
           onOpen={(url) => navigate(tab.id, url)}
           onOpenReport={onOpenReport}
           profile={profileLabel}
+          insets={pageInsets}
         />
       </View>
     );
@@ -113,6 +122,7 @@ function BrowserTabView(props: Props) {
         chromeCollapsed={chromeCollapsed}
         incognito={tab.incognito}
         profileId={tab.profileId}
+        chromeInsets={chromeInsets}
         forceDark={theme.dark && settings.darkPages}
         textZoom={settings.textZoom}
         onNavigationStateChange={({ nativeEvent: s }) => {
@@ -241,6 +251,7 @@ function BrowserTabView(props: Props) {
           theme={theme}
           error={loadError}
           canGoBack={tab.canGoBack}
+          insets={pageInsets}
           onRetry={() => {
             setLoadError(null);
             if (loadError.url) ref.current?.loadUrl(loadError.url);

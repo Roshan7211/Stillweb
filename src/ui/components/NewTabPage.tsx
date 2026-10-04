@@ -16,9 +16,11 @@ type Props = {
   onOpenReport: () => void;
   /** Stillweb Plus: the profile this tab is in (only shown when there are profiles). */
   profile?: string;
+  /** Space the browser's bars cover at the top and bottom (edge-to-edge layout). */
+  insets?: { top: number; bottom: number };
 };
 
-export default function NewTabPage({ theme, incognito, active, onOpen, onOpenReport, profile }: Props) {
+export default function NewTabPage({ theme, incognito, active, onOpen, onOpenReport, profile, insets }: Props) {
   const totalBlocked = useBlockedTotal();
   const { bookmarks } = useLibrary();
   const bg = incognito ? theme.privateBackground : theme.background;
@@ -29,7 +31,7 @@ export default function NewTabPage({ theme, incognito, active, onOpen, onOpenRep
   return (
     <ScrollView
       style={{ backgroundColor: bg }}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, insets && { paddingTop: 24 + insets.top, paddingBottom: 16 + insets.bottom }]}
       keyboardShouldPersistTaps="handled"
       scrollsToTop={active}>
       {profile && !incognito ? (

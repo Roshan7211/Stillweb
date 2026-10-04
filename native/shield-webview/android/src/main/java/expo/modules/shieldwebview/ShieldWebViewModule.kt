@@ -30,6 +30,8 @@ class ShieldWebViewModule : Module() {
       Prop("initialUrl") { view: ShieldWebView, url: String? -> view.initialUrl = url }
       Prop("incognito") { view: ShieldWebView, value: Boolean? -> view.incognito = value ?: false }
       Prop("profileId") { view: ShieldWebView, value: String? -> view.profileId = value }
+      // iOS only (edge-to-edge page under the bars); Android lays the page out between them.
+      Prop("chromeInsets") { _: ShieldWebView, _: Map<String, Double>? -> }
       Prop("forceDark") { view: ShieldWebView, value: Boolean? -> view.forceDark = value ?: false }
       Prop("textZoom") { view: ShieldWebView, value: Int? -> view.textZoom = value ?: 100 }
 

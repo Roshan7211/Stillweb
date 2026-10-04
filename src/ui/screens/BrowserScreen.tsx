@@ -1,5 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -96,6 +97,8 @@ export default function BrowserScreen() {
   const [editing, setEditing] = useState(false);
   const [addressText, setAddressText] = useState('');
   const [toolbarHeight, setToolbarHeight] = useState(0);
+  // Height of the floating bottom bars (edge-to-edge layout): the page's bottom inset.
+  const [barsHeight, setBarsHeight] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [privateUnlocked, setPrivateUnlocked] = useState(false);
   const [contextTarget, setContextTarget] = useState<ContextTarget | null>(null);
@@ -571,6 +574,10 @@ export default function BrowserScreen() {
         // After the menu sheet has closed: iOS shows one sheet at a time.
         setTimeout(openListen, Platform.OS === 'ios' ? 350 : 0);
         return;
+      case 'back':
+        return goBack();
+      case 'forward':
+        return activeRef()?.goForward();
       case 'share':
         setTimeout(() => {
           Share.share(Platform.OS === 'ios' ? { url } : { message: url }).catch(() => showToast('Couldn’t open sharing'));
@@ -581,18 +588,40 @@ export default function BrowserScreen() {
     }
   };
 
-  const bottomBar = settings.addressBarPosition === 'bottom';
+  // Single: one bottom bar with back, the address, tabs and the menu (Safari's compact layout).
+  const single = settings.addressBarPosition === 'single';
+  const bottomBar = single || settings.addressBarPosition === 'bottom';
   // iOS web views scroll their own fields above the keyboard, so the browser isn't lifted for
   // them: that would leave a gap and resize the page (and any video in it). Only the find bar
   // is lifted there, and a bottom address bar slides up on its own (barShift) without
   // resizing the page underneath. Android lifts everything, as the window doesn't resize.
   const keyboardLift = Platform.OS === 'ios' && !findOpen ? 0 : keyboardHeight;
-  const showToolbar = Platform.OS === 'ios' ? keyboardLift === 0 : !editing && keyboardHeight === 0;
-  // Part of the page area hidden by the keyboard on iOS (it sits over the toolbar first).
-  const keyboardOverPage = Platform.OS === 'ios' ? Math.max(0, keyboardHeight - (showToolbar ? toolbarHeight : 0)) : 0;
+  const showToolbar = !single && (Platform.OS === 'ios' ? keyboardLift === 0 : !editing && keyboardHeight === 0);
+  // Part of the page area hidden by the keyboard on iOS (it sits over the toolbar first; the
+  // single bar's home indicator margin goes under the keyboard).
+  // The single bar's own margin above the home indicator.
+  const singlePadBottom = Math.max(insets.bottom - 8, 4);
+  const keyboardOverPage =
+    Platform.OS === 'ios'
+      ? Math.max(0, keyboardHeight - (single ? singlePadBottom - 2 : showToolbar ? toolbarHeight : 0))
+      : 0;
   const barShift = bottomBar && editing ? keyboardOverPage : 0;
 
   const chrome = incognito ? theme.privateBackground : theme.background;
+  // iOS bottom layouts are edge to edge, like Safari: the page fills the screen, under the
+  // status bar and the bars (which float over it, frosted).
+  const edgeToEdge = Platform.OS === 'ios' && bottomBar;
+  const barBg = edgeToEdge ? 'transparent' : chrome;
+  // iOS 26+ keeps a page's fixed headers and footers clear of the bars, so the page scrolls
+  // under them too; before that it stops at the top of the bars (still under the status bar).
+  const underBars = edgeToEdge && ShieldEngine.obscuredInsetsSupported === true;
+  // The part of the content area the floating bars cover.
+  const coveredBottom = underBars ? Math.max(barsHeight, insets.bottom) : 0;
+  // What the status bar and the bars cover (stable, so tab views don't re-render).
+  const edge = useMemo(
+    () => (edgeToEdge ? { top: insets.top, bottom: coveredBottom, safeBottom: underBars ? insets.bottom : 0 } : null),
+    [edgeToEdge, underBars, insets.top, insets.bottom, coveredBottom],
+  );
   const fg = incognito ? '#ECE6F7' : theme.text;
   const normalCount = tabs.filter((t) => !t.incognito).length;
   const privateCount = tabs.length - normalCount;
@@ -625,6 +654,7 @@ export default function BrowserScreen() {
       onReload={() => activeRef()?.reload()}
       onStop={() => activeRef()?.stopLoading()}
       onSwipe={switchTab}
+      inline={single && !editing}
     />
   );
 
@@ -642,90 +672,17 @@ export default function BrowserScreen() {
     </Pressable>
   );
 
-  return (
-    // Left/right insets keep content clear of the navigation bar and cut-outs in landscape.
-    <View
-      style={[
-        styles.root,
-        { backgroundColor: chrome, paddingBottom: keyboardLift, paddingLeft: insets.left, paddingRight: insets.right },
-      ]}>
-      <StatusBar style={incognito || theme.dark ? 'light' : 'dark'} />
-      <View style={{ paddingTop: insets.top, backgroundColor: chrome, zIndex: 10 }}>
-        {bottomBar ? null : collapsed ? compactBar : addressBar}
-      </View>
-
-      <View
-        style={styles.content}
-        onLayout={(e) => {
-          const { width, height } = e.nativeEvent.layout;
-          if (width && height) contentAspect.current = width / height;
-        }}>
-        {tabs
-          .filter((t) => liveIds.has(t.id))
-          .map((tab) => (
-            // One tab failing to draw doesn't take the others (or the browser) with it.
-            <ErrorBoundary
-              key={tab.id}
-              fallback={(reset) => (
-                <View
-                  style={[StyleSheet.absoluteFill, tab.id !== activeTab?.id && styles.hiddenTab]}
-                  pointerEvents={tab.id === activeTab?.id ? 'auto' : 'none'}>
-                  <ProblemScreen
-                    theme={theme}
-                    title="This tab ran into a problem"
-                    body="Your other tabs are fine. Reloading usually fixes it."
-                    primary={{ label: 'Reload tab', onPress: reset }}
-                  />
-                </View>
-              )}>
-            <BrowserTabView
-              tab={tab}
-              active={tab.id === activeTab?.id}
-              theme={theme}
-              registerRef={registerRef}
-              onToast={showToast}
-              onContextMenu={setContextTarget}
-              onFullscreenChange={onFullscreenChange}
-              onFindResult={onFindResult}
-              onLinkAction={onLinkAction}
-              onChromeChange={onChromeChange}
-              onOpenReport={openReportFromPage}
-              profileLabel={profiles.length && !tab.incognito ? profileName(profileOf(tab, profiles), profiles) : undefined}
-              chromeCollapsed={tab.id === activeTab?.id && collapsed}
-            />
-            </ErrorBoundary>
-          ))}
-        {incognito && privateLocked ? (
-          <Pressable style={[StyleSheet.absoluteFill, styles.locked, { backgroundColor: theme.privateBackground }]} onPress={unlockPrivate}>
-            <Icon name="lock" size={36} color="#ECE6F7" />
-            <Text style={styles.lockedTitle}>Private tabs are locked</Text>
-            <Text style={{ color: '#B3A8CC' }}>Tap to unlock</Text>
-          </Pressable>
-        ) : null}
-        {/* The new tab page stays usable while typing; a page gets covered, like Safari. */}
-        {editing && (addressQuery || !isBlank(activeTab?.url)) ? (
-          <SuggestionsPanel
-            theme={theme}
-            incognito={incognito}
-            query={addressQuery}
-            sites={siteSuggestions}
-            remote={remoteSuggestions}
-            engineLabel={settings.searchEngine === 'custom' ? '' : engineLabel}
-            bottomInset={keyboardOverPage}
-            onOpen={(url) => openFromAddressBar(resolveInput(url, settings.searchEngine, settings.customSearchTemplate))}
-            onSearch={searchFor}
-            onFill={setAddressText}
-          />
-        ) : null}
-        {toast ? (
-          <View style={[styles.toast, { backgroundColor: theme.dark ? '#ECEDEF' : '#25272B' }]} pointerEvents="none">
-            <Text style={{ color: theme.dark ? '#16171A' : '#FFFFFF' }}>{toast}</Text>
-          </View>
-        ) : null}
-      </View>
-
+  // Find, element picker, the shrunk bar, the address bar and the toolbar: under the page
+  // (Android, top layout) or floating over it (iOS edge to edge).
+  const bottomStack = (
+    <>
       {findOpen ? (
-        <View style={[styles.findBar, { backgroundColor: chrome, borderColor: theme.border }]}>
+        <View
+          style={[
+            styles.findBar,
+            { backgroundColor: barBg, borderColor: theme.border },
+            edgeToEdge && keyboardHeight === 0 && { paddingBottom: insets.bottom },
+          ]}>
           <TextInput
             ref={findInput}
             style={[styles.findInput, { color: fg }]}
@@ -763,7 +720,7 @@ export default function BrowserScreen() {
           takes its place while open. */}
       {/* Picking an element to hide: the bar replaces the browser's bars. */}
       {picking ? (
-        <View style={[styles.pickerBar, { backgroundColor: chrome, borderColor: theme.border, paddingBottom: insets.bottom + 8 }]}>
+        <View style={[styles.pickerBar, { backgroundColor: barBg, borderColor: theme.border, paddingBottom: insets.bottom + 8 }]}>
           <Text style={[styles.pickerHint, { color: fg }]}>Tap what to hide. “Bigger” selects what’s around it.</Text>
           <View style={styles.pickerButtons}>
             <Pressable onPress={cancelPicking} style={[styles.pickerButton, { backgroundColor: theme.surface }]} accessibilityRole="button">
@@ -783,14 +740,50 @@ export default function BrowserScreen() {
       ) : null}
 
       {bottomBar && !findOpen && !picking && collapsed ? (
-        <View style={[styles.compactBottom, { paddingBottom: insets.bottom, backgroundColor: chrome }]}>{compactBar}</View>
+        <View style={[styles.compactBottom, { paddingBottom: insets.bottom, backgroundColor: barBg }]}>{compactBar}</View>
       ) : null}
       {/* Top bar layout, shrunk: the page reaches the bottom edge, clear of the home indicator. */}
       {!bottomBar && collapsed ? <View style={{ height: insets.bottom, backgroundColor: chrome }} /> : null}
 
       {bottomBar && !findOpen && !picking && !collapsed ? (
-        <View style={[styles.bottomBar, { top: -barShift, backgroundColor: chrome, borderColor: incognito ? theme.privateSurface : theme.border }]}>
-          {addressBar}
+        <View
+          style={[
+            styles.bottomBar,
+            { top: edgeToEdge ? 0 : -barShift, backgroundColor: barBg, borderColor: incognito ? theme.privateSurface : theme.border },
+            // The single bar is the last thing on screen: it keeps clear of the home indicator.
+            single && { paddingTop: 0, paddingBottom: Platform.OS === 'android' && keyboardHeight > 0 ? 2 : singlePadBottom },
+          ]}>
+          {single && !editing ? (
+            <View style={styles.singleRow}>
+              <IconButton
+                name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
+                label="Back"
+                color={fg}
+                size={Platform.OS === 'ios' ? 26 : 22}
+                disabled={!activeTab || (!activeTab.canGoBack && !activeTab.reader && !activeTab.openerId)}
+                onPress={goBack}
+                style={styles.singleButton}
+              />
+              <View style={styles.singleAddress}>{addressBar}</View>
+              <IconButton
+                name="square"
+                label={`${tabCount} tabs`}
+                color={fg}
+                badge={String(Math.min(tabCount, 99))}
+                onPress={openTabSwitcher}
+                style={styles.singleButton}
+              />
+              <IconButton
+                name={Platform.OS === 'ios' ? 'more-horizontal' : 'more-vertical'}
+                label="Menu"
+                color={fg}
+                onPress={() => setMenuOpen(true)}
+                style={styles.singleButton}
+              />
+            </View>
+          ) : (
+            addressBar
+          )}
         </View>
       ) : null}
 
@@ -803,7 +796,7 @@ export default function BrowserScreen() {
           style={[
             styles.toolbar,
             !bottomBar && styles.toolbarBorder,
-            { backgroundColor: chrome, paddingBottom: insets.bottom, borderColor: incognito ? theme.privateSurface : theme.border },
+            { backgroundColor: barBg, paddingBottom: insets.bottom, borderColor: incognito ? theme.privateSurface : theme.border },
             editing && styles.toolbarHidden,
           ]}>
           <IconButton
@@ -842,6 +835,121 @@ export default function BrowserScreen() {
           />
         </View>
       ) : null}
+    </>
+  );
+
+  return (
+    // Left/right insets keep content clear of the navigation bar and cut-outs in landscape.
+    <View
+      style={[
+        styles.root,
+        edgeToEdge
+          ? { backgroundColor: chrome }
+          : { backgroundColor: chrome, paddingBottom: keyboardLift, paddingLeft: insets.left, paddingRight: insets.right },
+      ]}>
+      <StatusBar style={incognito || theme.dark ? 'light' : 'dark'} />
+      {edgeToEdge ? (
+        // The page shows through a frosted strip under the status bar, like Safari.
+        <View style={[styles.statusBackdrop, { height: insets.top }]} pointerEvents="none">
+          <BlurView tint={incognito || theme.dark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} intensity={100} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: chrome, opacity: 0.55 }]} />
+        </View>
+      ) : (
+        <View style={{ paddingTop: insets.top, backgroundColor: chrome, zIndex: 10 }}>
+          {bottomBar ? null : collapsed ? compactBar : addressBar}
+        </View>
+      )}
+
+      <View
+        style={
+          edgeToEdge
+            ? [styles.edgeContent, { left: insets.left, right: insets.right, bottom: underBars ? 0 : barsHeight }]
+            : styles.content
+        }
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          if (width && height) contentAspect.current = width / height;
+        }}>
+        {tabs
+          .filter((t) => liveIds.has(t.id))
+          .map((tab) => (
+            // One tab failing to draw doesn't take the others (or the browser) with it.
+            <ErrorBoundary
+              key={tab.id}
+              fallback={(reset) => (
+                <View
+                  style={[StyleSheet.absoluteFill, tab.id !== activeTab?.id && styles.hiddenTab]}
+                  pointerEvents={tab.id === activeTab?.id ? 'auto' : 'none'}>
+                  <ProblemScreen
+                    theme={theme}
+                    title="This tab ran into a problem"
+                    body="Your other tabs are fine. Reloading usually fixes it."
+                    primary={{ label: 'Reload tab', onPress: reset }}
+                  />
+                </View>
+              )}>
+            <BrowserTabView
+              tab={tab}
+              active={tab.id === activeTab?.id}
+              theme={theme}
+              registerRef={registerRef}
+              onToast={showToast}
+              onContextMenu={setContextTarget}
+              onFullscreenChange={onFullscreenChange}
+              onFindResult={onFindResult}
+              onLinkAction={onLinkAction}
+              onChromeChange={onChromeChange}
+              onOpenReport={openReportFromPage}
+              profileLabel={profiles.length && !tab.incognito ? profileName(profileOf(tab, profiles), profiles) : undefined}
+              chromeCollapsed={tab.id === activeTab?.id && collapsed}
+              edge={edge}
+            />
+            </ErrorBoundary>
+          ))}
+        {incognito && privateLocked ? (
+          <Pressable style={[StyleSheet.absoluteFill, styles.locked, { backgroundColor: theme.privateBackground }]} onPress={unlockPrivate}>
+            <Icon name="lock" size={36} color="#ECE6F7" />
+            <Text style={styles.lockedTitle}>Private tabs are locked</Text>
+            <Text style={{ color: '#B3A8CC' }}>Tap to unlock</Text>
+          </Pressable>
+        ) : null}
+        {/* The new tab page stays usable while typing; a page gets covered, like Safari. */}
+        {editing && (addressQuery || !isBlank(activeTab?.url)) ? (
+          <SuggestionsPanel
+            theme={theme}
+            incognito={incognito}
+            query={addressQuery}
+            sites={siteSuggestions}
+            remote={remoteSuggestions}
+            engineLabel={settings.searchEngine === 'custom' ? '' : engineLabel}
+            bottomInset={edgeToEdge ? coveredBottom + barShift : keyboardOverPage}
+            topInset={edgeToEdge ? insets.top : 0}
+            onOpen={(url) => openFromAddressBar(resolveInput(url, settings.searchEngine, settings.customSearchTemplate))}
+            onSearch={searchFor}
+            onFill={setAddressText}
+          />
+        ) : null}
+        {toast ? (
+          <View
+            style={[styles.toast, { backgroundColor: theme.dark ? '#ECEDEF' : '#25272B' }, edgeToEdge && { bottom: coveredBottom + 16 }]}
+            pointerEvents="none">
+            <Text style={{ color: theme.dark ? '#16171A' : '#FFFFFF' }}>{toast}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {edgeToEdge ? (
+        // Edge to edge (iOS): the bars float over the page, which scrolls under them.
+        <View
+          style={[styles.bottomOverlay, { bottom: keyboardLift + barShift }]}
+          onLayout={(e) => setBarsHeight(Math.round(e.nativeEvent.layout.height))}>
+          <BlurView tint={incognito || theme.dark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} intensity={100} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: chrome, opacity: 0.55 }]} />
+          {bottomStack}
+        </View>
+      ) : (
+        bottomStack
+      )}
 
       <MenuSheet
         visible={menuOpen}
@@ -853,6 +961,14 @@ export default function BrowserScreen() {
         desktop={!!activeTab && !!settings.siteFixes[siteKey(activeTab.url)]?.desktop}
         showQuit={Platform.OS === 'android'}
         clearsOnQuit={settings.clearDataOnExit}
+        navigation={
+          single
+            ? {
+                canGoBack: !!activeTab && (activeTab.canGoBack || activeTab.reader || !!activeTab.openerId),
+                canGoForward: !!activeTab?.canGoForward,
+              }
+            : undefined
+        }
         onAction={onMenu}
       />
       <ListenSheet
@@ -987,6 +1103,14 @@ const styles = StyleSheet.create({
   toolbarBorder: { borderTopWidth: StyleSheet.hairlineWidth },
   toolbarHidden: { opacity: 0 },
   bottomBar: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 6, zIndex: 10 },
+  bottomOverlay: { position: 'absolute', left: 0, right: 0, zIndex: 10, overflow: 'hidden' },
+  edgeContent: { position: 'absolute', top: 0 },
+  statusBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, overflow: 'hidden' },
+  // Back, the address, tabs and menu in one row; the buttons line up with the address field
+  // (which has its progress line above it).
+  singleRow: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 2 },
+  singleAddress: { flex: 1 },
+  singleButton: { width: 44, height: 44, marginBottom: 4 },
   compact: { height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 16 },
   compactText: { fontSize: 13, fontWeight: '500', flexShrink: 1 },
   compactBottom: { paddingTop: 2 },

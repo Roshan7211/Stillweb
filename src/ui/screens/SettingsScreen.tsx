@@ -310,7 +310,7 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
 
         <Text style={[styles.subhead, { color: theme.muted }]}>Address bar</Text>
         <View style={styles.segment}>
-          {(['top', 'bottom'] as const).map((position) => (
+          {(['single', 'bottom', 'top'] as const).map((position) => (
             <Text
               key={position}
               onPress={() => update({ addressBarPosition: position })}
@@ -323,7 +323,7 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
                   backgroundColor: settings.addressBarPosition === position ? theme.accent : theme.surface,
                 },
               ]}>
-              {position === 'top' ? 'Top' : 'Bottom'}
+              {position === 'single' ? 'Single bar' : position === 'bottom' ? 'Bottom' : 'Top'}
             </Text>
           ))}
         </View>

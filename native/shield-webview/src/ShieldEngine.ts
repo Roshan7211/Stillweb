@@ -7,6 +7,8 @@ declare class ShieldEngineModule extends NativeModule<ShieldEngineEvents> {
   readonly privateTabsIsolated: boolean;
   /** Whether Stillweb Plus profiles (separate cookie/storage jars) work here (iOS 17+, recent Android WebView). */
   readonly profilesSupported: boolean;
+  /** iOS 26+: pages can scroll under the app's bars (WebKit keeps fixed elements clear of them). */
+  readonly obscuredInsetsSupported?: boolean;
   getStatus(): Promise<EngineStatus>;
   /** Verifies and activates a downloaded filter bundle directory; resolves with its version. */
   applyFilterUpdate(directory: string): Promise<string | null>;

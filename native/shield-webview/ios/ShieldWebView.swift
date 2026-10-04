@@ -115,6 +115,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   var textZoom = 100
   /// The tab on screen: only it may show page dialogs or scroll to top from the status bar.
   var active = true
+  /// Edge to edge, like Safari: the page fills the screen and scrolls under the status bar and
+  /// the app's bottom bar. These are what the app's bars cover beyond the safe area; WebKit
+  /// keeps the page's fixed headers and footers clear of all of it. nil: the app lays the page
+  /// out between its bars.
+  var chromeInsets: UIEdgeInsets?
   /// Adopts the web view created for a page's window.open instead of making a new one.
   var popupId: String?
 
@@ -607,6 +612,55 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     webView?.scrollView.delegate = nil
   }
 
+  override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    applyChromeInsets()
+  }
+
+  /// Whether the page can scroll under the app's own bars: WebKit then keeps fixed headers and
+  /// footers clear of them (iOS 26). Before that it only knows about the safe area.
+  static var obscuredInsetsSupported: Bool {
+    #if compiler(>=6.2)
+    if #available(iOS 26.0, *) { return true }
+    #endif
+    return false
+  }
+
+  /// Edge to edge, like Safari: the page scrolls under the status bar and the app's bars.
+  private func applyChromeInsets() {
+    guard let webView else { return }
+    let scroll = webView.scrollView
+    var behavior: UIScrollView.ContentInsetAdjustmentBehavior = .never
+    var inset = UIEdgeInsets.zero
+    #if compiler(>=6.2)
+    if #available(iOS 26.0, *) {
+      // The safe area plus the bars: the layout viewport (fixed and sticky elements) shrinks
+      // to the rest, and the page scrolls under all of it.
+      var covered = UIEdgeInsets.zero
+      if let chrome = chromeInsets {
+        covered = UIEdgeInsets(top: safeAreaInsets.top + chrome.top, left: 0, bottom: safeAreaInsets.bottom + chrome.bottom, right: 0)
+      }
+      if webView.obscuredContentInsets != covered { webView.obscuredContentInsets = covered }
+      inset = covered
+    } else if let chrome = chromeInsets {
+      behavior = .always
+      inset = chrome
+    }
+    #else
+    if let chrome = chromeInsets {
+      // WebKit keeps fixed elements clear of the safe area only; the app lays the page out
+      // above its bottom bar.
+      behavior = .always
+      inset = chrome
+    }
+    #endif
+    if scroll.contentInsetAdjustmentBehavior != behavior { scroll.contentInsetAdjustmentBehavior = behavior }
+    if scroll.contentInset != inset {
+      scroll.contentInset = inset
+      scroll.verticalScrollIndicatorInsets = inset
+    }
+  }
+
   override func layoutSubviews() {
     super.layoutSubviews()
     // A zero size (before the first layout) would reset the page's viewport.
@@ -637,6 +691,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     if webView.overrideUserInterfaceStyle != style { webView.overrideUserInterfaceStyle = style }
     // Only one scroll view may answer the status bar tap.
     if webView.scrollView.scrollsToTop != active { webView.scrollView.scrollsToTop = active }
+    applyChromeInsets()
   }
 
   /// Safari's user agent tokens. WKWebView's default UA leaves out "Version/x Safari/y", so
@@ -1402,8 +1457,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     let y = scrollView.contentOffset.y
     defer { lastScrollY = y }
     guard scrollView.isDragging || scrollView.isDecelerating else { return }
-    let maxY = scrollView.contentSize.height - scrollView.bounds.height
-    if y <= 0 || maxY < 120 {
+    // With edge-to-edge insets the top of the page is at -inset, not 0.
+    let insets = scrollView.adjustedContentInset
+    let minY = -insets.top
+    let maxY = scrollView.contentSize.height - scrollView.bounds.height + insets.bottom
+    if y <= minY || maxY - minY < 120 {
       setChrome(collapsed: false)
       scrollAnchor = y
       return
