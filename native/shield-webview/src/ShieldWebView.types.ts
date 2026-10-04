@@ -43,14 +43,21 @@ export type ShieldWebViewProps = ViewProps & {
   forceDark?: boolean;
   /** Text size in percent (Android). */
   textZoom?: number;
+  /** iOS: the tab on screen (only it shows page dialogs and scrolls to top on a status bar tap). */
+  active?: boolean;
+  /** iOS: shows the window a page opened (from onOpenWindow), keeping its link to the opener. */
+  popupId?: string;
+  /** iOS: whether the browser bars are currently shrunk (see onChromeChange). */
+  chromeCollapsed?: boolean;
   onLoadStart?: (event: NativeEvent<{ url: string }>) => void;
   onLoadEnd?: (event: NativeEvent<{ url: string }>) => void;
   onLoadProgress?: (event: NativeEvent<{ progress: number }>) => void;
   onLoadError?: (event: NativeEvent<{ url: string; code: number; description: string }>) => void;
   onNavigationStateChange?: (event: NativeEvent<NavigationState>) => void;
   onBlockedCountChange?: (event: NativeEvent<BlockedCount>) => void;
-  /** A user-initiated new window (target=_blank, window.open after a tap). */
-  onOpenWindow?: (event: NativeEvent<{ url: string; incognito: boolean }>) => void;
+  /** A user-initiated new window (target=_blank, window.open after a tap). iOS passes a
+   * popupId: give it to the new tab's view so the page stays connected to its opener. */
+  onOpenWindow?: (event: NativeEvent<{ url: string; incognito: boolean; popupId?: string }>) => void;
   /** A pop-up or script redirect that shields stopped. */
   onPopupBlocked?: (event: NativeEvent<{ url: string; kind: 'popup' | 'redirect' }>) => void;
   onDownloadRequest?: (event: NativeEvent<DownloadRequest>) => void;
@@ -66,6 +73,10 @@ export type ShieldWebViewProps = ViewProps & {
   onFindResult?: (event: NativeEvent<{ active: number; count: number }>) => void;
   /** The page called window.close(). */
   onCloseRequest?: (event: NativeEvent<{ reason: string }>) => void;
+  /** iOS: "Open in New Tab" / "Open in Private Tab" chosen from a link's long-press menu. */
+  onLinkAction?: (event: NativeEvent<{ action: 'open' | 'openPrivate'; url: string }>) => void;
+  /** iOS: the user scrolled the page down (collapsed) or back up, like Safari's shrinking bars. */
+  onChromeChange?: (event: NativeEvent<{ collapsed: boolean }>) => void;
 };
 
 export type ShieldWebViewRef = {
@@ -78,6 +89,8 @@ export type ShieldWebViewRef = {
   findInPage(query: string): Promise<void>;
   findNext(forward: boolean): Promise<void>;
   clearFind(): Promise<void>;
+  /** iOS: shows the system find bar (with match counts); false if it isn't available. */
+  showFindNavigator(): Promise<boolean>;
   /** Completes onFileChooser with picked file URIs, or null when cancelled. */
   resolveFileChooser(uris: string[] | null): Promise<void>;
   /** Saves a small JPEG of the visible page (for the tab switcher); resolves with its file URI. */

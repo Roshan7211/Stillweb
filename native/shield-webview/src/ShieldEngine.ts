@@ -26,7 +26,13 @@ declare class ShieldEngineModule extends NativeModule<ShieldEngineEvents> {
     { id: number; status: 'pending' | 'running' | 'paused' | 'done' | 'failed'; bytes: number; total: number }[]
   >;
   openDownload(id: number): Promise<boolean>;
-  /** Android: hide the window from screenshots and the recent-apps preview. */
+  /** iOS: state of downloaded files by path (missing = deleted from Files). */
+  getFileDownloads(
+    paths: string[],
+  ): Promise<{ path: string; status: 'running' | 'done' | 'failed' | 'missing'; bytes: number; total: number }[]>;
+  /** iOS: previews a downloaded file (with Share and Save to Files); false if it's gone. */
+  openFile(path: string): Promise<boolean>;
+  /** Hides the app's content from the recent-apps / app switcher preview (and, on Android, screenshots). */
   setSecureWindow(secure: boolean): Promise<void>;
   /** Debug builds (Android): route web traffic through `host:port`; null clears it. */
   setDebugProxy(hostPort: string | null): Promise<boolean>;

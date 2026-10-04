@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { isBlank } from './url';
+import { displayUrl, hostOf, isBlank } from './url';
 
 export type Bookmark = { id: string; url: string; title: string; createdAt: number };
 export type HistoryEntry = { url: string; title: string; visitedAt: number };
@@ -31,7 +31,7 @@ type LibraryValue = {
   clearHistory: () => void;
   addDownload: (record: Omit<DownloadRecord, 'id' | 'startedAt'>) => void;
   removeDownload: (id: string) => void;
-  /** Bookmarks first, then recent history, matching the typed text. */
+  /** Sites whose name starts with the text first, then other bookmark and history matches. */
   suggest: (query: string, limit?: number) => { url: string; title: string; kind: 'bookmark' | 'history' }[];
 };
 
@@ -104,20 +104,46 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         setDownloads((list) => [{ ...record, id: newId(), startedAt: Date.now() }, ...list].slice(0, 200)),
       removeDownload: (id) => setDownloads((list) => list.filter((d) => d.id !== id)),
       suggest: (query, limit = 6) => {
-        const q = query.trim().toLowerCase();
+        const q = query.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
         if (!q) return [];
-        const seen = new Set<string>();
-        const out: { url: string; title: string; kind: 'bookmark' | 'history' }[] = [];
+        type Match = { url: string; title: string; kind: 'bookmark' | 'history'; rank: number };
+        const matches: Match[] = [];
+        // Typing the start of a site's name offers the site itself (its home page) first,
+        // once per site (www. and mobile m. versions count as one), like Safari's top hit.
+        const sites = new Map<string, Match>();
         const consider = (url: string, title: string, kind: 'bookmark' | 'history') => {
-          if (out.length >= limit || seen.has(url)) return;
-          if (url.toLowerCase().includes(q) || title.toLowerCase().includes(q)) {
-            seen.add(url);
-            out.push({ url, title, kind });
+          const host = hostOf(url).replace(/^www\./, '');
+          const site = host.replace(/^(m|mobile)\./, '');
+          const lowerTitle = title.toLowerCase();
+          if (host.startsWith(q) || site.startsWith(q)) {
+            const root = /^[a-z]+:\/\/[^/?#]+/i.exec(url)?.[0] ?? url;
+            const isRoot = url.replace(/\/$/, '') === root;
+            const known = sites.get(site);
+            if (!known) {
+              const match: Match = { url: `${root}/`, title: isRoot ? title : host, kind, rank: kind === 'bookmark' ? 0 : 1 };
+              sites.set(site, match);
+              matches.push(match);
+            } else if (isRoot && known.title === host) {
+              // The site's own home page, seen further down, names it best.
+              known.title = title;
+            }
+            // The home page is the top hit; other pages of the site are listed as matches too.
+            if (isRoot) return;
+          }
+          if (displayUrl(url).toLowerCase().startsWith(q) || lowerTitle.split(/\s+/).some((w) => w.startsWith(q))) {
+            matches.push({ url, title, kind, rank: 2 });
+          } else if (url.toLowerCase().includes(q) || lowerTitle.includes(q)) {
+            matches.push({ url, title, kind, rank: 3 });
           }
         };
         bookmarks.forEach((b) => consider(b.url, b.title, 'bookmark'));
         history.forEach((h) => consider(h.url, h.title, 'history'));
-        return out;
+        const seen = new Set<string>();
+        return matches
+          .sort((a, b) => a.rank - b.rank) // stable: bookmarks, then most recent history
+          .filter((m) => !seen.has(m.url) && seen.add(m.url))
+          .slice(0, limit)
+          .map(({ url, title, kind }) => ({ url, title, kind }));
       },
     };
   }, [bookmarks, history, downloads, setBookmarks, setHistory, setDownloads]);

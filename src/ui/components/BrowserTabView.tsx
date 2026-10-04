@@ -1,11 +1,11 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ShieldEngine, ShieldWebView, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
 import { useSettings } from '../../browser/settings';
-import { useTabs, type Tab } from '../../browser/tabs';
+import { useTabActions, type Tab } from '../../browser/tabs';
 import { displayHost, isBlank } from '../../browser/url';
 import type { Theme } from '../theme';
 import type { ContextTarget } from './ContextMenuSheet';
@@ -21,8 +21,14 @@ type Props = {
   registerRef: (id: string, ref: ShieldWebViewRef | null) => void;
   onToast: (message: string) => void;
   onContextMenu: (target: ContextTarget) => void;
-  onFullscreenChange: (fullscreen: boolean) => void;
-  onFindResult: (active: number, count: number) => void;
+  onFullscreenChange: (tabId: string, fullscreen: boolean) => void;
+  onFindResult: (tabId: string, active: number, count: number) => void;
+  /** iOS long-press menu: open the link in a new (private) tab. */
+  onLinkAction: (target: ContextTarget, action: 'open' | 'openPrivate') => void;
+  /** iOS: the page was scrolled so the bars should shrink (or come back). */
+  onChromeChange: (collapsed: boolean) => void;
+  /** Whether the bars are shrunk (only passed to the active tab). */
+  chromeCollapsed: boolean;
 };
 
 type LoadError = { url: string; code: number; description: string };
@@ -62,10 +68,15 @@ function pickerTypes(accept: string): string[] {
   return types.length ? types : ['*/*'];
 }
 
-export default function BrowserTabView(props: Props) {
+// Memoized: a page's progress and title updates re-render only its own view. Callers pass
+// stable callbacks (they take the tab id instead of closing over it).
+export default memo(BrowserTabView);
+
+function BrowserTabView(props: Props) {
   const { tab, active, theme, totalBlocked, onTotalBlocked, registerRef, onToast, onContextMenu, onFullscreenChange, onFindResult } = props;
+  const { onLinkAction, onChromeChange, chromeCollapsed } = props;
   const { settings } = useSettings();
-  const { updateTab, openTab, navigate, closeTab } = useTabs();
+  const { updateTab, openTab, navigate, closeTab } = useTabActions();
   const library = useLibrary();
   const ref = useRef<ShieldWebViewRef>(null);
   const lastVisit = useRef<string>('');
@@ -74,12 +85,15 @@ export default function BrowserTabView(props: Props) {
   const initialUrl = useRef<string>(tab.url);
   const handledKey = useRef(tab.navigationKey);
   const [loadError, setLoadError] = useState<LoadError | null>(null);
+  // Progress arrives many times a second; the bar only needs visible steps.
+  const lastProgress = useRef(0);
   if (isBlank(initialUrl.current) && !isBlank(tab.url)) {
     // First navigation away from the new tab page: the view mounts with this URL.
     initialUrl.current = tab.url;
     handledKey.current = tab.navigationKey;
   }
-  const showWeb = !isBlank(initialUrl.current);
+  // A page's pop-up starts out blank and is already loading in native code.
+  const showWeb = !isBlank(initialUrl.current) || !!tab.popupId;
 
   useEffect(() => {
     if (tab.navigationKey === handledKey.current) return;
@@ -106,6 +120,9 @@ export default function BrowserTabView(props: Props) {
         ref={setRef}
         style={StyleSheet.absoluteFill}
         initialUrl={initialUrl.current}
+        popupId={tab.popupId}
+        active={active}
+        chromeCollapsed={chromeCollapsed}
         incognito={tab.incognito}
         forceDark={theme.dark && settings.darkPages}
         textZoom={settings.textZoom}
@@ -129,6 +146,7 @@ export default function BrowserTabView(props: Props) {
           }
         }}
         onLoadStart={() => {
+          lastProgress.current = 0;
           setLoadError(null);
           updateTab(tab.id, { loading: true, reader: false });
         }}
@@ -142,21 +160,29 @@ export default function BrowserTabView(props: Props) {
           if (tab.openerId) closeTab(tab.id);
         }}
         onLoadEnd={() => updateTab(tab.id, { loading: false, progress: 1 })}
-        onLoadProgress={({ nativeEvent }) => updateTab(tab.id, { progress: nativeEvent.progress })}
+        onLoadProgress={({ nativeEvent: { progress } }) => {
+          if (progress < 1 && Math.abs(progress - lastProgress.current) < 0.05) return;
+          lastProgress.current = progress;
+          updateTab(tab.id, { progress });
+        }}
         onBlockedCountChange={({ nativeEvent }) => {
           updateTab(tab.id, { blocked: nativeEvent.blocked });
           onTotalBlocked(nativeEvent.totalBlocked);
         }}
         onOpenWindow={({ nativeEvent }) => {
-          openTab(nativeEvent.url, { incognito: tab.incognito, openerId: tab.id });
+          openTab(nativeEvent.url, { incognito: tab.incognito, openerId: tab.id, popupId: nativeEvent.popupId });
         }}
+        onLinkAction={({ nativeEvent }) => onLinkAction({ link: nativeEvent.url, image: '', incognito: tab.incognito }, nativeEvent.action)}
+        onChromeChange={({ nativeEvent }) => active && onChromeChange(nativeEvent.collapsed)}
         onPopupBlocked={({ nativeEvent }) => {
           if (active) onToast(nativeEvent.kind === 'redirect' ? 'Blocked a redirect' : 'Blocked a pop-up');
         }}
         onDownloadRequest={async ({ nativeEvent: d }) => {
           if (d.handledNatively) {
             const fileName = d.filePath?.split('/').pop() ?? 'file';
-            library.addDownload({ url: d.url, fileName, filePath: d.filePath });
+            // Like other private browsing data, private downloads stay out of the app's list
+            // (the file itself is in Files › Stillweb › Downloads).
+            if (!tab.incognito) library.addDownload({ url: d.url, fileName, filePath: d.filePath });
             onToast(`Downloading ${fileName}`);
             return;
           }
@@ -169,8 +195,8 @@ export default function BrowserTabView(props: Props) {
           }
         }}
         onContextMenu={({ nativeEvent }) => onContextMenu({ ...nativeEvent, incognito: tab.incognito })}
-        onFullscreenChange={({ nativeEvent }) => onFullscreenChange(nativeEvent.fullscreen)}
-        onFindResult={({ nativeEvent }) => onFindResult(nativeEvent.active, nativeEvent.count)}
+        onFullscreenChange={({ nativeEvent }) => onFullscreenChange(tab.id, nativeEvent.fullscreen)}
+        onFindResult={({ nativeEvent }) => onFindResult(tab.id, nativeEvent.active, nativeEvent.count)}
         onFileChooser={async ({ nativeEvent }) => {
           let uris: string[] | null = null;
           try {

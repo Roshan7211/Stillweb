@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "2026-10-03T13:42:17Z",
+  "version": "2026-10-03T23:22:39Z",
   "android": null,
   "ios": {
     "rules": [
@@ -11,10 +11,10 @@
         "bytes": 12765048
       },
       {
-        "count": 57467,
+        "count": 53478,
         "file": "ios/rules-1.json",
-        "sha256": "6d06f703cc2ec3abf0f1e3e9539c1a210560a2e089ca6925b101d26ced8ec7fa",
-        "bytes": 7427353
+        "sha256": "82604bbd9dfa331bd5ccfd54ed382e78fc82bb36909fe8a94664e769fc478f7a",
+        "bytes": 6682530
       }
     ],
     "scriptlets": {

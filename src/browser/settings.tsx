@@ -30,6 +30,10 @@ export type Settings = {
   disabledSites: string[];
   clearDataOnExit: boolean;
   lockPrivateTabs: boolean;
+  /** Bottom keeps the address bar in thumb reach, like Safari. */
+  addressBarPosition: 'top' | 'bottom';
+  /** Ask the search engine for suggestions while typing (never in private tabs). */
+  searchSuggestions: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -50,6 +54,8 @@ export const DEFAULT_SETTINGS: Settings = {
   disabledSites: [],
   clearDataOnExit: false,
   lockPrivateTabs: false,
+  addressBarPosition: Platform.OS === 'ios' ? 'bottom' : 'top',
+  searchSuggestions: true,
 };
 
 const STORAGE_KEY = 'settings.v1';

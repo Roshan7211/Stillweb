@@ -139,6 +139,63 @@ final class ShieldEngine {
     try? session.setCategory(backgroundPlay ? .playback : .ambient, mode: .default)
   }
 
+  // MARK: - Private browsing
+
+  /// One in-memory cookie and storage jar shared by all private tabs, so signing in carries
+  /// over to links opened in other private tabs. Nothing in it is ever written to disk.
+  private var privateStore: WKWebsiteDataStore?
+
+  func privateDataStore() -> WKWebsiteDataStore {
+    if let privateStore { return privateStore }
+    let store = WKWebsiteDataStore.nonPersistent()
+    privateStore = store
+    return store
+  }
+
+  /// Wipes and forgets the private jar (the last private tab closed); the next private tab
+  /// starts with a fresh one.
+  func clearPrivateData(completion: @escaping () -> Void) {
+    guard let store = privateStore else { return completion() }
+    privateStore = nil
+    store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast, completionHandler: completion)
+  }
+
+  // MARK: - Downloads
+
+  struct DownloadState {
+    var status: String // running | done | failed
+    var bytes: Int64
+    var total: Int64
+  }
+
+  /// Downloads started this session, by destination path.
+  private var downloads: [String: DownloadState] = [:]
+
+  func updateDownload(path: String, status: String, bytes: Int64, total: Int64) {
+    downloads[path] = DownloadState(status: status, bytes: bytes, total: total)
+  }
+
+  /// Status of downloaded files: running, done (with size), failed, or missing (deleted).
+  func downloadStatus(paths: [String]) -> [[String: Any]] {
+    paths.map { path in
+      if let state = downloads[path], state.status != "done" {
+        return ["path": path, "status": state.status, "bytes": state.bytes, "total": state.total]
+      }
+      let file = Self.currentPath(path)
+      let size = (try? FileManager.default.attributesOfItem(atPath: file)[.size] as? NSNumber)?.int64Value
+      guard let size else { return ["path": path, "status": "missing", "bytes": 0, "total": 0] }
+      return ["path": path, "status": "done", "bytes": size, "total": size]
+    }
+  }
+
+  /// iOS can move the app's container (its path changes) on updates and restores; a saved
+  /// path into Documents is rebased onto the current Documents folder.
+  static func currentPath(_ path: String) -> String {
+    guard !FileManager.default.fileExists(atPath: path), let range = path.range(of: "/Documents/") else { return path }
+    let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    return documents.appendingPathComponent(String(path[range.upperBound...])).path
+  }
+
   // MARK: - Queries
 
   func shieldsEnabled(forHost host: String?) -> Bool {

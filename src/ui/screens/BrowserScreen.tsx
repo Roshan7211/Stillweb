@@ -1,22 +1,39 @@
 import * as Clipboard from 'expo-clipboard';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Dimensions, Keyboard, Linking, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AppState,
+  BackHandler,
+  Dimensions,
+  Keyboard,
+  LayoutAnimation,
+  Linking,
+  Platform,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type KeyboardEvent,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ShieldEngine, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
 import { readerScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
+import { useSearchSuggestions } from '../../browser/suggest';
 import { useTabs } from '../../browser/tabs';
-import { isBlank, resolveInput } from '../../browser/url';
+import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl } from '../../browser/url';
 import AddressBar from '../components/AddressBar';
 import BrowserTabView from '../components/BrowserTabView';
 import ContextMenuSheet, { type ContextAction, type ContextTarget } from '../components/ContextMenuSheet';
 import MenuSheet, { type MenuAction } from '../components/MenuSheet';
 import { Icon, IconButton } from '../components/primitives';
 import ShieldPanel from '../components/ShieldPanel';
+import SuggestionsPanel from '../components/SuggestionsPanel';
 import { useTheme } from '../theme';
 import AboutScreen from './AboutScreen';
 import { BookmarksScreen, DownloadsScreen, HistoryScreen } from './LibraryScreens';
@@ -40,8 +57,9 @@ export default function BrowserScreen() {
   const [shieldOpen, setShieldOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState('');
-  const [focusKey, setFocusKey] = useState(0);
-  const [addressFocused, setAddressFocused] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [addressText, setAddressText] = useState('');
+  const [toolbarHeight, setToolbarHeight] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [totalBlocked, setTotalBlocked] = useState(0);
   const [privateUnlocked, setPrivateUnlocked] = useState(false);
@@ -50,7 +68,8 @@ export default function BrowserScreen() {
   const contentAspect = useRef(0.6);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  const [findResult, setFindResult] = useState<{ active: number; count: number } | null>(null);
+  // Tagged with its tab: only the active tab's result is shown.
+  const [findResult, setFindResult] = useState<{ tabId: string; active: number; count: number } | null>(null);
   const findInput = useRef<TextInput>(null);
   // Focus once the menu sheet has finished closing; autoFocus loses that race on Android.
   useEffect(() => {
@@ -63,13 +82,21 @@ export default function BrowserScreen() {
   // The app draws edge-to-edge, so the system no longer shrinks the window for the
   // keyboard. Lift the whole browser instead, so page inputs and the find bar stay visible.
   useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) =>
+    // On iOS the bars move with the keyboard's own animation.
+    const follow = (e: KeyboardEvent) => {
+      if (Platform.OS === 'ios') {
+        LayoutAnimation.configureNext({ duration: e.duration || 250, update: { type: LayoutAnimation.Types.keyboard } });
+      }
+    };
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
+      follow(e);
       // Measure from the keyboard's top edge: its reported height leaves out the navigation bar.
-      setKeyboardHeight(Math.max(e.endCoordinates.height, Dimensions.get('window').height - e.endCoordinates.screenY)),
-    );
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () =>
-      setKeyboardHeight(0),
-    );
+      setKeyboardHeight(Math.max(e.endCoordinates.height, Dimensions.get('window').height - e.endCoordinates.screenY));
+    });
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', (e) => {
+      follow(e);
+      setKeyboardHeight(0);
+    });
     return () => {
       show.remove();
       hide.remove();
@@ -91,10 +118,11 @@ export default function BrowserScreen() {
     ShieldEngine.getStatus().then((s) => setTotalBlocked(s.totalBlocked));
   }, []);
 
-  // Re-lock private tabs whenever the app leaves the foreground.
+  // Re-lock private tabs whenever the app goes to the background. ('inactive' is iOS's
+  // passing state for Control Center, notifications and the Face ID prompt itself.)
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') setPrivateUnlocked(false);
+      if (state === 'background') setPrivateUnlocked(false);
     });
     return () => sub.remove();
   }, []);
@@ -107,8 +135,11 @@ export default function BrowserScreen() {
   }, [settings.lockPrivateTabs, privateUnlocked]);
 
   const onPrivateTabsGone = useCallback(() => {
-    // Give web views a moment to be destroyed so the private profile can be deleted.
-    setTimeout(() => ShieldEngine.clearPrivateData().catch(() => {}), 600);
+    // Give web views a moment to be destroyed so the private profile can be deleted, and
+    // keep it if a new private tab was opened in the meantime.
+    setTimeout(() => {
+      if (!tabsRef.current.some((t) => t.incognito)) ShieldEngine.clearPrivateData().catch(() => {});
+    }, 600);
   }, []);
 
   // While any private tab exists, keep the window out of screenshots and the app switcher.
@@ -135,8 +166,9 @@ export default function BrowserScreen() {
     const openerId = activeTab?.id;
     switch (action) {
       case 'open':
-        openTab(target.link, { openerId, activate: false });
-        return showToast('Opened in a new tab');
+        // From a private tab, the new tab is private too.
+        openTab(target.link, { openerId, activate: false, incognito: target.incognito });
+        return showToast(target.incognito ? 'Opened in a new private tab' : 'Opened in a new tab');
       case 'openPrivate':
         if (!(await unlockPrivate())) return;
         openTab(target.link, { incognito: true });
@@ -179,6 +211,13 @@ export default function BrowserScreen() {
     setOverlay('tabs');
   };
 
+  // Safari-style shrinking bars while scrolling down a page (iOS).
+  const [chromeCollapsed, setChromeCollapsed] = useState(false);
+  const onChromeChange = useCallback((collapsed: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(180, 'easeInEaseOut', 'opacity'));
+    setChromeCollapsed(collapsed);
+  }, []);
+
   // Leaving a tab: keep its snapshot current and close per-page tools.
   const previousActive = useRef<string | null>(null);
   useEffect(() => {
@@ -186,6 +225,7 @@ export default function BrowserScreen() {
     previousActive.current = activeTab?.id ?? null;
     if (prev && prev !== activeTab?.id) captureThumbnail(prev);
     setFindOpen(false);
+    setChromeCollapsed(false);
   }, [activeTab?.id, captureThumbnail]);
 
   const registerRef = useCallback((id: string, ref: ShieldWebViewRef | null) => {
@@ -193,11 +233,53 @@ export default function BrowserScreen() {
     else refs.current.delete(id);
   }, []);
 
-  const submitAddress = (text: string) => {
+  // Stable, so tab views (memoized) don't re-render when another tab changes.
+  const onFullscreenChange = useCallback((tabId: string, fullscreen: boolean) => setFullscreenTabId(fullscreen ? tabId : null), []);
+  const onFindResult = useCallback((tabId: string, active: number, count: number) => setFindResult({ tabId, active, count }), []);
+
+  // The iOS link menu runs the latest onContextAction through a stable callback, so the
+  // memoized tab views don't all re-render with every change here. The ref is only read
+  // when the menu is used, never while rendering.
+  const contextActionRef = useRef(onContextAction);
+  useEffect(() => {
+    contextActionRef.current = onContextAction;
+  });
+  const onLinkAction = useCallback(
+    (target: ContextTarget, action: 'open' | 'openPrivate') => contextActionRef.current(action, target),
+    [],
+  );
+
+  /** Swiping the address bar moves between tabs (in the same mode), like Safari. */
+  const switchTab = (direction: 'next' | 'previous') => {
     if (!activeTab) return;
-    const url = resolveInput(text, settings.searchEngine, settings.customSearchTemplate);
-    if (url) navigate(activeTab.id, url);
+    const same = tabs.filter((t) => t.incognito === activeTab.incognito);
+    const target = same[same.findIndex((t) => t.id === activeTab.id) + (direction === 'next' ? 1 : -1)];
+    if (target) tabsApi.activate(target.id);
+    // Past the last tab: a new one, unless this already is an empty new tab.
+    else if (direction === 'next' && !isBlank(activeTab.url)) newTab(activeTab.incognito);
   };
+
+  const startEditing = (initialText = activeTab && !isBlank(activeTab.url) ? activeTab.url : '') => {
+    setAddressText(initialText);
+    setEditing(true);
+  };
+
+  const openFromAddressBar = (url: string) => {
+    Keyboard.dismiss();
+    if (activeTab && url) navigate(activeTab.id, url);
+  };
+  const submitAddress = (text: string) => openFromAddressBar(resolveInput(text, settings.searchEngine, settings.customSearchTemplate));
+  const searchFor = (text: string) => openFromAddressBar(searchUrl(text, settings.searchEngine, settings.customSearchTemplate));
+
+  // Suggestions for what is typed (nothing while the field still shows the page address).
+  const addressQuery = editing && addressText !== activeTab?.url ? addressText.trim() : '';
+  const siteSuggestions = useMemo(
+    () => (addressQuery ? library.suggest(addressQuery, 4).filter((s) => !incognito || s.kind === 'bookmark') : []),
+    [addressQuery, library, incognito],
+  );
+  // Private tabs never send what is typed to the search engine.
+  const remoteSuggestions = useSearchSuggestions(addressQuery, settings.searchEngine, settings.searchSuggestions && !incognito);
+  const engineLabel = SEARCH_ENGINES.find((e) => e.id === settings.searchEngine)?.label ?? '';
 
   const openInCurrent = (url: string) => {
     setOverlay('none');
@@ -208,7 +290,7 @@ export default function BrowserScreen() {
   const newTab = async (asPrivate: boolean) => {
     if (asPrivate && !(await unlockPrivate())) return;
     openTab('', { incognito: asPrivate });
-    setFocusKey((k) => k + 1);
+    startEditing('');
   };
 
   const closeActiveTab = () => {
@@ -303,10 +385,17 @@ export default function BrowserScreen() {
         return showToast(library.isBookmarked(url) ? 'Bookmark removed' : 'Bookmarked');
       case 'reader':
         return toggleReader();
-      case 'find':
-        setFindQuery('');
-        setFindResult(null);
-        return setFindOpen(true);
+      case 'find': {
+        const ref = activeRef();
+        // iOS: Safari's own find bar (with match counts), once the menu sheet has closed.
+        setTimeout(async () => {
+          if (Platform.OS === 'ios' && (await ref?.showFindNavigator().catch(() => false))) return;
+          setFindQuery('');
+          setFindResult(null);
+          setFindOpen(true);
+        }, Platform.OS === 'ios' ? 350 : 0);
+        return;
+      }
       case 'share':
         return Share.share(Platform.OS === 'ios' ? { url } : { message: url });
       case 'quit':
@@ -314,37 +403,77 @@ export default function BrowserScreen() {
     }
   };
 
+  const bottomBar = settings.addressBarPosition === 'bottom';
+  // iOS web views scroll their own fields above the keyboard, so the browser isn't lifted for
+  // them: that would leave a gap and resize the page (and any video in it). Only the find bar
+  // is lifted there, and a bottom address bar slides up on its own (barShift) without
+  // resizing the page underneath. Android lifts everything, as the window doesn't resize.
+  const keyboardLift = Platform.OS === 'ios' && !findOpen ? 0 : keyboardHeight;
+  const showToolbar = Platform.OS === 'ios' ? keyboardLift === 0 : !editing && keyboardHeight === 0;
+  // Part of the page area hidden by the keyboard on iOS (it sits over the toolbar first).
+  const keyboardOverPage = Platform.OS === 'ios' ? Math.max(0, keyboardHeight - (showToolbar ? toolbarHeight : 0)) : 0;
+  const barShift = bottomBar && editing ? keyboardOverPage : 0;
+
   const chrome = incognito ? theme.privateBackground : theme.background;
   const fg = incognito ? '#ECE6F7' : theme.text;
   const normalCount = tabs.filter((t) => !t.incognito).length;
   const privateCount = tabs.length - normalCount;
   const tabCount = incognito ? privateCount : normalCount;
+  const hasPage = !!activeTab && !isBlank(activeTab.url) && !(incognito && privateLocked);
+  // A locked private tab doesn't reveal where it is.
+  const visibleUrl = incognito && privateLocked ? '' : (activeTab?.url ?? '');
+  const muted = incognito ? '#B3A8CC' : theme.muted;
+  // Shrunk bars give way whenever the browser chrome is needed.
+  const collapsed = chromeCollapsed && hasPage && !editing && !findOpen && keyboardHeight === 0 && overlay === 'none';
+
+  const addressBar = (
+    <AddressBar
+      theme={theme}
+      url={visibleUrl}
+      incognito={incognito}
+      loading={activeTab?.loading ?? false}
+      progress={activeTab?.progress ?? 0}
+      secure={activeTab?.secure ?? false}
+      shieldsActive={activeTab?.shieldsActive ?? settings.shields.enabled}
+      blocked={activeTab?.blocked ?? 0}
+      position={bottomBar ? 'bottom' : 'top'}
+      editing={editing}
+      text={addressText}
+      onChangeText={setAddressText}
+      onStartEditing={() => (incognito && privateLocked ? unlockPrivate() : startEditing())}
+      onEndEditing={() => setEditing(false)}
+      onSubmit={submitAddress}
+      onShieldPress={() => setShieldOpen(true)}
+      onReload={() => activeRef()?.reload()}
+      onStop={() => activeRef()?.stopLoading()}
+      onSwipe={switchTab}
+    />
+  );
+
+  // Safari's minimized bar: just the site; tapping it brings the bars back.
+  const compactBar = (
+    <Pressable
+      style={styles.compact}
+      onPress={() => onChromeChange(false)}
+      accessibilityRole="button"
+      accessibilityLabel={`${displayHost(activeTab?.url ?? '')}, show toolbar`}>
+      {activeTab?.secure ? <Icon name="lock" size={10} color={muted} /> : null}
+      <Text style={[styles.compactText, { color: fg }]} numberOfLines={1}>
+        {displayHost(activeTab?.url ?? '')}
+      </Text>
+    </Pressable>
+  );
 
   return (
     // Left/right insets keep content clear of the navigation bar and cut-outs in landscape.
     <View
       style={[
         styles.root,
-        { backgroundColor: chrome, paddingBottom: keyboardHeight, paddingLeft: insets.left, paddingRight: insets.right },
+        { backgroundColor: chrome, paddingBottom: keyboardLift, paddingLeft: insets.left, paddingRight: insets.right },
       ]}>
       <StatusBar style={incognito || theme.dark ? 'light' : 'dark'} />
       <View style={{ paddingTop: insets.top, backgroundColor: chrome, zIndex: 10 }}>
-        <AddressBar
-          theme={theme}
-          url={activeTab?.url ?? ''}
-          incognito={incognito}
-          loading={activeTab?.loading ?? false}
-          progress={activeTab?.progress ?? 0}
-          secure={activeTab?.secure ?? false}
-          shieldsActive={activeTab?.shieldsActive ?? settings.shields.enabled}
-          blocked={activeTab?.blocked ?? 0}
-          focusKey={focusKey}
-          onSubmit={submitAddress}
-          onShieldPress={() => setShieldOpen(true)}
-          onReload={() => activeRef()?.reload()}
-          onStop={() => activeRef()?.stopLoading()}
-          onFocusChange={setAddressFocused}
-        />
+        {bottomBar ? null : collapsed ? compactBar : addressBar}
       </View>
 
       <View
@@ -366,8 +495,11 @@ export default function BrowserScreen() {
               registerRef={registerRef}
               onToast={showToast}
               onContextMenu={setContextTarget}
-              onFullscreenChange={(fullscreen) => setFullscreenTabId(fullscreen ? tab.id : null)}
-              onFindResult={(active, count) => tab.id === activeTab?.id && setFindResult({ active, count })}
+              onFullscreenChange={onFullscreenChange}
+              onFindResult={onFindResult}
+              onLinkAction={onLinkAction}
+              onChromeChange={onChromeChange}
+              chromeCollapsed={tab.id === activeTab?.id && collapsed}
             />
           ))}
         {incognito && privateLocked ? (
@@ -376,6 +508,21 @@ export default function BrowserScreen() {
             <Text style={styles.lockedTitle}>Private tabs are locked</Text>
             <Text style={{ color: '#B3A8CC' }}>Tap to unlock</Text>
           </Pressable>
+        ) : null}
+        {/* The new tab page stays usable while typing; a page gets covered, like Safari. */}
+        {editing && (addressQuery || !isBlank(activeTab?.url)) ? (
+          <SuggestionsPanel
+            theme={theme}
+            incognito={incognito}
+            query={addressQuery}
+            sites={siteSuggestions}
+            remote={remoteSuggestions}
+            engineLabel={settings.searchEngine === 'custom' ? '' : engineLabel}
+            bottomInset={keyboardOverPage}
+            onOpen={(url) => openFromAddressBar(resolveInput(url, settings.searchEngine, settings.customSearchTemplate))}
+            onSearch={searchFor}
+            onFill={setAddressText}
+          />
         ) : null}
         {toast ? (
           <View style={[styles.toast, { backgroundColor: theme.dark ? '#ECEDEF' : '#25272B' }]} pointerEvents="none">
@@ -400,7 +547,7 @@ export default function BrowserScreen() {
             returnKeyType="search"
             onSubmitEditing={() => activeRef()?.findNext(true)}
           />
-          {findQuery && findResult ? (
+          {findQuery && findResult && findResult.tabId === activeTab?.id ? (
             <Text style={[styles.findCount, { color: theme.muted }]}>
               {findResult.count === 0 ? 'No matches' : findResult.count > 0 ? `${findResult.active} of ${findResult.count}` : ''}
             </Text>
@@ -419,17 +566,53 @@ export default function BrowserScreen() {
         </View>
       ) : null}
 
-      {!addressFocused && keyboardHeight === 0 ? (
-        <View style={[styles.toolbar, { backgroundColor: chrome, paddingBottom: insets.bottom, borderColor: incognito ? theme.privateSurface : theme.border }]}>
+      {/* Safari-style bottom bar: the address above the toolbar, in thumb reach. The find bar
+          takes its place while open. */}
+      {bottomBar && !findOpen && collapsed ? (
+        <View style={[styles.compactBottom, { paddingBottom: insets.bottom, backgroundColor: chrome }]}>{compactBar}</View>
+      ) : null}
+      {/* Top bar layout, shrunk: the page reaches the bottom edge, clear of the home indicator. */}
+      {!bottomBar && collapsed ? <View style={{ height: insets.bottom, backgroundColor: chrome }} /> : null}
+
+      {bottomBar && !findOpen && !collapsed ? (
+        <View style={[styles.bottomBar, { top: -barShift, backgroundColor: chrome, borderColor: incognito ? theme.privateSurface : theme.border }]}>
+          {addressBar}
+        </View>
+      ) : null}
+
+      {showToolbar && !collapsed ? (
+        <View
+          onLayout={(e) => setToolbarHeight(e.nativeEvent.layout.height)}
+          // Safari hides the toolbar while the address is edited; on iOS it stays laid out so
+          // the page keeps its size.
+          pointerEvents={editing ? 'none' : 'auto'}
+          style={[
+            styles.toolbar,
+            !bottomBar && styles.toolbarBorder,
+            { backgroundColor: chrome, paddingBottom: insets.bottom, borderColor: incognito ? theme.privateSurface : theme.border },
+            editing && styles.toolbarHidden,
+          ]}>
           <IconButton
-            name="arrow-left"
+            name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
             label="Back"
             color={fg}
+            size={Platform.OS === 'ios' ? 26 : 22}
             disabled={!activeTab || (!activeTab.canGoBack && !activeTab.reader && !activeTab.openerId)}
             onPress={goBack}
           />
-          <IconButton name="arrow-right" label="Forward" color={fg} disabled={!activeTab?.canGoForward} onPress={() => activeRef()?.goForward()} />
-          <IconButton name="plus" label="New tab" color={fg} onPress={() => newTab(incognito)} />
+          <IconButton
+            name={Platform.OS === 'ios' ? 'chevron-right' : 'arrow-right'}
+            label="Forward"
+            color={fg}
+            size={Platform.OS === 'ios' ? 26 : 22}
+            disabled={!activeTab?.canGoForward}
+            onPress={() => activeRef()?.goForward()}
+          />
+          {Platform.OS === 'ios' ? (
+            <IconButton name="share" label="Share" color={fg} disabled={!hasPage} onPress={() => onMenu('share')} />
+          ) : (
+            <IconButton name="plus" label="New tab" color={fg} onPress={() => newTab(incognito)} />
+          )}
           <IconButton
             name="square"
             label={`${tabCount} tabs`}
@@ -437,7 +620,12 @@ export default function BrowserScreen() {
             badge={String(Math.min(tabCount, 99))}
             onPress={openTabSwitcher}
           />
-          <IconButton name="more-vertical" label="Menu" color={fg} onPress={() => setMenuOpen(true)} />
+          <IconButton
+            name={Platform.OS === 'ios' ? 'more-horizontal' : 'more-vertical'}
+            label="Menu"
+            color={fg}
+            onPress={() => setMenuOpen(true)}
+          />
         </View>
       ) : null}
 
@@ -445,7 +633,7 @@ export default function BrowserScreen() {
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
         theme={theme}
-        hasPage={!!activeTab && !isBlank(activeTab.url) && !(incognito && privateLocked)}
+        hasPage={hasPage}
         bookmarked={!!activeTab && library.isBookmarked(activeTab.url)}
         readerActive={!!activeTab?.reader}
         showQuit={Platform.OS === 'android'}
@@ -457,7 +645,7 @@ export default function BrowserScreen() {
         visible={shieldOpen}
         onClose={() => setShieldOpen(false)}
         theme={theme}
-        url={activeTab?.url ?? ''}
+        url={visibleUrl}
         blocked={activeTab?.blocked ?? 0}
         totalBlocked={totalBlocked}
         onChanged={() => setTimeout(() => activeRef()?.reload(), 50)}
@@ -526,9 +714,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 2,
   },
+  toolbarBorder: { borderTopWidth: StyleSheet.hairlineWidth },
+  toolbarHidden: { opacity: 0 },
+  bottomBar: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 6, zIndex: 10 },
+  compact: { height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 16 },
+  compactText: { fontSize: 13, fontWeight: '500', flexShrink: 1 },
+  compactBottom: { paddingTop: 2 },
   findBar: { flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingLeft: 14 },
   findInput: { flex: 1, height: 48, fontSize: 16 },
   findCount: { fontSize: 13, marginRight: 4 },

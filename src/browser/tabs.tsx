@@ -25,6 +25,8 @@ export type Tab = {
   thumbnail?: string;
   /** Width / height of the page area when the thumbnail was taken. */
   thumbAspect?: number;
+  /** iOS: the window a page opened, waiting in native code to be shown by this tab's view. */
+  popupId?: string;
 };
 
 type State = { tabs: Tab[]; activeId: string | null; restored: boolean };
@@ -59,13 +61,14 @@ function deleteAllThumbnails() {
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export function makeTab(url: string, incognito: boolean, openerId?: string): Tab {
+export function makeTab(url: string, incognito: boolean, openerId?: string, popupId?: string): Tab {
   return {
     id: newId(),
     url,
     title: '',
     incognito,
     openerId,
+    popupId,
     lastActive: Date.now(),
     canGoBack: false,
     canGoForward: false,
@@ -115,18 +118,24 @@ function reducer(state: State, action: Action): State {
         activeId: action.id,
         tabs: state.tabs.map((t) => (t.id === action.id ? { ...t, lastActive: Date.now() } : t)),
       };
-    case 'update':
-      return { ...state, tabs: state.tabs.map((t) => (t.id === action.id ? { ...t, ...action.patch } : t)) };
+    case 'update': {
+      // Pages report the same state many times (progress, title, history); unchanged
+      // patches keep the old state so nothing re-renders.
+      const index = state.tabs.findIndex((t) => t.id === action.id);
+      const tab = state.tabs[index];
+      if (!tab) return state;
+      const patch = action.patch as Record<string, unknown>;
+      if (Object.keys(patch).every((k) => Object.is(patch[k], (tab as Record<string, unknown>)[k]))) return state;
+      const tabs = state.tabs.slice();
+      tabs[index] = { ...tab, ...action.patch };
+      return { ...state, tabs };
+    }
   }
 }
 
-type TabsValue = {
-  tabs: Tab[];
-  activeTab: Tab | null;
-  restored: boolean;
-  /** Ids of tabs whose web views stay mounted. */
-  liveIds: Set<string>;
-  openTab: (url: string, options?: { incognito?: boolean; openerId?: string; activate?: boolean }) => string;
+/** Tab actions; their identities never change, so using them doesn't re-render on tab updates. */
+type TabActions = {
+  openTab: (url: string, options?: { incognito?: boolean; openerId?: string; activate?: boolean; popupId?: string }) => string;
   closeTab: (id: string) => void;
   closeAll: (incognito: boolean) => void;
   activate: (id: string) => void;
@@ -135,7 +144,16 @@ type TabsValue = {
   navigate: (id: string, url: string) => void;
 };
 
+type TabsValue = TabActions & {
+  tabs: Tab[];
+  activeTab: Tab | null;
+  restored: boolean;
+  /** Ids of tabs whose web views stay mounted. */
+  liveIds: Set<string>;
+};
+
 const TabsContext = createContext<TabsValue | null>(null);
+const TabActionsContext = createContext<TabActions | null>(null);
 
 export function TabsProvider({ children, clearOnStart }: { children: ReactNode; clearOnStart: boolean }) {
   const [state, dispatch] = useReducer(reducer, { tabs: [], activeId: null, restored: false });
@@ -189,7 +207,7 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
   }, [state.tabs, state.activeId]);
 
   const openTab = useCallback<TabsValue['openTab']>((url, options = {}) => {
-    const tab = makeTab(url, options.incognito ?? false, options.openerId);
+    const tab = makeTab(url, options.incognito ?? false, options.openerId, options.popupId);
     dispatch({ type: 'open', tab, activate: options.activate ?? true });
     return tab.id;
   }, []);
@@ -213,27 +231,36 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
     dispatch({ type: 'update', id, patch: { url, reader: false, navigationKey: (tab?.navigationKey ?? 0) + 1 } });
   }, []);
 
+  const actions = useMemo<TabActions>(
+    () => ({ openTab, closeTab, closeAll, activate, updateTab, navigate }),
+    [openTab, closeTab, closeAll, activate, updateTab, navigate],
+  );
   const value = useMemo<TabsValue>(
     () => ({
       tabs: state.tabs,
       activeTab: state.tabs.find((t) => t.id === state.activeId) ?? null,
       restored: state.restored,
       liveIds,
-      openTab,
-      closeTab,
-      closeAll,
-      activate,
-      updateTab,
-      navigate,
+      ...actions,
     }),
-    [state.tabs, state.activeId, state.restored, liveIds, openTab, closeTab, closeAll, activate, updateTab, navigate],
+    [state.tabs, state.activeId, state.restored, liveIds, actions],
   );
 
-  return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>;
+  return (
+    <TabActionsContext.Provider value={actions}>
+      <TabsContext.Provider value={value}>{children}</TabsContext.Provider>
+    </TabActionsContext.Provider>
+  );
 }
 
 export function useTabs(): TabsValue {
   const ctx = useContext(TabsContext);
   if (!ctx) throw new Error('useTabs must be used inside TabsProvider');
+  return ctx;
+}
+
+export function useTabActions(): TabActions {
+  const ctx = useContext(TabActionsContext);
+  if (!ctx) throw new Error('useTabActions must be used inside TabsProvider');
   return ctx;
 }

@@ -119,25 +119,47 @@ function formatBytes(n: number): string {
 
 export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
   const { downloads, removeDownload } = useLibrary();
-  const [status, setStatus] = useState<Record<number, Status>>({});
+  // Live state by download record: Android asks DownloadManager by id, iOS checks the files.
+  const [status, setStatus] = useState<Record<string, Status>>({});
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const ids = downloads.map((d) => d.nativeId).filter((id): id is number => id !== undefined);
-    if (!ids.length) return;
     let alive = true;
-    const poll = () =>
-      ShieldEngine.getDownloads(ids).then((rows) => {
-        if (!alive) return;
-        setStatus(Object.fromEntries(rows.map((r) => [r.id, r])));
-      });
-    poll();
-    const timer = setInterval(poll, 1000);
+    const poll = async () => {
+      const next: Record<string, Status> = {};
+      if (Platform.OS === 'android') {
+        const tracked = downloads.filter((d) => d.nativeId !== undefined);
+        if (!tracked.length) return;
+        const rows = new Map((await ShieldEngine.getDownloads(tracked.map((d) => d.nativeId!))).map((r) => [r.id, r]));
+        tracked.forEach((d) => {
+          const row = rows.get(d.nativeId!);
+          if (row) next[d.id] = row;
+        });
+      } else {
+        const tracked = downloads.filter((d) => d.filePath);
+        if (!tracked.length) return;
+        const rows = new Map((await ShieldEngine.getFileDownloads(tracked.map((d) => d.filePath!))).map((r) => [r.path, r]));
+        tracked.forEach((d) => {
+          const row = rows.get(d.filePath!);
+          if (row) next[d.id] = row;
+        });
+      }
+      if (alive) setStatus(next);
+    };
+    poll().catch(() => {});
+    const timer = setInterval(() => poll().catch(() => {}), 1000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
   }, [downloads]);
+
+  const open = (item: (typeof downloads)[number]) => {
+    if (Platform.OS === 'ios' && item.filePath) {
+      ShieldEngine.openFile(item.filePath).then((ok) => !ok && Alert.alert('File not found', 'It may have been deleted in the Files app.'));
+    } else if (item.nativeId !== undefined) {
+      ShieldEngine.openDownload(item.nativeId).then((ok) => !ok && Alert.alert('No app can open this file'));
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
@@ -148,31 +170,33 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
         ListEmptyComponent={
           <Empty
             theme={theme}
-            text={Platform.OS === 'ios' ? 'Downloads are saved to Files › Stillweb › Downloads.' : 'Downloaded files appear here and in your Downloads folder.'}
+            text={
+              Platform.OS === 'ios'
+                ? 'Downloaded files appear here and in Files › Stillweb › Downloads.'
+                : 'Downloaded files appear here and in your Downloads folder.'
+            }
           />
         }
         renderItem={({ item }) => {
-          const s = item.nativeId !== undefined ? status[item.nativeId] : undefined;
-          const detail = s
-            ? s.status === 'done'
+          const s = status[item.id];
+          const detail = !s
+            ? Platform.OS === 'ios' && item.filePath
+              ? 'Checking…'
+              : 'No longer available'
+            : s.status === 'done'
               ? formatBytes(s.total) || 'Done'
               : s.status === 'failed'
                 ? 'Failed'
-                : `${formatBytes(s.bytes)}${s.total > 0 ? ` of ${formatBytes(s.total)}` : ''} · ${s.status}`
-            : Platform.OS === 'ios'
-              ? 'Saved to Files'
-              : 'No longer available';
+                : s.status === 'missing'
+                  ? 'Deleted'
+                  : `${formatBytes(s.bytes)}${s.total > 0 ? ` of ${formatBytes(s.total)}` : ''} · ${s.status === 'running' ? 'downloading' : s.status}`;
           return (
             <Row
               title={item.fileName}
               subtitle={`${detail} · ${displayUrl(item.url).split('/')[0]}`}
-              icon={s?.status === 'failed' ? 'alert-circle' : 'file'}
+              icon={s?.status === 'failed' ? 'alert-circle' : s?.status === 'missing' ? 'file-minus' : 'file'}
               theme={theme}
-              onPress={
-                item.nativeId !== undefined && s?.status === 'done'
-                  ? () => ShieldEngine.openDownload(item.nativeId!).then((ok) => !ok && Alert.alert('No app can open this file'))
-                  : undefined
-              }
+              onPress={s?.status === 'done' ? () => open(item) : undefined}
               right={<IconButton name="x" label="Remove from list" color={theme.muted} size={18} onPress={() => removeDownload(item.id)} />}
             />
           );

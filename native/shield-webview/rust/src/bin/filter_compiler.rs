@@ -10,6 +10,8 @@
 //! and prints a JSON summary on stdout.
 
 use adblock::content_blocking::{CbRule, CbType};
+use adblock::filters::cosmetic::CosmeticFilter;
+use adblock::resources::PermissionMask;
 use adblock::FilterSet;
 use adblock_jni::{build_engine, parse_options, use_resources_json, ListSource};
 use serde_json::{json, Map, Value};
@@ -82,33 +84,31 @@ fn main() {
 // Content blocking rules
 
 fn write_content_rules(texts: &[(String, bool)], out: &PathBuf) -> Vec<Value> {
+    // adblock-rust turns `site#@#sel` into a *hiding* rule for every other site, and drops
+    // `$generichide` / `$elemhide`. Both are handled here instead (see cosmetic_rules).
+    let mut exceptions = CosmeticExceptions::default();
     let mut set = FilterSet::new(true); // debug mode is required for conversion
     for (text, trusted) in texts {
-        set.add_filter_list(text.clone(), parse_options(*trusted));
+        let kept: Vec<&str> = text.lines().filter(|line| !exceptions.take(line)).collect();
+        set.add_filter_list(kept.join("\n"), parse_options(*trusted));
     }
     let (rules, _) = set
         .into_content_blocking()
         .unwrap_or_else(|_| die("content blocking conversion failed"));
 
-    // One list keeps exception (ignore-previous-rules) semantics exact. WebKit only
-    // applies an exception to rules in the same list, so if we must split, exceptions
-    // are copied into both halves.
-    let groups: Vec<(&str, Vec<CbRule>)> = if rules.len() <= MAX_RULES_PER_LIST {
-        vec![("rules-0.json", rules)]
-    } else {
-        let (mut network, mut cosmetic) = (vec![], vec![]);
-        for rule in rules {
-            match rule.action.typ {
-                CbType::CssDisplayNone => cosmetic.push(rule),
-                CbType::IgnorePreviousRules => {
-                    cosmetic.push(rule.clone());
-                    network.push(rule);
-                }
-                _ => network.push(rule),
-            }
+    // Network rules and element hiding always go in separate lists: an ignore-previous-rules
+    // only affects earlier rules in its own list, so exceptions in one can't undo the other.
+    // Network exceptions (including the trailing first-party document one) stay out of the
+    // hiding list, where they would switch off hiding for whole pages.
+    let (mut network, mut cosmetic) = (vec![], vec![]);
+    for rule in rules {
+        match rule.action.typ {
+            CbType::CssDisplayNone => cosmetic.push(rule),
+            _ => network.push(rule),
         }
-        vec![("rules-0.json", network), ("rules-1.json", cosmetic)]
-    };
+    }
+    let groups: Vec<(&str, Vec<CbRule>)> =
+        vec![("rules-0.json", network), ("rules-1.json", cosmetic_rules(cosmetic, &exceptions))];
 
     groups
         .into_iter()
@@ -125,6 +125,125 @@ fn write_content_rules(texts: &[(String, bool)], out: &PathBuf) -> Vec<Value> {
             json!({ "file": name, "count": rules.len() })
         })
         .collect()
+}
+
+/// Element hiding exceptions, collected from the raw lists.
+#[derive(Default)]
+struct CosmeticExceptions {
+    /// `a.com,b.com#@#sel`: selector -> hostnames where it must not hide anything.
+    unhide: HashMap<String, BTreeSet<String>>,
+    /// `@@||host^$generichide`: no generic (all-site) hiding on these hosts.
+    generichide: BTreeSet<String>,
+    /// `@@||host^$elemhide`: no hiding at all on these hosts.
+    elemhide: BTreeSet<String>,
+}
+
+impl CosmeticExceptions {
+    /// Records `line` if it is an element hiding exception; true means it was consumed.
+    fn take(&mut self, line: &str) -> bool {
+        let line = line.trim();
+        if let Some(idx) = line.find("#@#") {
+            if line[idx..].starts_with("#@#+js(") {
+                return false;
+            }
+            let Ok(filter) = CosmeticFilter::parse(line, false, PermissionMask::default()) else {
+                return true;
+            };
+            let hosts: Vec<String> = line[..idx].split(',').filter_map(plain_hostname).collect();
+            if let (Some(selector), false) = (filter.plain_css_selector(), hosts.is_empty()) {
+                self.unhide.entry(selector.to_string()).or_default().extend(hosts);
+            }
+            return true;
+        }
+        let Some(rest) = line.strip_prefix("@@||") else { return false };
+        let Some((pattern, options)) = rest.split_once('$') else { return false };
+        let Some(host) = pattern.strip_suffix('^').and_then(plain_hostname) else { return false };
+        let options: Vec<&str> = options.split(',').map(str::trim).collect();
+        let is = |names: &[&str]| options.iter().all(|o| names.contains(o));
+        if is(&["elemhide", "ehide"]) {
+            self.elemhide.insert(host);
+            true
+        } else if is(&["generichide", "ghide"]) {
+            self.generichide.insert(host);
+            true
+        } else {
+            // A `$document` allowlisting also turns hiding off; the network rule stays.
+            if is(&["document", "doc"]) {
+                self.elemhide.insert(host);
+            }
+            false
+        }
+    }
+}
+
+fn plain_hostname(s: &str) -> Option<String> {
+    let s = s.trim().to_ascii_lowercase();
+    let valid = s.contains('.')
+        && !s.starts_with('.')
+        && !s.ends_with('.')
+        && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
+    valid.then_some(s)
+}
+
+/// True if `host` is `domain` or one of its subdomains.
+fn within(host: &str, domain: &str) -> bool {
+    host == domain || host.strip_suffix(domain).is_some_and(|rest| rest.ends_with('.'))
+}
+
+fn ignore_rules_for(hosts: &BTreeSet<String>) -> Vec<CbRule> {
+    hosts
+        .iter()
+        .map(|host| {
+            serde_json::from_value(json!({
+                "trigger": { "url-filter": ".*", "if-domain": [format!("*{host}")] },
+                "action": { "type": "ignore-previous-rules" },
+            }))
+            .unwrap()
+        })
+        .collect()
+}
+
+/// Orders the hiding list as: generic rules, `$generichide` exceptions, site-specific rules,
+/// `$elemhide` exceptions. WebKit applies an ignore-previous-rules only to rules before it.
+fn cosmetic_rules(rules: Vec<CbRule>, exceptions: &CosmeticExceptions) -> Vec<CbRule> {
+    let (mut generic, mut specific) = (vec![], vec![]);
+    for mut rule in rules {
+        let t = &mut rule.trigger;
+        // WebKit matches a bare domain exactly; `*domain` also covers www., m. and the rest.
+        for list in [&mut t.if_domain, &mut t.unless_domain].into_iter().flatten() {
+            for d in list.iter_mut() {
+                if !d.starts_with('*') {
+                    *d = format!("*{d}");
+                }
+            }
+        }
+        let exempt = rule.action.selector.as_ref().and_then(|s| exceptions.unhide.get(s));
+        match (&mut t.if_domain, exempt) {
+            (Some(domains), Some(exempt)) => {
+                domains.retain(|d| !exempt.iter().any(|e| within(&d[1..], e)));
+                if domains.is_empty() {
+                    continue;
+                }
+            }
+            (None, Some(exempt)) => {
+                let unless = t.unless_domain.get_or_insert_with(Vec::new);
+                unless.extend(exempt.iter().map(|e| format!("*{e}")));
+                unless.sort();
+                unless.dedup();
+            }
+            _ => {}
+        }
+        if t.if_domain.is_some() {
+            specific.push(rule);
+        } else {
+            generic.push(rule);
+        }
+    }
+    let mut out = generic;
+    out.extend(ignore_rules_for(&exceptions.generichide));
+    out.extend(specific);
+    out.extend(ignore_rules_for(&exceptions.elemhide));
+    out
 }
 
 // ---------------------------------------------------------------------------

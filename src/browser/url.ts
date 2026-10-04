@@ -39,6 +39,12 @@ export function resolveInput(input: string, engine: SearchEngineId, customTempla
   return searchUrl(text, engine, customTemplate);
 }
 
+/** True when the address bar would open the text as an address rather than search for it. */
+export function looksLikeUrl(input: string): boolean {
+  const text = input.trim();
+  return !!text && resolveInput(text, 'google') !== searchUrl(text, 'google');
+}
+
 export function hostOf(url: string): string {
   const match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#:]+)/i.exec(url);
   return match ? match[1].toLowerCase() : '';

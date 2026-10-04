@@ -8,6 +8,7 @@ import { FILTER_MANIFEST_URL } from '../../blocking/config';
 import { checkForFilterUpdate } from '../../blocking/filterUpdater';
 import { useLibrary } from '../../browser/library';
 import { useSettings } from '../../browser/settings';
+import { hasRemoteSuggestions } from '../../browser/suggest';
 import { SEARCH_ENGINES } from '../../browser/url';
 import { Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
 import type { Theme } from '../theme';
@@ -174,6 +175,19 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
           </>
         ) : null}
 
+        <SwitchRow
+          title="Search engine suggestions"
+          subtitle={
+            hasRemoteSuggestions(settings.searchEngine)
+              ? `Suggests searches and sites as you type, from ${engineLabel}. Never in private tabs`
+              : `Not available for ${engineLabel}; history and bookmarks are still suggested`
+          }
+          value={settings.searchSuggestions}
+          onValueChange={(v) => update({ searchSuggestions: v })}
+          theme={theme}
+          disabled={!hasRemoteSuggestions(settings.searchEngine)}
+        />
+
         <SectionTitle theme={theme}>Media</SectionTitle>
         <SwitchRow
           title="Play in background"
@@ -199,6 +213,26 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
                 },
               ]}>
               {mode === 'system' ? 'Automatic' : mode === 'light' ? 'Light' : 'Dark'}
+            </Text>
+          ))}
+        </View>
+
+        <Text style={[styles.subhead, { color: theme.muted }]}>Address bar</Text>
+        <View style={styles.segment}>
+          {(['top', 'bottom'] as const).map((position) => (
+            <Text
+              key={position}
+              onPress={() => update({ addressBarPosition: position })}
+              accessibilityRole="button"
+              accessibilityState={{ selected: settings.addressBarPosition === position }}
+              style={[
+                styles.segmentItem,
+                {
+                  color: settings.addressBarPosition === position ? '#FFFFFF' : theme.text,
+                  backgroundColor: settings.addressBarPosition === position ? theme.accent : theme.surface,
+                },
+              ]}>
+              {position === 'top' ? 'Top' : 'Bottom'}
             </Text>
           ))}
         </View>
@@ -287,13 +321,17 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
             ) : null}
             <SwitchRow
               title="Dark pages"
-              subtitle="Darken websites that have no dark theme while the app is dark"
+              subtitle={
+                Platform.OS === 'ios'
+                  ? 'Show the dark version of websites that have one while the app is dark'
+                  : 'Darken websites that have no dark theme while the app is dark'
+              }
               value={settings.darkPages}
               onValueChange={(v) => update({ darkPages: v })}
               theme={theme}
             />
             <Row
-              title="Text size"
+              title={Platform.OS === 'ios' ? 'Page zoom' : 'Text size'}
               subtitle={`${settings.textZoom}%`}
               theme={theme}
               right={

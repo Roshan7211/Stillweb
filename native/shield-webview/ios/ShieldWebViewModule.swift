@@ -20,13 +20,18 @@ public class ShieldWebViewModule: Module {
         "onFileChooser",
         "onFullscreenChange",
         "onFindResult",
-        "onCloseRequest"
+        "onCloseRequest",
+        "onLinkAction",
+        "onChromeChange"
       )
 
       Prop("initialUrl") { (view: ShieldWebView, url: String?) in view.initialUrl = url }
       Prop("incognito") { (view: ShieldWebView, value: Bool?) in view.incognito = value ?? false }
       Prop("forceDark") { (view: ShieldWebView, value: Bool?) in view.forceDark = value ?? false }
       Prop("textZoom") { (view: ShieldWebView, value: Int?) in view.textZoom = value ?? 100 }
+      Prop("active") { (view: ShieldWebView, value: Bool?) in view.active = value ?? true }
+      Prop("popupId") { (view: ShieldWebView, value: String?) in view.popupId = value }
+      Prop("chromeCollapsed") { (view: ShieldWebView, value: Bool?) in view.syncChrome(collapsed: value ?? false) }
 
       OnViewDidUpdateProps { (view: ShieldWebView) in view.applyProps() }
 
@@ -39,6 +44,7 @@ public class ShieldWebViewModule: Module {
       AsyncFunction("findInPage") { (view: ShieldWebView, query: String) in view.findInPage(query) }
       AsyncFunction("findNext") { (view: ShieldWebView, forward: Bool) in view.findNext(forward: forward) }
       AsyncFunction("clearFind") { (view: ShieldWebView) in view.clearFind() }
+      AsyncFunction("showFindNavigator") { (view: ShieldWebView) -> Bool in view.showFindNavigator() }.runOnQueue(.main)
       AsyncFunction("captureThumbnail") { (view: ShieldWebView, key: String, promise: Promise) in
         view.captureThumbnail(key: key) { promise.resolve($0) }
       }
