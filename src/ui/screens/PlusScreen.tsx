@@ -33,6 +33,11 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string }[] = [
     body: 'Bookmarks and downloads from private tabs, locked with Face ID and kept out of your other lists and the Files app.',
   },
   {
+    icon: 'droplet',
+    title: 'Make it yours',
+    body: 'Seven accent colors and four app icons.',
+  },
+  {
     icon: 'bar-chart-2',
     title: 'Full privacy report',
     body: 'A year of history, the sites you’re protected on most and the trackers blocked most often.',

@@ -11,7 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.stillweb.browser",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Unlock your private tabs.",
+        "NSFaceIDUsageDescription": "Unlock your private tabs and private vault.",
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
         "UIBackgroundModes": [
@@ -95,7 +95,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Unlock your private tabs."
+          "faceIDPermission": "Unlock your private tabs and private vault."
         }
       ],
       "expo-background-task",
@@ -107,7 +107,8 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/with-alternate-icons"
     ],
     "splash": {
       "image": "./assets/splash-icon.png",

@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { ShieldEngine } from '../../native/shield-webview';
 import catalog from '../blocking/filter-catalog.json';
+import type { AccentId } from '../ui/theme';
 import { DEFAULT_SEARCH_ENGINE, type SearchEngineId } from './url';
 
 export type ShieldSettings = {
@@ -27,6 +28,8 @@ export type Settings = {
   searchEngine: SearchEngineId;
   customSearchTemplate: string;
   theme: 'system' | 'light' | 'dark';
+  /** Stillweb Plus: accent color (blue without Plus). */
+  accent: AccentId;
   /** Darken pages without their own dark theme while the app is dark. */
   darkPages: boolean;
   textZoom: number;
@@ -49,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   searchEngine: DEFAULT_SEARCH_ENGINE,
   customSearchTemplate: '',
   theme: 'system',
+  accent: 'blue',
   darkPages: true,
   textZoom: 100,
   shields: {

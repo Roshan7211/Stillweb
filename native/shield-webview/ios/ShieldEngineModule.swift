@@ -126,6 +126,19 @@ public class ShieldEngineModule: Module {
       DispatchQueue.main.async { ShieldEngine.shared.setOptions(options) }
     }
 
+    // Stillweb Plus app icons (plugins/with-alternate-icons.js): a name like "Sunset", or nil
+    // for the standard icon. Resolves false where the system doesn't allow changing it.
+    AsyncFunction("setAppIcon") { (name: String?, promise: Promise) in
+      guard UIApplication.shared.supportsAlternateIcons else { return promise.resolve(false) }
+      UIApplication.shared.setAlternateIconName(name.map { "AppIcon-\($0)" }) { error in
+        promise.resolve(error == nil)
+      }
+    }.runOnQueue(.main)
+
+    AsyncFunction("getAppIcon") { () -> String? in
+      UIApplication.shared.alternateIconName.map { $0.replacingOccurrences(of: "AppIcon-", with: "") }
+    }.runOnQueue(.main)
+
     // Listen Mode: pause all media after this many seconds (nil cancels).
     AsyncFunction("setSleepTimer") { (seconds: Double?) in
       SleepTimer.shared.set(seconds: seconds)

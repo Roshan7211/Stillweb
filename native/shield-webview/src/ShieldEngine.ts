@@ -34,6 +34,10 @@ declare class ShieldEngineModule extends NativeModule<ShieldEngineEvents> {
   ): Promise<{ path: string; status: 'running' | 'done' | 'failed' | 'missing'; bytes: number; total: number }[]>;
   /** iOS: previews a downloaded file (with Share and Save to Files); false if it's gone. */
   openFile(path: string): Promise<boolean>;
+  /** iOS: switches the app icon ("Sunset"; null = standard); false if the system doesn't allow it. */
+  setAppIcon(name: string | null): Promise<boolean>;
+  /** iOS: the alternate icon in use, or null for the standard one. */
+  getAppIcon(): Promise<string | null>;
   /** iOS: deletes a downloaded file (the vault's aren't reachable from the Files app). */
   deleteFile(path: string): Promise<boolean>;
   /** Hides the app's content from the recent-apps / app switcher preview (and, on Android, screenshots). */

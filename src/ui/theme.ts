@@ -46,9 +46,38 @@ const dark: Theme = {
   privateSurface: '#2A2140',
 };
 
-/** Follows the system appearance unless a preference overrides it. */
-export function useTheme(override?: 'system' | 'light' | 'dark'): Theme {
+type AccentColors = Pick<Theme, 'accent' | 'accentSoft' | 'chart'>;
+
+/**
+ * Accent colors (Stillweb Plus; blue is the default). Each chart color passes the data-viz
+ * palette checks on its mode's background; graphite is gray by design, so its charts stay blue.
+ */
+export const ACCENTS = {
+  blue: { label: 'Blue', light: { accent: '#2F6FEB', accentSoft: '#E3ECFD', chart: '#2F6FEB' }, dark: { accent: '#6E9BF5', accentSoft: '#1F2B45', chart: '#5E8FF0' } },
+  teal: { label: 'Teal', light: { accent: '#0A7EA4', accentSoft: '#DFEEF3', chart: '#0A7EA4' }, dark: { accent: '#2BA3AD', accentSoft: '#173034', chart: '#2BA3AD' } },
+  green: { label: 'Green', light: { accent: '#1F7A3E', accentSoft: '#E2EEE6', chart: '#1F7A3E' }, dark: { accent: '#3E9E5F', accentSoft: '#1B2F25', chart: '#3E9E5F' } },
+  orange: { label: 'Orange', light: { accent: '#C2410C', accentSoft: '#F7E6DF', chart: '#C2410C' }, dark: { accent: '#E06A2E', accentSoft: '#3B241B', chart: '#E06A2E' } },
+  pink: { label: 'Pink', light: { accent: '#BE185D', accentSoft: '#F7E1EA', chart: '#BE185D' }, dark: { accent: '#E0518A', accentSoft: '#3B1F2D', chart: '#E0518A' } },
+  purple: { label: 'Purple', light: { accent: '#6D3FD1', accentSoft: '#ECE6F9', chart: '#6D3FD1' }, dark: { accent: '#9273E6', accentSoft: '#2C2640', chart: '#9273E6' } },
+  graphite: { label: 'Graphite', light: { accent: '#4B5563', accentSoft: '#E8E9EB', chart: '#2F6FEB' }, dark: { accent: '#8A94A3', accentSoft: '#2A2D32', chart: '#5E8FF0' } },
+} satisfies Record<string, { label: string; light: AccentColors; dark: AccentColors }>;
+
+export type AccentId = keyof typeof ACCENTS;
+
+const themes = new Map<string, Theme>();
+
+/** Follows the system appearance unless a preference overrides it, in the chosen accent. */
+export function useTheme(override?: 'system' | 'light' | 'dark', accent: AccentId = 'blue'): Theme {
   const system = useColorScheme();
   const mode = override && override !== 'system' ? override : system;
-  return mode === 'dark' ? dark : light;
+  const isDark = mode === 'dark';
+  // One object per mode and accent, so screens don't re-render for a "new" theme.
+  const key = `${isDark ? 'dark' : 'light'}-${accent}`;
+  let theme = themes.get(key);
+  if (!theme) {
+    const colors = (ACCENTS[accent] ?? ACCENTS.blue)[isDark ? 'dark' : 'light'];
+    theme = { ...(isDark ? dark : light), ...colors };
+    themes.set(key, theme);
+  }
+  return theme;
 }

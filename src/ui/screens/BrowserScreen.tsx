@@ -54,13 +54,13 @@ type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settin
 
 export default function BrowserScreen() {
   const { settings, setSiteFix } = useSettings();
-  const theme = useTheme(settings.theme);
+  const plus = usePlus();
+  const theme = useTheme(settings.theme, plus.unlocked ? settings.accent : 'blue');
   const insets = useSafeAreaInsets();
   const tabsApi = useTabs();
   const { tabs, activeTab, liveIds, restored, openTab, closeTab, closeAll, navigate, updateTab } = tabsApi;
   const library = useLibrary();
   const stats = usePrivacyStatsActions();
-  const plus = usePlus();
 
   const refs = useRef(new Map<string, ShieldWebViewRef>());
   const [overlay, setOverlay] = useState<Overlay>('none');

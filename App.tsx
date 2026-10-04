@@ -27,7 +27,8 @@ function Root() {
   const { settings, loaded } = useSettings();
   const library = useLibrary();
   const stats = usePrivacyStatsActions();
-  const theme = useTheme(settings.theme);
+  const plus = usePlus();
+  const theme = useTheme(settings.theme, plus.unlocked ? settings.accent : 'blue');
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -67,7 +68,6 @@ function Root() {
   }, [ready]);
 
   // Plus features reach the native side only while Plus is active.
-  const plus = usePlus();
   const calmMode = settings.shields.calmMode && plus.unlocked;
   const vault = settings.vault && plus.unlocked;
   useEffect(() => {
