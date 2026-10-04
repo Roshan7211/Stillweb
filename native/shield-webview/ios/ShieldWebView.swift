@@ -1283,7 +1283,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     completionHandler: @escaping (URL?) -> Void
   ) {
     let fm = FileManager.default
-    let dir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Downloads", isDirectory: true)
+    // Private tabs with the vault on (Stillweb Plus) keep their downloads out of the Files app.
+    let dir = incognito && ShieldEngine.shared.vault
+      ? ShieldEngine.vaultDownloadsDir
+      : fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Downloads", isDirectory: true)
     try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
     let name = suggestedFilename.isEmpty ? "download" : suggestedFilename
     var destination = dir.appendingPathComponent(name)

@@ -39,6 +39,8 @@ export type Settings = {
   lockPrivateTabs: boolean;
   /** Bottom keeps the address bar in thumb reach, like Safari. */
   addressBarPosition: 'top' | 'bottom';
+  /** Stillweb Plus: bookmarks and (iOS) downloads from private tabs go to the locked vault. */
+  vault: boolean;
   /** Ask the search engine for suggestions while typing (never in private tabs). */
   searchSuggestions: boolean;
 };
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lockPrivateTabs: false,
   addressBarPosition: Platform.OS === 'ios' ? 'bottom' : 'top',
   searchSuggestions: true,
+  vault: true,
 };
 
 const STORAGE_KEY = 'settings.v1';

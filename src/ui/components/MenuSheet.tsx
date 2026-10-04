@@ -17,6 +17,7 @@ export type MenuAction =
   | 'listen'
   | 'desktop'
   | 'hideElement'
+  | 'vault'
   | 'quit';
 
 type Props = {
@@ -94,6 +95,7 @@ export default function MenuSheet({
         <Row title="Bookmarks" icon="bookmark" theme={theme} onPress={() => onAction('bookmarks')} />
         <Row title="History" icon="clock" theme={theme} onPress={() => onAction('history')} />
         <Row title="Downloads" icon="download" theme={theme} onPress={() => onAction('downloads')} />
+        <Row title="Private vault" icon="lock" theme={theme} onPress={() => onAction('vault')} />
         <Row title="Settings" icon="settings" theme={theme} onPress={() => onAction('settings')} />
         {showQuit ? (
           <Row

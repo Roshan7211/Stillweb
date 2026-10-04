@@ -48,8 +48,9 @@ import { BookmarksScreen, DownloadsScreen, HistoryScreen } from './LibraryScreen
 import SettingsScreen from './SettingsScreen';
 import ShieldTestScreen from './ShieldTestScreen';
 import TabSwitcherScreen from './TabSwitcherScreen';
+import VaultScreen from './VaultScreen';
 
-type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus';
+type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus' | 'vault';
 
 export default function BrowserScreen() {
   const { settings, setSiteFix } = useSettings();
@@ -485,9 +486,16 @@ export default function BrowserScreen() {
       case 'downloads':
       case 'settings':
         return setOverlay(action);
-      case 'toggleBookmark':
-        library.toggleBookmark(url, activeTab?.title ?? url);
-        return showToast(library.isBookmarked(url) ? 'Bookmark removed' : 'Bookmarked');
+      case 'toggleBookmark': {
+        // From a private tab, with the vault on, bookmarks go to the locked vault.
+        const toVault = incognito && settings.vault && plus.unlocked;
+        const removing = library.isBookmarked(url);
+        library.toggleBookmark(url, activeTab?.title ?? url, toVault);
+        return showToast(removing ? 'Bookmark removed' : toVault ? 'Saved to your vault' : 'Bookmarked');
+      }
+      case 'vault':
+        if (!plus.unlocked) return openPlus('none');
+        return setOverlay('vault');
       case 'reader':
         return toggleReader();
       case 'find': {
@@ -890,6 +898,16 @@ export default function BrowserScreen() {
             />
           ) : overlay === 'shieldTest' ? (
             <ShieldTestScreen onClose={() => setOverlay('settings')} />
+          ) : overlay === 'vault' ? (
+            <VaultScreen
+              theme={theme}
+              onBack={() => setOverlay('none')}
+              onOpen={(target) => {
+                setOverlay('none');
+                // The vault's pages open privately.
+                openTab(target, { incognito: true });
+              }}
+            />
           ) : overlay === 'report' ? (
             <PrivacyReportScreen theme={theme} onBack={() => setOverlay(reportBack)} onUpgrade={() => openPlus('report')} />
           ) : overlay === 'plus' ? (

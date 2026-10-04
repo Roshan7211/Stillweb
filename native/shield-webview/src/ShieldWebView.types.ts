@@ -123,6 +123,8 @@ export type ShieldOptions = {
   backgroundPlay?: boolean;
   /** Stillweb Plus: annoyance lists and automatic cookie pop-up rejection. */
   calmMode?: boolean;
+  /** Stillweb Plus (iOS): private tabs' downloads go to the vault instead of Files. */
+  vault?: boolean;
 };
 
 export type ShieldEngineEvents = {

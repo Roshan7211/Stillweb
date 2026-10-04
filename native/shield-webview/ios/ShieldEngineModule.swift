@@ -166,6 +166,12 @@ public class ShieldEngineModule: Module {
       FilePreview.present(path: path)
     }.runOnQueue(.main)
 
+    // Deletes a downloaded file (vault downloads aren't reachable from the Files app).
+    AsyncFunction("deleteFile") { (path: String) -> Bool in
+      let file = ShieldEngine.currentPath(path)
+      return (try? FileManager.default.removeItem(atPath: file)) != nil
+    }
+
     // iOS can't block screenshots, but the app switcher snapshot gets covered.
     AsyncFunction("setSecureWindow") { (secure: Bool) in
       PrivacyCover.shared.enabled = secure

@@ -28,6 +28,11 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string }[] = [
     body: 'Hide anything on a page with a tap, and turn JavaScript off for sites that misbehave.',
   },
   {
+    icon: 'lock',
+    title: 'Private vault',
+    body: 'Bookmarks and downloads from private tabs, locked with Face ID and kept out of your other lists and the Files app.',
+  },
+  {
     icon: 'bar-chart-2',
     title: 'Full privacy report',
     body: 'A year of history, the sites you’re protected on most and the trackers blocked most often.',

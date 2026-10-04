@@ -310,6 +310,17 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
           onValueChange={toggleLock}
           theme={theme}
         />
+        <SwitchRow
+          title={plus.unlocked ? 'Private vault' : 'Private vault · Plus'}
+          subtitle={
+            Platform.OS === 'ios'
+              ? 'Bookmarks and downloads from private tabs are kept in a vault locked with Face ID'
+              : 'Bookmarks from private tabs are kept in a vault locked with your screen lock'
+          }
+          value={settings.vault && plus.unlocked}
+          onValueChange={(v) => (plus.unlocked ? update({ vault: v }) : onOpenPlus())}
+          theme={theme}
+        />
         <Row title="Clear browsing data now" icon="trash-2" theme={theme} danger onPress={clearAll} />
 
         {Platform.OS === 'android' ? (

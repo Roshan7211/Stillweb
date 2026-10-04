@@ -177,9 +177,10 @@ function BrowserTabView(props: Props) {
         onDownloadRequest={async ({ nativeEvent: d }) => {
           if (d.handledNatively) {
             const fileName = d.filePath?.split('/').pop() ?? 'file';
-            // Like other private browsing data, private downloads stay out of the app's list
-            // (the file itself is in Files › Stillweb › Downloads).
-            if (!tab.incognito) library.addDownload({ url: d.url, fileName, filePath: d.filePath });
+            // Private downloads stay out of the app's list (the file is in Files › Stillweb ›
+            // Downloads), unless they went to the vault, which lists them behind Face ID.
+            const inVault = tab.incognito && !!d.filePath?.includes('/Vault/');
+            if (!tab.incognito || inVault) library.addDownload({ url: d.url, fileName, filePath: d.filePath, ...(inVault ? { vault: true } : {}) });
             onToast(`Downloading ${fileName}`);
             return;
           }

@@ -69,9 +69,10 @@ function Root() {
   // Plus features reach the native side only while Plus is active.
   const plus = usePlus();
   const calmMode = settings.shields.calmMode && plus.unlocked;
+  const vault = settings.vault && plus.unlocked;
   useEffect(() => {
-    ShieldEngine.setOptions({ calmMode });
-  }, [calmMode]);
+    ShieldEngine.setOptions({ calmMode, vault });
+  }, [calmMode, vault]);
   // Desktop website is free; JavaScript off and hidden elements are Plus.
   const { siteFixes } = settings;
   useEffect(() => {

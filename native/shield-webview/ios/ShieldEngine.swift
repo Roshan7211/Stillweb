@@ -84,6 +84,8 @@ final class ShieldEngine {
   var backgroundPlay = true
   /// Stillweb Plus: annoyance lists and automatic cookie pop-up rejection.
   var calmMode = false
+  /// Stillweb Plus: private tabs' downloads go to the vault (not visible in the Files app).
+  var vault = false
   private var disabledSites = Set<String>()
   private(set) var totalBlocked = 0
 
@@ -146,6 +148,7 @@ final class ShieldEngine {
     cosmeticFiltering = prefs["cosmeticFiltering"] as? Bool ?? true
     backgroundPlay = prefs["backgroundPlay"] as? Bool ?? true
     calmMode = prefs["calmMode"] as? Bool ?? false
+    vault = prefs["vault"] as? Bool ?? false
     configureAudioSession()
     disabledSites = Set(defaults.stringArray(forKey: "shield.disabledSites") ?? [])
     totalBlocked = defaults.integer(forKey: "shield.totalBlocked")
@@ -208,11 +211,22 @@ final class ShieldEngine {
   }
 
   /// iOS can move the app's container (its path changes) on updates and restores; a saved
-  /// path into Documents is rebased onto the current Documents folder.
+  /// path inside it (Documents, Library) is rebased onto the current container.
   static func currentPath(_ path: String) -> String {
-    guard !FileManager.default.fileExists(atPath: path), let range = path.range(of: "/Documents/") else { return path }
-    let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    return documents.appendingPathComponent(String(path[range.upperBound...])).path
+    guard !FileManager.default.fileExists(atPath: path) else { return path }
+    for folder in ["/Documents/", "/Library/"] {
+      if let range = path.range(of: folder) {
+        let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        return home.appendingPathComponent(String(path[range.lowerBound...].dropFirst())).path
+      }
+    }
+    return path
+  }
+
+  /// The vault's downloads: inside the app, out of the Files app.
+  static var vaultDownloadsDir: URL {
+    FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("Vault/Downloads", isDirectory: true)
   }
 
   // MARK: - Queries
@@ -297,10 +311,11 @@ final class ShieldEngine {
       configureAudioSession()
     }
     if let v = options["calmMode"] as? Bool { calmMode = v }
+    if let v = options["vault"] as? Bool { vault = v }
     defaults.set(
       [
         "enabled": enabled, "httpsUpgrade": httpsUpgrade, "blockPopups": blockPopups,
-        "cosmeticFiltering": cosmeticFiltering, "backgroundPlay": backgroundPlay, "calmMode": calmMode,
+        "cosmeticFiltering": cosmeticFiltering, "backgroundPlay": backgroundPlay, "calmMode": calmMode, "vault": vault,
       ],
       forKey: "shield.options"
     )

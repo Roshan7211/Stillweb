@@ -3,7 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { displayUrl, hostOf, isBlank } from './url';
 
-export type Bookmark = { id: string; url: string; title: string; createdAt: number };
+/** `vault`: saved from a private tab into the Face ID-locked vault (Stillweb Plus). */
+export type Bookmark = { id: string; url: string; title: string; createdAt: number; vault?: boolean };
 export type HistoryEntry = { url: string; title: string; visitedAt: number };
 export type DownloadRecord = {
   id: string;
@@ -13,17 +14,25 @@ export type DownloadRecord = {
   fileName: string;
   filePath?: string;
   startedAt: number;
+  /** A private tab's download kept in the vault (iOS). */
+  vault?: boolean;
 };
 
 const KEYS = { bookmarks: 'library.bookmarks', history: 'library.history', downloads: 'library.downloads' };
 const MAX_HISTORY = 2000;
 
 type LibraryValue = {
+  /** Normal bookmarks; the vault's are only in `vaultBookmarks`. */
   bookmarks: Bookmark[];
+  vaultBookmarks: Bookmark[];
   history: HistoryEntry[];
+  /** Normal downloads; the vault's are only in `vaultDownloads`. */
   downloads: DownloadRecord[];
+  vaultDownloads: DownloadRecord[];
+  /** Bookmarked anywhere (normal or vault). */
   isBookmarked: (url: string) => boolean;
-  toggleBookmark: (url: string, title: string) => void;
+  /** Adds (to the vault when `vault`) or removes the bookmark for this page. */
+  toggleBookmark: (url: string, title: string, vault?: boolean) => void;
   removeBookmark: (id: string) => void;
   addVisit: (url: string, title: string) => void;
   updateVisitTitle: (url: string, title: string) => void;
@@ -72,16 +81,19 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<LibraryValue>(() => {
     const bookmarkedUrls = new Set(bookmarks.map((b) => b.url));
+    const normalBookmarks = bookmarks.filter((b) => !b.vault);
     return {
-      bookmarks,
+      bookmarks: normalBookmarks,
+      vaultBookmarks: bookmarks.filter((b) => b.vault),
       history,
-      downloads,
+      downloads: downloads.filter((d) => !d.vault),
+      vaultDownloads: downloads.filter((d) => d.vault),
       isBookmarked: (url) => bookmarkedUrls.has(url),
-      toggleBookmark: (url, title) =>
+      toggleBookmark: (url, title, vault) =>
         setBookmarks((list) =>
           list.some((b) => b.url === url)
             ? list.filter((b) => b.url !== url)
-            : [{ id: newId(), url, title: title || url, createdAt: Date.now() }, ...list],
+            : [{ id: newId(), url, title: title || url, createdAt: Date.now(), ...(vault ? { vault: true } : {}) }, ...list],
         ),
       removeBookmark: (id) => setBookmarks((list) => list.filter((b) => b.id !== id)),
       addVisit: (url, title) => {
@@ -136,7 +148,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
             matches.push({ url, title, kind, rank: 3 });
           }
         };
-        bookmarks.forEach((b) => consider(b.url, b.title, 'bookmark'));
+        // The vault never shows up in suggestions.
+        normalBookmarks.forEach((b) => consider(b.url, b.title, 'bookmark'));
         history.forEach((h) => consider(h.url, h.title, 'history'));
         const seen = new Set<string>();
         return matches
