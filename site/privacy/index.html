@@ -22,7 +22,7 @@
 <body>
 <main>
 <h1>Stillweb Privacy Policy</h1>
-<p class="meta">Effective 3 October 2026</p>
+<p class="meta">Effective 5 October 2026</p>
 
 <div class="summary">
   <strong>In short:</strong> Stillweb does not collect, receive, sell or share any personal data. There are no
@@ -31,26 +31,37 @@
 
 <h2>What stays on your device</h2>
 <p>To work as a browser, Stillweb keeps the following <em>only on your device</em>: open tabs, browsing history,
-bookmarks, your downloads list, your settings (including sites where you turned protection off) and a count of
-blocked ads and trackers. Websites may also store cookies and site data in the browser, as in any browser.</p>
+bookmarks, your downloads list, your settings (including sites where you turned protection off and changes you
+made to sites) and your privacy report (how many ads and trackers were blocked, on which sites and from which
+domains). Websites may also store cookies and site data in the browser, as in any browser; with Stillweb Plus
+profiles, each profile keeps its own.</p>
 <p>You can delete this at any time with <em>Settings › Clear browsing data now</em>, or turn on
 <em>Clear data on exit</em> to start fresh each time. Deleting the app removes everything.</p>
 
 <h2>Private tabs</h2>
 <p>Pages opened in private tabs are never saved to history. Their cookies and site data are deleted when you
-close your last private tab, and again whenever the app starts. On Android, private tabs are also hidden from
-screenshots and the recent-apps screen.</p>
+close your last private tab, and again whenever the app starts. While private tabs are open, they are hidden in
+the app switcher (and, on Android, from screenshots). The privacy report counts blocked items in private tabs
+but never records which sites you visited in them.</p>
+<p>With the Stillweb Plus private vault, bookmarks (and, on iPhone, downloads) you save from private tabs are
+kept on your device behind Face ID, Touch ID or your passcode, and are not shown in your normal lists or the
+Files app.</p>
 
 <h2>Connections Stillweb makes</h2>
 <ul>
   <li><strong>Websites you visit.</strong> Pages load directly from the sites you open. Stillweb blocks known ads
     and trackers, but each website's own privacy policy applies to what it collects.</li>
   <li><strong>Your search engine.</strong> Searches typed in the address bar go to the search engine you choose
-    (Google by default; you can switch to a private search engine such as DuckDuckGo in Settings). Search suggestions come only from your own bookmarks and history on the device,
-    so nothing is sent while you type.</li>
+    (Google by default; you can switch to a private search engine such as DuckDuckGo in Settings). While you type
+    in a normal tab, what you have typed so far is sent to the same search engine to suggest searches, without
+    cookies or identifiers. You can turn this off in Settings › Search suggestions; private tabs never send
+    it. Suggestions from your bookmarks and history are found on your device.</li>
   <li><strong>Filter list updates.</strong> About once a day Stillweb downloads updated blocking lists as plain
     files from our update server. Like any web request this reveals your IP address to the hosting provider;
     the request contains no identifiers, and we do not collect or keep anything about you.</li>
+  <li><strong>Purchases (Stillweb Plus).</strong> Purchases and subscriptions are handled entirely by Apple. Stillweb
+    checks on your device, through Apple, whether Plus is active; we never receive your name, payment details or
+    Apple Account, and there is no Stillweb account.</li>
   <li><strong>Android only:</strong> the system WebView's Safe Browsing protection checks pages against a list of
     known dangerous sites using shortened, hashed web addresses. Android WebView usage statistics are switched
     off.</li>
@@ -59,12 +70,17 @@ screenshots and the recent-apps screen.</p>
 <h2>Signals to websites</h2>
 <p>Stillweb sends the <a href="https://globalprivacycontrol.org">Global Privacy Control</a> signal with every
 page, telling sites you do not want your personal data sold or shared. It blocks cross-site cookies by default
-and upgrades connections to HTTPS when sites support it.</p>
+and upgrades connections to HTTPS when sites support it. With Calm Mode (Stillweb Plus) on, Stillweb answers
+cookie pop-ups for you by rejecting optional cookies; this runs on your device.</p>
 
 <h2>Permissions</h2>
 <ul>
-  <li><strong>Face ID, Touch ID or fingerprint</strong> (optional): used only to unlock private tabs. The check is
-    done by your device's operating system; Stillweb never receives biometric data.</li>
+  <li><strong>Face ID, Touch ID or fingerprint</strong> (optional): used only to unlock private tabs and the private
+    vault. The check is done by your device's operating system; Stillweb never receives biometric data.</li>
+  <li><strong>Camera, microphone and location</strong>: asked for only when a website you visit wants them (for
+    example a video call, voice search or a map), and given only to that website. Stillweb itself never uses them.</li>
+  <li><strong>Photos</strong> (iPhone, add only): used only when you choose to save an image from a website to your
+    photo library.</li>
   <li><strong>Notifications</strong> (Android, optional): used only to show playback controls while music or
     video plays in the background. Private tabs show "Private tab" instead of what is playing.</li>
   <li><strong>Files</strong>: only the files you choose when a website asks you to upload something, and the files
