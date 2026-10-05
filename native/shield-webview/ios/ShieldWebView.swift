@@ -638,7 +638,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       // to the rest, and the page scrolls under all of it.
       var covered = UIEdgeInsets.zero
       if let chrome = chromeInsets {
-        covered = UIEdgeInsets(top: safeAreaInsets.top + chrome.top, left: 0, bottom: safeAreaInsets.bottom + chrome.bottom, right: 0)
+        covered = UIEdgeInsets(
+          top: max(0, safeAreaInsets.top + chrome.top), left: 0, bottom: max(0, safeAreaInsets.bottom + chrome.bottom), right: 0)
       }
       if webView.obscuredContentInsets != covered { webView.obscuredContentInsets = covered }
       inset = covered

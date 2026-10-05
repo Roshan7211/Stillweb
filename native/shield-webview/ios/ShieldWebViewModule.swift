@@ -31,7 +31,8 @@ public class ShieldWebViewModule: Module {
       Prop("profileId") { (view: ShieldWebView, value: String?) in view.profileId = value }
       Prop("chromeInsets") { (view: ShieldWebView, value: [String: Double]?) in
         view.chromeInsets = value.map {
-          UIEdgeInsets(top: CGFloat($0["top"] ?? 0), left: 0, bottom: CGFloat($0["bottom"] ?? 0), right: 0)
+          // Never negative (WebKit raises an exception for negative obscured insets).
+          UIEdgeInsets(top: CGFloat(max($0["top"] ?? 0, 0)), left: 0, bottom: CGFloat(max($0["bottom"] ?? 0, 0)), right: 0)
         }
       }
       Prop("forceDark") { (view: ShieldWebView, value: Bool?) in view.forceDark = value ?? false }
