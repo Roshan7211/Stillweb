@@ -154,6 +154,8 @@ function BrowserTabView(props: Props) {
           // A navigation that turned into a download (or was replaced) isn't a failure.
           if (/ERR_ABORTED|ERR_BLOCKED_BY_RESPONSE/i.test(nativeEvent.description) || nativeEvent.code === -999) return;
           setLoadError(nativeEvent);
+          // Stillweb's error page is drawn in the app's theme: the status bar follows that.
+          updateTab(tab.id, { pageDark: undefined });
         }}
         onCloseRequest={() => {
           // Like other browsers, pages may only close windows that a page opened.

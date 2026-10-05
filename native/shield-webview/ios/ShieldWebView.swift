@@ -1192,6 +1192,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// Reloads made for the current theme change (at most two).
   private var themeReloads = 0
   private var themeCheckPending = false
+  /// One check at a time: props arrive with every re-render, and two checks overlapping
+  /// would both reload (spending both tries on one load).
+  private var themeCheckBusy = false
   /// Sites that didn't follow the theme even after reloading (always light or always dark):
   /// never reloaded for it again (kept across launches, the most recent 300).
   private static var themeIgnoredHosts: [String] = UserDefaults.standard.stringArray(forKey: "theme.ignoredHosts") ?? [] {
@@ -1208,20 +1211,28 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   }
 
   private func scheduleThemeCheck() {
+    guard !themeCheckBusy else { return }
+    themeCheckBusy = true
     // Sites that follow the theme live have updated by then.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.checkTheme() }
   }
 
   private func checkTheme() {
-    guard active, let webView, !webView.isLoading else { return }
+    guard active, let webView, !webView.isLoading else {
+      // Tried again when the page finishes loading or the tab is shown.
+      themeCheckBusy = false
+      return
+    }
     themeCheckPending = false
     guard let url = webView.url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
           let host = url.host?.lowercased(), !Self.themeIgnoredHosts.contains(host) else {
       themeReloads = 0
+      themeCheckBusy = false
       return
     }
     webView.evaluateJavaScript(Self.themeCheckScript) { [weak self] result, _ in
       guard let self else { return }
+      self.themeCheckBusy = false
       guard (result as? String) == "mismatch" else {
         // Matches (or media is playing: never interrupted).
         self.themeReloads = 0
@@ -1242,6 +1253,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private static let themeCheckScript = """
   (function () {
     try {
+      // Reader view is styled by the app itself.
+      if (document.documentElement.hasAttribute('data-stillweb-reader')) return 'ok';
       var media = document.querySelectorAll('video, audio');
       for (var i = 0; i < media.length; i++) if (!media[i].paused && !media[i].ended) return 'playing';
       function parse(c) {

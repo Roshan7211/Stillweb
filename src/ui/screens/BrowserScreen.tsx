@@ -28,7 +28,7 @@ import { pickerBiggerScript, pickerCancelScript, pickerFinishScript, pickerStart
 import { refreshBlockedTotal } from '../../browser/blockedTotal';
 import { pageDarkScript, parsePageDark } from '../../browser/pageTheme';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
-import { readerScript } from '../../browser/reader';
+import { readerScript, readerThemeScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
 import { useSearchSuggestions } from '../../browser/suggest';
 import { profileName, profileOf, type Profile } from '../../browser/profiles';
@@ -303,6 +303,16 @@ export default function BrowserScreen() {
     return () => clearTimeout(timer);
   }, [pagesDark, updateTab]);
 
+  // Pages in reader view take the new theme in place.
+  useEffect(() => {
+    tabsRef.current
+      .filter((t) => t.reader)
+      .forEach((t) => {
+        refs.current.get(t.id)?.evaluateJavaScript(readerThemeScript(theme)).catch(() => {});
+        updateTab(t.id, { pageDark: theme.dark });
+      });
+  }, [theme, updateTab]);
+
   const registerRef = useCallback((id: string, ref: ShieldWebViewRef | null) => {
     if (ref) refs.current.set(id, ref);
     else refs.current.delete(id);
@@ -519,8 +529,12 @@ export default function BrowserScreen() {
     const result = await activeRef()
       ?.evaluateJavaScript(readerScript(theme))
       .catch(() => null);
-    if (result === 'true') updateTab(activeTab.id, { reader: true });
-    else showToast("Reader view isn't available for this page");
+    if (result === 'true') {
+      // Reader view draws the article in the app's theme.
+      updateTab(activeTab.id, { reader: true, pageDark: theme.dark });
+    } else {
+      showToast("Reader view isn't available for this page");
+    }
   };
 
   const quit = async () => {
