@@ -686,8 +686,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     // relayouts it).
     let zoom = CGFloat(textZoom) / 100
     if webView.pageZoom != zoom { webView.pageZoom = zoom }
-    // Lets pages that support prefers-color-scheme pick their dark theme.
-    let style: UIUserInterfaceStyle = forceDark ? .dark : .unspecified
+    // Pages that have a dark theme (prefers-color-scheme) show it exactly when the app is dark
+    // and Dark websites is on; otherwise their light one, whatever the system appearance.
+    let style: UIUserInterfaceStyle = forceDark ? .dark : .light
     if webView.overrideUserInterfaceStyle != style { webView.overrideUserInterfaceStyle = style }
     // Only one scroll view may answer the status bar tap.
     if webView.scrollView.scrollsToTop != active { webView.scrollView.scrollsToTop = active }

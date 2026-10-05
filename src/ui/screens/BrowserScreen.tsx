@@ -597,10 +597,10 @@ export default function BrowserScreen() {
   // resizing the page underneath. Android lifts everything, as the window doesn't resize.
   const keyboardLift = Platform.OS === 'ios' && !findOpen ? 0 : keyboardHeight;
   const showToolbar = !single && (Platform.OS === 'ios' ? keyboardLift === 0 : !editing && keyboardHeight === 0);
-  // Part of the page area hidden by the keyboard on iOS (it sits over the toolbar first; the
-  // single bar's home indicator margin goes under the keyboard).
   // The single bar's own margin above the home indicator.
   const singlePadBottom = Math.max(insets.bottom - 8, 4);
+  // Part of the page area hidden by the keyboard on iOS (it sits over the toolbar first; the
+  // single bar's home indicator margin goes under the keyboard).
   const keyboardOverPage =
     Platform.OS === 'ios'
       ? Math.max(0, keyboardHeight - (single ? singlePadBottom - 2 : showToolbar ? toolbarHeight : 0))
