@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Platform, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -131,13 +131,26 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
   // Live state by download record: Android asks DownloadManager by id, iOS checks the files.
   const [status, setStatus] = useState<Record<string, Status>>({});
 
+  // Polled again only when the list itself changes (not when history does).
+  const downloadsKey = downloads.map((d) => `${d.id}:${d.nativeId ?? d.filePath ?? ''}`).join('|');
+  const downloadsRef = useRef(downloads);
+  useEffect(() => {
+    downloadsRef.current = downloads;
+  });
+
   useEffect(() => {
     let alive = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
     const poll = async () => {
+      const downloads = downloadsRef.current;
       const next: Record<string, Status> = {};
       if (Platform.OS === 'android') {
         const tracked = downloads.filter((d) => d.nativeId !== undefined);
-        if (!tracked.length) return;
+        if (!tracked.length) return stop();
         const rows = new Map((await ShieldEngine.getDownloads(tracked.map((d) => d.nativeId!))).map((r) => [r.id, r]));
         tracked.forEach((d) => {
           const row = rows.get(d.nativeId!);
@@ -145,22 +158,27 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
         });
       } else {
         const tracked = downloads.filter((d) => d.filePath);
-        if (!tracked.length) return;
+        if (!tracked.length) return stop();
         const rows = new Map((await ShieldEngine.getFileDownloads(tracked.map((d) => d.filePath!))).map((r) => [r.path, r]));
         tracked.forEach((d) => {
           const row = rows.get(d.filePath!);
           if (row) next[d.id] = row;
         });
       }
-      if (alive) setStatus(next);
+      if (!alive) return;
+      setStatus(next);
+      // Nothing downloading any more: stop asking every second.
+      const running = Object.values(next).some((s) => s.status === 'running' || s.status === 'pending' || s.status === 'paused');
+      if (!running) stop();
     };
+    // The timer first, so a first poll that finds nothing to watch can stop it.
+    timer = setInterval(() => poll().catch(() => {}), 1000);
     poll().catch(() => {});
-    const timer = setInterval(() => poll().catch(() => {}), 1000);
     return () => {
       alive = false;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
     };
-  }, [downloads]);
+  }, [downloadsKey]);
 
   const open = (item: (typeof downloads)[number]) => {
     if (Platform.OS === 'ios' && item.filePath) {
