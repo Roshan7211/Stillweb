@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
-import { Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { BackHandler, Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PRIVACY_POLICY_URL } from '../../blocking/config';
@@ -12,6 +13,16 @@ type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void }
 
 const LOGO = require('../../../assets/logo.png');
 
+type Licenses = {
+  components: { name: string; license: string; text: string }[];
+  texts: Record<string, string>;
+};
+
+/** Loaded when opened: the notices are long and nothing else needs them. */
+function loadLicenses(): Licenses {
+  return require('../licenses.generated.json');
+}
+
 const SOFTWARE = [
   ...catalog.software,
   { title: `Readability ${READABILITY_VERSION} (reader view)`, homepage: 'https://github.com/mozilla/readability', license: 'Apache-2.0' },
@@ -21,6 +32,55 @@ const SOFTWARE = [
 ];
 
 export default function AboutScreen({ theme, onBack, onOpen }: Props) {
+  // About › Open-source licenses › one notice or license text.
+  const [page, setPage] = useState<'about' | 'licenses' | { title: string; text: string }>('about');
+
+  // Android back steps out of the license pages before it closes About.
+  const inLicenses = page !== 'about';
+  useEffect(() => {
+    if (!inLicenses) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setPage((p) => (p === 'licenses' ? 'about' : 'licenses'));
+      return true;
+    });
+    return () => sub.remove();
+  }, [inLicenses]);
+
+  if (page === 'licenses') {
+    const { components, texts } = loadLicenses();
+    return (
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
+        <ScreenHeader title="Open-source licenses" onBack={() => setPage('about')} theme={theme} />
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={[styles.body, styles.pad, { color: theme.muted, marginTop: 12 }]}>
+            Stillweb includes the following software and data, used under their licenses.
+          </Text>
+          <SectionTitle theme={theme}>Components</SectionTitle>
+          {components.map((c) => (
+            <Row key={c.name} title={c.name} subtitle={c.license} theme={theme} onPress={() => setPage({ title: c.name, text: c.text })} />
+          ))}
+          <SectionTitle theme={theme}>License texts</SectionTitle>
+          {Object.entries(texts).map(([id, text]) => (
+            <Row key={id} title={id} theme={theme} onPress={() => setPage({ title: id, text })} />
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (page !== 'about') {
+    return (
+      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
+        <ScreenHeader title={page.title} onBack={() => setPage('licenses')} theme={theme} />
+        <ScrollView contentContainerStyle={styles.licenseText}>
+          <Text selectable style={[styles.mono, { color: theme.text }]}>
+            {page.text}
+          </Text>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   const lists = catalog.lists.filter((l) => !('platforms' in l) || (l.platforms as string[]).includes(Platform.OS));
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
@@ -80,6 +140,8 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
           <Row key={s.title} title={s.title} subtitle={`License: ${s.license}`} theme={theme} icon="external-link" onPress={() => onOpen(s.homepage)} />
         ))}
 
+        <Row title="Open-source licenses" subtitle="Full notices and license texts" theme={theme} onPress={() => setPage('licenses')} />
+
         <Text style={[styles.body, styles.pad, { color: theme.muted, marginTop: 16 }]}>
           GPLv3, CC BY-SA 3.0 and CC BY 3.0 licensed filter data is distributed unmodified apart from automated format
           conversion; the source of every list is linked above.
@@ -99,4 +161,6 @@ const styles = StyleSheet.create({
   pad: { paddingHorizontal: 16, textAlign: 'left' },
   bullet: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 4 },
   bulletText: { flex: 1, fontSize: 15, lineHeight: 21 },
+  licenseText: { padding: 16, paddingBottom: 40 },
+  mono: { fontSize: 12, lineHeight: 17, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
 });

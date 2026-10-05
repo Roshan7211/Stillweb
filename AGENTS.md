@@ -30,6 +30,7 @@ Run lint and typecheck before declaring any task done.
 - No Expo Router: the app is a single browser screen with overlay screens (`src/ui/screens/BrowserScreen.tsx`).
 - Never use brand names (for example video sites) in the app name, UI text or store assets. Credit filter list licenses in `AboutScreen`.
 - After changing Rust: `npm run build:rust:android`. After changing filter lists or the catalog: `npm run build:filters -- --bundle`.
+- After adding or upgrading dependencies, vendored scripts or filter lists: `npm run build:licenses` (About › Open-source licenses must list everything the app ships).
 
 ## Building with EAS
 

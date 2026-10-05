@@ -9,6 +9,7 @@
     "ios": "expo run:ios",
     "build:rust:android": "bash scripts/build-rust-android.sh",
     "build:filters": "node scripts/filters/build.mjs",
+    "build:licenses": "node scripts/gen-licenses.mjs",
     "typecheck": "tsc --noEmit"
   },
   "expo": {
