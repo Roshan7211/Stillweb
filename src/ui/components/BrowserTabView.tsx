@@ -9,6 +9,7 @@ import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { useTabActions, type Tab } from '../../browser/tabs';
 import { rateScript, stopAtEndScript } from '../../browser/listen';
+import { pageDarkScript, parsePageDark } from '../../browser/pageTheme';
 import type { LoadError } from '../../browser/loadErrors';
 import { isBlank, searchUrl, siteKey } from '../../browser/url';
 import type { Theme } from '../theme';
@@ -162,6 +163,13 @@ function BrowserTabView(props: Props) {
           updateTab(tab.id, { loading: false, progress: 1 });
           // Listen Mode: the tab's playback speed carries over to the new page.
           if (tab.playbackRate && tab.playbackRate !== 1) ref.current?.evaluateJavaScript(rateScript(tab.playbackRate)).catch(() => {});
+          // Edge to edge, the status bar sits over the page: its text follows the page's colour.
+          if (Platform.OS === 'ios') {
+            ref.current
+              ?.evaluateJavaScript(pageDarkScript())
+              .then((raw) => updateTab(tab.id, { pageDark: parsePageDark(raw) }))
+              .catch(() => {});
+          }
           // "End of this one" follows a playlist onto its next page (same site only).
           if (tab.stopAtEnd) {
             if (tab.stopAtEnd !== siteKey(url)) updateTab(tab.id, { stopAtEnd: undefined });

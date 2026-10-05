@@ -689,9 +689,16 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     // Pages that have a dark theme (prefers-color-scheme) show it exactly when the app is dark
     // and Dark websites is on; otherwise their light one, whatever the system appearance.
     let style: UIUserInterfaceStyle = forceDark ? .dark : .light
-    if webView.overrideUserInterfaceStyle != style { webView.overrideUserInterfaceStyle = style }
+    if webView.overrideUserInterfaceStyle != style {
+      // A change (not the first setting): pages that don't follow it live get re-checked.
+      let changed = webView.overrideUserInterfaceStyle != .unspecified
+      webView.overrideUserInterfaceStyle = style
+      if changed { themeChanged() }
+    }
     // Only one scroll view may answer the status bar tap.
     if webView.scrollView.scrollsToTop != active { webView.scrollView.scrollsToTop = active }
+    // A background tab whose theme changed is checked once it's on screen.
+    if active, themeCheckPending { scheduleThemeCheck() }
     applyChromeInsets()
   }
 
@@ -1177,7 +1184,89 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     if webView.url == pendingUpgradeURL { pendingUpgradeURL = nil }
     onLoadEnd(["url": webView.url?.absoluteString ?? ""])
     emitNavigationState()
+    if active, themeCheckPending || themeReloads > 0 { scheduleThemeCheck() }
   }
+
+  // MARK: - Light and dark
+
+  /// Reloads made for the current theme change (at most two).
+  private var themeReloads = 0
+  private var themeCheckPending = false
+  /// Sites that didn't follow the theme even after reloading (always light or always dark):
+  /// never reloaded for it again (kept across launches, the most recent 300).
+  private static var themeIgnoredHosts: [String] = UserDefaults.standard.stringArray(forKey: "theme.ignoredHosts") ?? [] {
+    didSet { UserDefaults.standard.set(themeIgnoredHosts, forKey: "theme.ignoredHosts") }
+  }
+
+  /// Many sites switch with the theme by themselves; some (YouTube) pick it on their server
+  /// from a cookie that their own script only updates on the next load, so the page that's
+  /// open keeps the old theme. Those are reloaded, up to twice.
+  private func themeChanged() {
+    themeReloads = 0
+    themeCheckPending = true
+    if active { scheduleThemeCheck() }
+  }
+
+  private func scheduleThemeCheck() {
+    // Sites that follow the theme live have updated by then.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.checkTheme() }
+  }
+
+  private func checkTheme() {
+    guard active, let webView, !webView.isLoading else { return }
+    themeCheckPending = false
+    guard let url = webView.url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+          let host = url.host?.lowercased(), !Self.themeIgnoredHosts.contains(host) else {
+      themeReloads = 0
+      return
+    }
+    webView.evaluateJavaScript(Self.themeCheckScript) { [weak self] result, _ in
+      guard let self else { return }
+      guard (result as? String) == "mismatch" else {
+        // Matches (or media is playing: never interrupted).
+        self.themeReloads = 0
+        return
+      }
+      guard self.themeReloads < 2 else {
+        Self.themeIgnoredHosts = Array((Self.themeIgnoredHosts + [host]).suffix(300))
+        self.themeReloads = 0
+        return
+      }
+      self.themeReloads += 1
+      self.reload()
+    }
+  }
+
+  /// "mismatch" when the page's background is dark in light mode or light in dark mode,
+  /// "playing" while audio or video plays, "ok" otherwise.
+  private static let themeCheckScript = """
+  (function () {
+    try {
+      var media = document.querySelectorAll('video, audio');
+      for (var i = 0; i < media.length; i++) if (!media[i].paused && !media[i].ended) return 'playing';
+      function parse(c) {
+        var m = /rgba?\\(([^)]+)\\)/.exec(c || '');
+        if (!m) return null;
+        var p = m[1].split(/[\\s,\\/]+/).filter(Boolean).map(parseFloat);
+        return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+      }
+      function luminance(c) {
+        function ch(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+        return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
+      }
+      var bg = null, els = [document.body, document.documentElement];
+      for (var j = 0; j < els.length && !bg; j++) {
+        var c = els[j] && parse(getComputedStyle(els[j]).backgroundColor);
+        if (c && c.a > 0.5) bg = c;
+      }
+      if (!bg) return 'ok';
+      var pageDark = luminance(bg) < 0.2;
+      return pageDark !== matchMedia('(prefers-color-scheme: dark)').matches ? 'mismatch' : 'ok';
+    } catch (e) {
+      return 'ok';
+    }
+  })()
+  """
 
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
     webView.scrollView.refreshControl?.endRefreshing()

@@ -26,6 +26,7 @@ import { useLibrary } from '../../browser/library';
 import { rateScript, stopAtEndDoneScript, stopAtEndScript, type SleepChoice } from '../../browser/listen';
 import { pickerBiggerScript, pickerCancelScript, pickerFinishScript, pickerStartScript } from '../../browser/picker';
 import { refreshBlockedTotal } from '../../browser/blockedTotal';
+import { pageDarkScript, parsePageDark } from '../../browser/pageTheme';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
@@ -285,6 +286,22 @@ export default function BrowserScreen() {
     setChromeCollapsed(false);
     setPicking(false);
   }, [activeTab?.id, captureThumbnail]);
+
+  // After a theme change, pages that switch by themselves have new colours: the status bar
+  // over them follows (pages that need a reload are re-measured when they finish loading).
+  const pagesDark = theme.dark && settings.darkPages;
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    const timer = setTimeout(() => {
+      refs.current.forEach((ref, id) => {
+        ref
+          .evaluateJavaScript(pageDarkScript())
+          .then((raw) => updateTab(id, { pageDark: parsePageDark(raw) }))
+          .catch(() => {});
+      });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [pagesDark, updateTab]);
 
   const registerRef = useCallback((id: string, ref: ShieldWebViewRef | null) => {
     if (ref) refs.current.set(id, ref);
@@ -623,6 +640,11 @@ export default function BrowserScreen() {
     [edgeToEdge, underBars, insets.top, insets.bottom, coveredBottom],
   );
   const fg = incognito ? '#ECE6F7' : theme.text;
+  // Edge to edge the status bar is over the page: light or dark text after the page's own
+  // colour; over the browser's own screens (new tab, typing, overlays) after the app's theme.
+  const overPage =
+    edgeToEdge && overlay === 'none' && !editing && !!activeTab && !isBlank(activeTab.url) && activeTab.pageDark !== undefined;
+  const statusStyle: 'light' | 'dark' = overPage ? (activeTab!.pageDark ? 'light' : 'dark') : incognito || theme.dark ? 'light' : 'dark';
   const normalCount = tabs.filter((t) => !t.incognito).length;
   const privateCount = tabs.length - normalCount;
   const tabCount = incognito ? privateCount : normalCount;
@@ -847,12 +869,16 @@ export default function BrowserScreen() {
           ? { backgroundColor: chrome }
           : { backgroundColor: chrome, paddingBottom: keyboardLift, paddingLeft: insets.left, paddingRight: insets.right },
       ]}>
-      <StatusBar style={incognito || theme.dark ? 'light' : 'dark'} />
+      <StatusBar style={statusStyle} />
       {edgeToEdge ? (
-        // The page shows through a frosted strip under the status bar, like Safari.
+        // The page scrolls under the status bar, seen through clear glass (like Safari's
+        // scroll edge), tinted after the page so the time and battery stay readable.
         <View style={[styles.statusBackdrop, { height: insets.top }]} pointerEvents="none">
-          <BlurView tint={incognito || theme.dark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} intensity={100} style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: chrome, opacity: 0.55 }]} />
+          <BlurView
+            tint={statusStyle === 'light' ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+            intensity={60}
+            style={StyleSheet.absoluteFill}
+          />
         </View>
       ) : (
         <View style={{ paddingTop: insets.top, backgroundColor: chrome, zIndex: 10 }}>
@@ -943,8 +969,13 @@ export default function BrowserScreen() {
         <View
           style={[styles.bottomOverlay, { bottom: keyboardLift + barShift }]}
           onLayout={(e) => setBarsHeight(Math.round(e.nativeEvent.layout.height))}>
-          <BlurView tint={incognito || theme.dark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} intensity={100} style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: chrome, opacity: 0.55 }]} />
+          {/* Glass: the page shows through, tinted lightly with the app's colour. */}
+          <BlurView
+            tint={incognito || theme.dark ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
+            intensity={80}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: chrome, opacity: 0.2 }]} />
           {bottomStack}
         </View>
       ) : (

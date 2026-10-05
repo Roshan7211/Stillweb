@@ -33,6 +33,8 @@ export type Tab = {
   playbackRate?: number;
   /** Listen Mode's "end of this one" sleep timer: armed on this site (host without www.). */
   stopAtEnd?: string;
+  /** The page's own background is dark (iOS: the status bar over it stays readable). */
+  pageDark?: boolean;
 };
 
 type State = { tabs: Tab[]; activeId: string | null; restored: boolean };
