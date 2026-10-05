@@ -164,9 +164,18 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
         ) : (productsState === 'ready' || showingPreview) && chosen ? (
           <>
             {showingPreview ? (
-              <Text style={[styles.previewNote, { color: theme.text, backgroundColor: theme.accentSoft }]}>
-                Preview with example prices. Buying works once the plans are available from the App Store.
-              </Text>
+              <View style={[styles.previewNote, { backgroundColor: theme.accentSoft }]}>
+                <Text style={[styles.previewText, { color: theme.text }]}>
+                  Preview with example prices. Buying works once the plans are available from the App Store.
+                </Text>
+                {productsState === 'loading' ? (
+                  <ActivityIndicator color={theme.accent} />
+                ) : (
+                  <Pressable onPress={loadProducts} accessibilityRole="button" hitSlop={8}>
+                    <Text style={[styles.link, { color: theme.accent }]}>Load the real plans</Text>
+                  </Pressable>
+                )}
+              </View>
             ) : null}
             <View style={styles.plans}>
               {products.map((product) => {
@@ -313,7 +322,8 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 15, textAlign: 'center' },
   statusTitle: { fontSize: 17, fontWeight: '600', textAlign: 'center' },
   checklist: { fontSize: 14, lineHeight: 21, alignSelf: 'stretch' },
-  previewNote: { marginTop: 24, padding: 12, borderRadius: 12, overflow: 'hidden', fontSize: 14, lineHeight: 19, textAlign: 'center' },
+  previewNote: { marginTop: 24, padding: 12, borderRadius: 12, alignItems: 'center', gap: 6 },
+  previewText: { fontSize: 14, lineHeight: 19, textAlign: 'center' },
   devNote: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 12 },
   link: { fontSize: 15, fontWeight: '600', marginTop: 4 },
   footer: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 20 },

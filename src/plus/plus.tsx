@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
 import { PlusStore, type PlusEntitlement, type PlusProduct } from '../../native/shield-webview';
@@ -93,17 +93,23 @@ export function PlusProvider({ children }: { children: ReactNode }) {
     };
   }, [apply]);
 
+  // Only the latest request's answer counts (an older, slower one can't overwrite it).
+  const productsRequest = useRef(0);
   const loadProducts = useCallback(() => {
     if (!PlusStore) return;
+    const request = ++productsRequest.current;
     setProductsState('loading');
     PlusStore.getProducts(PRODUCT_ORDER)
       .then((list) => {
+        if (request !== productsRequest.current) return;
         const ours = list.filter((p) => PRODUCT_ORDER.includes(p.id));
         setProducts(ours.sort((a, b) => PRODUCT_ORDER.indexOf(a.id) - PRODUCT_ORDER.indexOf(b.id)));
         setMissingProducts(PRODUCT_ORDER.filter((id) => !ours.some((p) => p.id === id)));
         setProductsState(ours.length ? 'ready' : 'empty');
       })
-      .catch(() => setProductsState('error'));
+      .catch(() => {
+        if (request === productsRequest.current) setProductsState('error');
+      });
   }, []);
 
   const purchase = useCallback(
