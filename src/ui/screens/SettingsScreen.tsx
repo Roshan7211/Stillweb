@@ -12,6 +12,7 @@ import { useSettings } from '../../browser/settings';
 import { hasRemoteSuggestions } from '../../browser/suggest';
 import { SEARCH_ENGINES } from '../../browser/url';
 import { usePlus } from '../../plus/plus';
+import { fromPerMonth } from '../../plus/pricing';
 import { Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
 import ProfilesSection from '../components/ProfilesSection';
 import { ACCENTS, type AccentId, type Theme } from '../theme';
@@ -42,6 +43,15 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
   const [updateMessage, setUpdateMessage] = useState('');
   const [showEngines, setShowEngines] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // The Plus row shows the starting price once the App Store has the plans.
+  const { supported: plusSupported, productsState, loadProducts } = plus;
+  useEffect(() => {
+    if (plusSupported && !plus.entitlement && productsState === 'idle') loadProducts();
+    // When Settings opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const fromPrice = productsState === 'ready' ? fromPerMonth(plus.products) : null;
 
   useEffect(() => {
     ShieldEngine.getStatus().then(setStatus).catch(() => {});
@@ -123,7 +133,13 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
         {plus.supported ? (
           <Row
             title="Stillweb Plus"
-            subtitle={plus.entitlement ? 'Active. Thank you for supporting Stillweb' : 'Get more out of Stillweb'}
+            subtitle={
+              plus.entitlement
+                ? 'Active. Thank you for supporting Stillweb'
+                : fromPrice
+                  ? `Get more out of Stillweb, from ${fromPrice} a month`
+                  : 'Get more out of Stillweb'
+            }
             icon="star"
             theme={theme}
             onPress={onOpenPlus}

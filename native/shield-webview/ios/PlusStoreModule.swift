@@ -12,6 +12,12 @@ public class PlusStoreModule: Module {
 
     Events("onEntitlementsChanged")
 
+    // TestFlight (and development) builds buy with the App Store's sandbox: the Plus screen
+    // can then explain plans that aren't set up yet, which App Store users never see.
+    Constant("sandbox") { () -> Bool in
+      Bundle.main.appStoreReceiptURL?.lastPathComponent != "receipt"
+    }
+
     OnCreate {
       // Purchases that complete outside the app's purchase flow: renewals, Ask to Buy
       // approvals, refunds, offer codes redeemed in the App Store.

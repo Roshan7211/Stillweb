@@ -26,6 +26,19 @@ export function formatPrice(amount: number, currencyCode: string): string | null
   }
 }
 
+/** The lowest monthly cost among the subscriptions ("$1.67"), for "From … a month". */
+export function fromPerMonth(products: PlusProduct[]): string | null {
+  let best: { amount: number; currency: string } | null = null;
+  for (const p of products) {
+    if (p.type !== 'subscription' || !p.period) continue;
+    const months = p.period.unit === 'year' ? 12 * p.period.value : p.period.unit === 'month' ? p.period.value : 0;
+    if (!months) continue;
+    const amount = p.price / months;
+    if (!best || amount < best.amount) best = { amount, currency: p.currencyCode };
+  }
+  return best ? formatPrice(best.amount, best.currency) : null;
+}
+
 export function hasTrial(product: PlusProduct): boolean {
   return !!product.introEligible && product.introOffer?.paymentMode === 'freeTrial';
 }

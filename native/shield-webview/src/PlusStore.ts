@@ -39,6 +39,8 @@ type PlusStoreEvents = {
 };
 
 declare class PlusStoreModule extends NativeModule<PlusStoreEvents> {
+  /** TestFlight or development build (sandbox purchases), not the App Store. */
+  readonly sandbox?: boolean;
   getProducts(ids: string[]): Promise<PlusProduct[]>;
   purchase(id: string): Promise<PurchaseOutcome>;
   getEntitlements(): Promise<PlusEntitlement[]>;
