@@ -455,13 +455,16 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
               icon="layers"
               theme={theme}
             />
-            <Row
-              title={updating ? 'Checking for updates…' : 'Check for filter updates'}
-              subtitle={updateMessage || undefined}
-              icon="refresh-cw"
-              theme={theme}
-              onPress={updating ? undefined : checkUpdates}
-            />
+            {/* Only with an update server: otherwise the filters built into the app are used. */}
+            {FILTER_MANIFEST_URL ? (
+              <Row
+                title={updating ? 'Checking for updates…' : 'Check for filter updates'}
+                subtitle={updateMessage || undefined}
+                icon="refresh-cw"
+                theme={theme}
+                onPress={updating ? undefined : checkUpdates}
+              />
+            ) : null}
             <Row title="Test blocking" subtitle="Open the ad block test page" icon="activity" theme={theme} onPress={onOpenShieldTest} />
           </>
         ) : null}

@@ -47,7 +47,7 @@ export default function NewTabPage({ theme, incognito, active, onOpen, onOpenRep
           <Icon name="eye-off" size={26} color={fg} />
           <Text style={[styles.cardTitle, { color: fg }]}>Private tab</Text>
           <Text style={[styles.cardBody, { color: muted }]}>
-            Pages you visit here aren't saved to history, and their cookies and site data are deleted when you close
+            Pages you visit here aren’t saved to history, and their cookies and site data are deleted when you close
             all private tabs.
             {ShieldEngine.privateTabsIsolated
               ? ' Private tabs keep their own cookies, separate from normal tabs.'

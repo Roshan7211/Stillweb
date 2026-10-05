@@ -18,7 +18,9 @@ const TEST_PAGES = [
 type Props = { onClose?: () => void };
 
 export default function ShieldTestScreen({ onClose }: Props) {
-  const theme = useTheme();
+  const { settings, update } = useSettings();
+  // The app's own theme choice, like every other screen.
+  const theme = useTheme(settings.theme);
   const webView = useRef<ShieldWebViewRef>(null);
   const [status, setStatus] = useState<EngineStatus | null>(null);
   const [blocked, setBlocked] = useState(0);
@@ -35,7 +37,6 @@ export default function ShieldTestScreen({ onClose }: Props) {
     return () => sub.remove();
   }, []);
 
-  const { settings, update } = useSettings();
   const shieldsOn = settings.shields.enabled;
 
   const toggleShields = (value: boolean) => {

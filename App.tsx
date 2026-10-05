@@ -22,6 +22,19 @@ const restart = () => {
   reloadAppAsync('Restart after an error').catch(() => {});
 };
 
+/** Start-up work may not hold the app on a blank screen: it gets a few seconds at most. */
+function atMost(work: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    work
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
+}
+
 /** Waits for settings so start-up privacy work happens before any page loads. */
 function Root() {
   const { settings, loaded } = useSettings();
@@ -34,12 +47,12 @@ function Root() {
   useEffect(() => {
     if (!loaded) return;
     (async () => {
-      await applyDevProxy();
+      await atMost(applyDevProxy(), 3000);
       // Private tabs are never restored, so anything left in the private profile (for
       // example after the app was killed) is wiped before browsing starts.
-      await ShieldEngine.clearPrivateData().catch(() => {});
+      await atMost(ShieldEngine.clearPrivateData(), 4000);
       if (settings.clearDataOnExit) {
-        await ShieldEngine.clearBrowsingData().catch(() => {});
+        await atMost(ShieldEngine.clearBrowsingData(), 6000);
         library.clearHistory();
         stats.clear();
       }

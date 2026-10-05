@@ -80,7 +80,7 @@ export default function ShieldPanel({
       </View>
 
       <Text style={[styles.note, { color: theme.muted }]}>
-        If this site doesn't work properly, turn protection off. It's remembered for {site || 'this site'}.
+        If this site doesn’t work properly, turn protection off. It’s remembered for {site || 'this site'}.
       </Text>
       {site ? (
         <>
