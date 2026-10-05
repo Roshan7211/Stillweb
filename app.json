@@ -108,12 +108,16 @@
         }
       ],
       "expo-font",
-      "./plugins/with-alternate-icons"
-    ],
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1E3A8A"
-    }
+      "./plugins/with-alternate-icons",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#1E3A8A"
+        }
+      ]
+    ]
   }
 }

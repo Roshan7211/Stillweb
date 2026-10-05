@@ -1,4 +1,5 @@
 import { reloadAppAsync } from 'expo';
+import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { Appearance, AppState, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -17,6 +18,14 @@ import BrowserScreen from './src/ui/screens/BrowserScreen';
 import { useTheme } from './src/ui/theme';
 
 installGlobalErrorHandler();
+
+// The launch screen stays until the browser is ready (instead of a blank screen while
+// start-up privacy work runs). It never outlasts 8 seconds, whatever happens.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+const hideSplash = () => {
+  SplashScreen.hideAsync().catch(() => {});
+};
+setTimeout(hideSplash, 8000);
 
 const restart = () => {
   reloadAppAsync('Restart after an error').catch(() => {});
@@ -77,7 +86,9 @@ function Root() {
   }, []);
 
   useEffect(() => {
-    if (ready) markAppReady();
+    if (!ready) return;
+    markAppReady();
+    hideSplash();
   }, [ready]);
 
   // Plus features reach the native side only while Plus is active.
@@ -119,6 +130,7 @@ function Root() {
 /** Shown if even settings or storage fail to start. */
 function StartupProblem() {
   const theme = useTheme();
+  useEffect(hideSplash, []);
   return (
     <ProblemScreen
       theme={theme}
