@@ -344,7 +344,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
           try { window.frames[i].postMessage({ __stillwebAllowPlay: true }, '*'); } catch (e) {}
         }
       }
-      ['touchend', 'mousedown', 'keydown', 'click'].forEach(function (type) {
+      ['touchstart', 'pointerdown', 'touchend', 'mousedown', 'keydown', 'click'].forEach(function (type) {
         window.addEventListener(type, function (e) { if (e.isTrusted) lift(); }, true);
       });
       window.addEventListener('message', function (e) {
@@ -380,7 +380,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     source: """
     (function () {
       var told = false;
-      ['touchend', 'mousedown', 'keydown'].forEach(function (type) {
+      ['touchstart', 'pointerdown', 'touchend', 'mousedown', 'keydown'].forEach(function (type) {
         window.addEventListener(type, function (e) {
           if (told || !e.isTrusted) return;
           told = true;
@@ -485,13 +485,19 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         resumes.push(now);
         resume(m);
       }
-      ['touchend', 'click', 'keydown'].forEach(function (type) {
-        window.addEventListener(type, function (e) { if (e.isTrusted) gestureAt = Date.now(); }, true);
+      ['touchstart', 'pointerdown', 'touchend', 'click', 'keydown'].forEach(function (type) {
+        window.addEventListener(type, function (e) {
+          if (!e.isTrusted) return;
+          gestureAt = Date.now();
+          // The user is back at the page: what starts now is theirs, however long it loads.
+          keepPausedUntil = 0;
+        }, true);
       });
 
       var carrier = null;
       var carrierOn = false; // it should be playing
       var carrierPlayed = false; // and it has been, since it was last started
+      var carrierPausedAt = 0; // when something else paused it (0 while it plays)
       var carrierStarts = [];
       var gapTimer = 0;
       var nudgeTimer = 0;
@@ -523,10 +529,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         clearTimeout(nudgeTimer);
         carrierOn = false;
         carrierPlayed = false;
+        carrierPausedAt = 0;
         try { if (carrier && !carrier.paused) carrier.pause(); } catch (e) {}
       }
       function carrierPlaying() {
         carrierPlayed = true;
+        carrierPausedAt = 0;
         if (!interrupted) return;
         // The system gave the audio back (the call ended).
         interrupted = false;
@@ -538,6 +546,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       function carrierPaused() {
         if (!carrierOn || !carrier || !carrier.paused) return;
         var now = Date.now();
+        carrierPausedAt = now;
         if (now - playAt < 2000) {
           // A video that started playing paused it.
           carrierStarts = carrierStarts.filter(function (t) { return now - t < 10000; });
@@ -555,12 +564,14 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         clearTimeout(nudgeTimer);
         syncLockScreen();
       }
-      // Keeps the page running until the next media plays; nothing after a minute: the user
-      // isn't listening any more, and the page may rest.
+      // Keeps the page running until the next media plays; nothing after a minute: the page
+      // may rest.
       function bridgeGap() {
         startCarrier();
         gapTimer = setTimeout(function () {
           listening = false;
+          // Whatever still starts (a slow load) may play.
+          lenient = true;
           mark(false);
           stopCarrier();
         }, 60000);
@@ -595,9 +606,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         return function () {
           var now = Date.now();
           userActionAt = now;
+          keepPausedUntil = 0;
           if (action === 'pause' || action === 'stop') {
             userPausedAt = now;
             listening = false;
+            lenient = false;
             mark(false);
             stopCarrier();
           } else if (background && (action === 'play' || action === 'nexttrack' || action === 'previoustrack')) {
@@ -716,6 +729,20 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       function audible(m) {
         return !!m && typeof m.play === 'function' && m !== carrier && !m.muted;
       }
+      function inPage(m) {
+        return audible(m) && m.isConnected;
+      }
+      // The media that is playing right now, going by the page itself.
+      function playingNow() {
+        if (started && inPage(started) && !started.paused && !started.ended) return started;
+        try {
+          var all = document.querySelectorAll('video, audio');
+          for (var i = 0; i < all.length; i++) {
+            if (audible(all[i]) && !all[i].paused && !all[i].ended) return all[i];
+          }
+        } catch (e) {}
+        return null;
+      }
       // Media started by the system or the page while the user wants silence.
       function unwanted(now) {
         if (now - gestureAt < 1500 || now - userActionAt < 2500) return false;
@@ -753,16 +780,16 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       }, true);
       document.addEventListener('pause', function (e) {
         var m = e.target;
+        // Also for media that was muted in the meantime (which doesn't count below).
+        if (m && m === started && m.paused) started = null;
         if (!audible(m) || quiet()) return;
         var now = Date.now();
         if (m === silenced) {
           silenced = null;
-          if (m === started) started = null;
           return;
         }
         // Already playing again (this pause was undone before it was announced).
         if (!m.paused) return;
-        if (m === started) started = null;
         if (m.ended) return;
         if (now - userPausedAt < 1500) return syncLockScreen();
         if (!background) {
@@ -770,9 +797,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
           return;
         }
         if (!listening) return syncLockScreen();
-        // The carrier was stopped too, and not by a video starting: the system took the audio.
-        if (carrierOn && carrierPlayed && carrier && carrier.paused && now - playAt > 2000) return systemTookAudio();
         if (interrupted) return;
+        // The carrier was stopped at the same moment, and not by a video starting: the system
+        // took the audio.
+        if (carrierOn && carrierPlayed && carrier && carrier.paused && now - playAt > 2000 && (!carrierPausedAt || now - carrierPausedAt < 1000)) {
+          return systemTookAudio();
+        }
         if (now < resumeUntil) return resumeAgain(m);
         if (m === current || !current || !current.isConnected) {
           // Paused by the page, not the user: a player switching to the next video pauses
@@ -787,8 +817,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       }, true);
       document.addEventListener('ended', function (e) {
         var m = e.target;
+        if (m && m === started) started = null;
         if (!audible(m) || quiet()) return;
-        if (m === started) started = null;
         if (!background || !listening || interrupted) return;
         mark(true);
         syncLockScreen();
@@ -797,6 +827,18 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       ['seeked', 'ratechange', 'durationchange'].forEach(function (type) {
         document.addEventListener(type, function (e) { if (e.target === current) syncLockScreen(); }, true);
       });
+      // Many videos start muted and get their sound with a tap: they count from then on. Muting
+      // one says the user isn't listening to it.
+      document.addEventListener('volumechange', function (e) {
+        var m = e.target;
+        if (!m || typeof m.play !== 'function' || m === carrier || quiet()) return;
+        if (m.muted) {
+          if (m === started) started = null;
+        } else if (!m.paused && !m.ended && m !== started) {
+          started = m;
+          current = m;
+        }
+      }, true);
       var progressAt = -1;
       var carrierRetryAt = 0;
       document.addEventListener('timeupdate', function (e) {
@@ -822,33 +864,40 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         if (state === 'inactive') {
           if (!background && !resignAt) {
             resignAt = now;
-            atResign = started;
+            atResign = playingNow();
             // Control Center's buttons count as the user's from here on.
             useFallbacks(true);
           }
-        } else if (state === 'active') {
-          resignAt = 0;
-          atResign = null;
-          if (!background) useFallbacks(false);
         } else if (state === 'background' && !wasBackground) {
           background = true;
           useFallbacks(true);
           // What was playing when the app left the screen. The system's pause can land just
           // before the app is told, or be on its way; a pause from before the app started to
           // leave was the user's.
-          var m = started;
-          if (!m && lastPause && userPausedAt < lastPause.t) {
-            if (resignAt ? lastPause.m === atResign && lastPause.t >= resignAt : now - lastPause.t < 1500) m = lastPause.m;
+          var m = null;
+          if (started && inPage(started) && !started.ended) {
+            m = started;
+          } else if (resignAt) {
+            // Nothing but the system (or Control Center, which is the user) pauses it meanwhile.
+            if (atResign && inPage(atResign) && userPausedAt < resignAt) m = atResign;
+          } else {
+            m = playingNow();
+            if (!m && lastPause && userPausedAt < lastPause.t && now - lastPause.t < 1500 && inPage(lastPause.m)) m = lastPause.m;
           }
-          listening = !!m && m.isConnected && !m.ended && !quiet();
+          listening = !!m && !quiet();
           interrupted = false;
           keepPausedUntil = 0;
           resumes = [];
           if (listening) {
             current = m;
             resumeUntil = now + 3000;
-            startCarrier();
-            if (m.paused) resume(m);
+            if (m.ended) {
+              // It finished on the way out: the page gets its time to start the next one.
+              bridgeGap();
+            } else {
+              startCarrier();
+              if (m.paused) resume(m);
+            }
             syncLockScreen();
             mark(true);
           } else if (fresh && !quiet()) {
@@ -861,7 +910,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
           }
           moveFramesToTimers();
           lastPause = null;
-        } else if (state === 'foreground' && wasBackground) {
+        } else if ((state === 'foreground' || state === 'active') && wasBackground) {
+          // ('active' alone also ends it: a page that loaded just as the app came back was told
+          // 'background' and nothing since.)
           background = false;
           // Paused by the user, or silenced by a call or another app: it stays that way.
           keepPausedUntil = listening && !interrupted ? 0 : now + 2500;
@@ -886,6 +937,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
               setPlaybackState.call(mediaSession, pageSetsState ? (current && !current.paused ? 'playing' : 'paused') : 'none');
             } catch (e) {}
           }
+        } else if (state === 'active') {
+          resignAt = 0;
+          atResign = null;
+          useFallbacks(false);
         }
         // Players inside frames (embedded videos) get the news too.
         for (var i = 0; i < window.frames.length; i++) {
@@ -1195,7 +1250,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     appObservers = states.map { name, state in
       center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         self?.sendAppState(state)
-        if state == "active" { self?.reloadIfNeeded() }
+        if state == "foreground" || state == "active" { self?.reloadIfNeeded(returning: true) }
       }
     }
   }
@@ -1317,8 +1372,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// loaded again when it is looked at, like in Safari.
   private var needsReload = false
 
-  private func reloadIfNeeded() {
-    guard needsReload, active, webView != nil, UIApplication.shared.applicationState == .active else { return }
+  /// `returning`: the app is on its way back to the screen (it still counts as in the
+  /// background while it is told so).
+  private func reloadIfNeeded(returning: Bool = false) {
+    guard needsReload, active, webView != nil else { return }
+    guard returning || UIApplication.shared.applicationState == .active else { return }
     reload(quiet: true)
   }
 
@@ -1494,7 +1552,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       guard shieldsActive, engine.calmMode, let source = engine.autoconsentSource, let target = message.webView else { return }
       target.evaluateJavaScript(source + "\n;void 0;", in: message.frameInfo, in: .page, completionHandler: nil)
     } else if message.name == "shieldMedia" {
-      guard let body = message.body as? [String: Any], let id = body["id"] as? String else { return }
+      // A pop-up shares its opener's handlers: its media isn't this tab's.
+      guard message.webView === webView, let body = message.body as? [String: Any], let id = body["id"] as? String else { return }
       if body["playing"] as? Bool == true { playingFrames.insert(id) } else { playingFrames.remove(id) }
       emitMediaState()
     } else if message.name == "shieldGesture" {
@@ -1563,6 +1622,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     }
 
     if isMainFrame && (scheme == "http" || scheme == "https") {
+      // Back and forward (also by swiping) are the user's doing, like a tapped link.
+      if action.navigationType == .backForward { contentController?.quiet = false }
       if action.request.httpMethod == "GET", let upgraded = upgradeIfNeeded(url) {
         decisionHandler(.cancel)
         applyShields(for: upgraded)

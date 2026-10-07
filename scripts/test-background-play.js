@@ -104,6 +104,9 @@ function makeWorld(scriptSource, { hostname = 'music.example.com', quiet = false
     nowPlaying() { this.fire('playing'); }
     finish() { this.ended = true; this.paused = true; this.fire('pause'); this.fire('ended'); }
     tick(by = 1) { this.currentTime += by; this.fire('timeupdate'); }
+    setMuted(muted) { this.muted = muted; this.fire('volumechange'); }
+    // Taken out of the page: it stops, and the page's listeners never hear of it.
+    remove() { this.attached = false; this.isConnected = false; this.paused = true; }
   }
 
   class MediaSession {
@@ -579,6 +582,188 @@ test('a restored (quiet) page that loads in the background stays silent', (w, ch
   w.app('background', true);
   check('no carrier', !w.carrier || w.carrier.paused);
 }, { quiet: true });
+
+test('a video that starts muted and is unmuted with a tap keeps playing after leaving', (w, check) => {
+  const v = w.video();
+  v.muted = true;
+  v.play();
+  w.advance(5);
+  v.nowPlaying();
+  w.advance(2000);
+  w.gesture();
+  v.setMuted(false);
+  w.advance(3000);
+  leave(w, v);
+  check('played again', !v.paused);
+  v.nowPlaying();
+  w.advance(100);
+  check('carrier plays', w.carrier && !w.carrier.paused);
+});
+
+test('muted, then paused, then leaving: stays paused', (w, check) => {
+  const v = startPlaying(w);
+  w.gesture();
+  v.setMuted(true);
+  w.advance(1000);
+  w.gesture();
+  v.pause();
+  w.advance(1000);
+  w.app('inactive');
+  w.app('background');
+  w.advance(6000);
+  check('stays paused', v.paused);
+  check('no carrier', !w.carrier || w.carrier.paused);
+});
+
+test('muted while playing, then leaving: not played again, nothing kept awake', (w, check) => {
+  const v = startPlaying(w);
+  w.gesture();
+  v.setMuted(true);
+  w.advance(1000);
+  const calls = v.playCalls;
+  w.app('inactive');
+  w.advance(30);
+  w.app('background');
+  v.systemPause();
+  w.advance(6000);
+  check('not asked to play', v.playCalls === calls);
+  check('no carrier', !w.carrier || w.carrier.paused);
+});
+
+test('the next track takes more than a minute to load: it still plays', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  w.advance(5000);
+  v.finish();
+  w.advance(61000);
+  check('carrier rests', w.carrier.paused);
+  v.play();
+  w.advance(50);
+  check('not silenced', !v.paused);
+  v.nowPlaying();
+  w.advance(100);
+  check('playing with the carrier', !v.paused && !w.carrier.paused);
+});
+
+test('the app is only told it is in the background (no notice of leaving): what plays is found', (w, check) => {
+  const v = startPlaying(w);
+  w.app('background');
+  v.systemPause();
+  w.advance(50);
+  check('played again', !v.paused);
+  check('carrier plays', w.carrier && !w.carrier.paused);
+});
+
+test('a video taken out of the page while playing is not played again', (w, check) => {
+  const v = startPlaying(w);
+  v.remove();
+  const calls = v.playCalls;
+  w.app('inactive');
+  w.app('background');
+  w.advance(6000);
+  check('not asked to play', v.playCalls === calls);
+  check('no carrier', !w.carrier || w.carrier.paused);
+});
+
+test('a page that loaded in the background, paused from the lock screen: WebKit\'s play is undone', (w, check) => {
+  w.app('background', true);
+  const v = w.video();
+  w.mediaSession.constructor.prototype.setActionHandler.call(w.mediaSession, 'pause', () => v.pause());
+  v.play();
+  w.advance(50);
+  v.nowPlaying();
+  w.advance(5000);
+  w.mediaSession.handlers.pause();
+  w.advance(5000);
+  v.paused = false; v.fire('play'); // WebKit, just before the app says it is back
+  w.advance(50);
+  check('undone', v.paused);
+});
+
+test('the video finishes just as the app leaves: the page is kept awake for the next one', (w, check) => {
+  const v = startPlaying(w);
+  w.app('inactive');
+  v.finish();
+  w.advance(20);
+  w.app('background');
+  check('carrier bridges', w.carrier && !w.carrier.paused);
+  v.play();
+  w.advance(50);
+  v.nowPlaying();
+  w.advance(100);
+  check('next one plays', !v.paused && !w.carrier.paused);
+});
+
+test('a player that starts on touch-down, right after the app is back', (w, check) => {
+  const v = startPlaying(w);
+  w.gesture();
+  v.pause();
+  w.advance(3000);
+  w.app('inactive');
+  w.app('background');
+  w.advance(5000);
+  w.app('foreground');
+  w.app('active');
+  w.advance(300);
+  w.gesture('touchstart');
+  v.play();
+  w.advance(50);
+  check('the user\'s tap plays', !v.paused);
+});
+
+test('a page pause long after the carrier was paused is still bridged', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  w.advance(8000);
+  w.carrier.systemPause(); // unexplained; the video keeps playing
+  w.advance(100);
+  v.tick();
+  w.advance(100);
+  w.carrier.systemPause(); // and again, before the next retry is due
+  w.advance(1500);
+  v.tick();
+  w.advance(50);
+  v.pause(); // the page switches videos
+  w.advance(100);
+  check('carrier bridges the gap', !w.carrier.paused);
+  w.advance(4100);
+  check('nudged', !v.paused);
+});
+
+test('a page told only that it loaded in the background, then that the app is active', (w, check) => {
+  w.app('background', true);
+  w.app('active');
+  w.advance(3000);
+  const v = w.video();
+  v.play();
+  w.advance(50);
+  v.nowPlaying();
+  w.advance(100);
+  check('plays', !v.paused);
+  check('no carrier on screen', !w.carrier || w.carrier.paused);
+});
+
+test('back in the app, a video is tapped at once and takes two seconds to start', (w, check) => {
+  const v = startPlaying(w);
+  w.gesture();
+  v.pause();
+  w.advance(3000);
+  w.app('inactive');
+  w.app('background');
+  w.advance(5000);
+  w.app('foreground');
+  w.app('active');
+  w.advance(300);
+  w.gesture();
+  w.advance(1900);
+  v.play();
+  w.advance(50);
+  v.nowPlaying();
+  w.advance(50);
+  check('plays', !v.paused);
+});
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);

@@ -138,6 +138,8 @@ function BrowserTabView(props: Props) {
           updateTab(tab.id, {
             url: s.url,
             title: s.title,
+            // Also for a page's pop-up, whose first load starts before this view exists.
+            ...(isBlank(s.url) ? null : { visited: true }),
             canGoBack: s.canGoBack,
             canGoForward: s.canGoForward,
             loading: s.loading,
@@ -156,7 +158,7 @@ function BrowserTabView(props: Props) {
         onLoadStart={() => {
           lastProgress.current = 0;
           setLoadError(null);
-          updateTab(tab.id, { loading: true, reader: false, visited: true });
+          updateTab(tab.id, { loading: true, reader: false });
         }}
         onLoadError={({ nativeEvent }) => {
           // A navigation that turned into a download (or was replaced) isn't a failure.
