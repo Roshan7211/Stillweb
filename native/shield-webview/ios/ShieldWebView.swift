@@ -1158,7 +1158,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         covered = UIEdgeInsets(
           top: max(0, safeAreaInsets.top + chrome.top), left: 0, bottom: max(0, safeAreaInsets.bottom + chrome.bottom), right: 0)
       }
-      if webView.obscuredContentInsets != covered { webView.obscuredContentInsets = covered }
+      let before = webView.obscuredContentInsets
+      if before != covered {
+        // Less is covered: the page's area grows (see minimumZoomChanged).
+        if covered.top + covered.bottom < before.top + before.bottom { areaGrewAt = Date() }
+        webView.obscuredContentInsets = covered
+      }
       inset = covered
     } else if let chrome = chromeInsets {
       behavior = .always
@@ -1325,6 +1330,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     wv.scrollView.contentInsetAdjustmentBehavior = .never
     wv.scrollView.delegate = self
     wv.scrollView.scrollsToTop = active
+    // A vertical drag doesn't drift sideways on pages that are wider than the screen.
+    wv.scrollView.isDirectionalLockEnabled = true
     // Opaque, so pages without their own background get the default white (or dark, for
     // pages that support it) canvas instead of the app's chrome color behind dark text.
     wv.isOpaque = true
@@ -1344,6 +1351,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       wv.observe(\.isLoading) { v, _ in
         if !v.isLoading { v.scrollView.refreshControl?.endRefreshing() }
         emit(v)
+      },
+      wv.scrollView.observe(\.minimumZoomScale, options: [.old, .new]) { [weak self] scroll, change in
+        self?.minimumZoomChanged(scroll, from: change.oldValue, to: change.newValue)
       },
       wv.observe(\.estimatedProgress) { [weak self] v, _ in
         // WebKit reports tiny steps many times a second; the bar only needs visible ones.
@@ -1791,6 +1801,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// A page that loads while the app is in the background (the next video of a playlist on
   /// a site without in-page navigation) must know it from the start.
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    zoomBeforePush = nil
     // The page before it took its media with it.
     playingFrames.removeAll()
     emitMediaState()
@@ -2215,6 +2226,47 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
     scrollAnchor = scrollView.contentOffset.y
+  }
+
+  // MARK: - Zoom
+
+  /// When the page's area last grew (the app's bars cover less of it).
+  private var areaGrewAt = Date.distantPast
+  /// The zoom a page had before WebKit pushed it up (see minimumZoomChanged).
+  private var zoomBeforePush: CGFloat?
+
+  /// WebKit raises a page's minimum zoom while its content is shorter than the area it has to
+  /// fill. That is the case for a moment whenever the area grows and the page hasn't laid
+  /// itself out again (pages that are exactly one screen tall: most app-like sites). The
+  /// zoom is pushed up with the minimum and then stays there, so the page is left slightly
+  /// zoomed in, wider than the screen, and can be pushed sideways. The zoom from before is
+  /// put back as soon as the minimum comes down again, unless the user has zoomed since.
+  private func minimumZoomChanged(_ scroll: UIScrollView, from old: CGFloat?, to new: CGFloat?) {
+    guard let old, let new, abs(new - old) > 0.001 else { return }
+    if new > old {
+      let justGrew = Date().timeIntervalSince(areaGrewAt) < 2
+      if justGrew, zoomBeforePush == nil, scroll.zoomScale < new - 0.001, !userIsZooming(scroll) {
+        zoomBeforePush = scroll.zoomScale
+      }
+    } else if let before = zoomBeforePush {
+      let target = max(new, before)
+      // After WebKit has finished applying its own update.
+      DispatchQueue.main.async { [weak self, weak scroll] in
+        guard let self, let scroll, self.zoomBeforePush != nil, !self.userIsZooming(scroll) else { return }
+        if scroll.zoomScale > target + 0.001 { scroll.setZoomScale(target, animated: false) }
+        if target <= before + 0.001 { self.zoomBeforePush = nil }
+      }
+    }
+  }
+
+  private func userIsZooming(_ scroll: UIScrollView) -> Bool {
+    let pinch = scroll.pinchGestureRecognizer?.state
+    return scroll.isZooming || scroll.isZoomBouncing || pinch == .began || pinch == .changed
+  }
+
+  /// A pinch or a double tap: the zoom is the user's from here on.
+  func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+    zoomBeforePush = nil
   }
 
   func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
