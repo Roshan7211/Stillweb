@@ -851,6 +851,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         var now = Date.now();
         started = m;
         current = m;
+        // It plays with the user's blessing (or it would have been undone above).
+        userPaused = false;
         if (!background) return;
         listening = true;
         interrupted = false;
@@ -996,6 +998,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
           nudges = 0;
           if (listening) {
             current = m;
+            // It was playing when the app left: an earlier pause from outside the page is history.
+            userPaused = false;
             resumeUntil = now + 3000;
             heardAt = now;
             // (If it finished on the way out, the page gets its time to start the next one.)

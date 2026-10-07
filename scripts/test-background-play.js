@@ -979,5 +979,27 @@ test('muted by the user before leaving: stays muted in the background', (w, chec
   check('still muted', v.muted);
 });
 
+test('paused by the sleep timer, resumed later without a tap in the page, then leaving: keeps playing', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  w.advance(3000);
+  w.userPause(); // the sleep timer
+  w.advance(5000);
+  w.app('foreground');
+  w.app('active');
+  w.advance(10000);
+  v.play(); // started by the page (controls in another frame, a keyboard shortcut...)
+  w.advance(50);
+  v.nowPlaying();
+  w.advance(3000);
+  check('plays on screen', !v.paused);
+  leave(w, v);
+  check('played again after the system pause', !v.paused);
+  v.nowPlaying();
+  w.advance(100);
+  check('carrier plays', w.carrier && !w.carrier.paused);
+});
+
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);

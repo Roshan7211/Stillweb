@@ -1015,11 +1015,7 @@ export default function BrowserScreen() {
         // Edge to edge (iOS): the bars float over the page, which scrolls under them.
         <View
           style={[styles.bottomOverlay, { bottom: keyboardLift + barShift }]}
-          onLayout={(e) => {
-            // Measured without the keyboard only: with it the bars lose their bottom padding,
-            // and telling the page its area grew for that moment makes WebKit zoom it in.
-            if (keyboardHeight === 0) setBarsHeight(Math.round(e.nativeEvent.layout.height));
-          }}>
+          onLayout={(e) => setBarsHeight(Math.round(e.nativeEvent.layout.height))}>
           {/* Glass: the page shows through, tinted lightly with the app's colour. */}
           <BlurView
             tint={incognito || theme.dark ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
