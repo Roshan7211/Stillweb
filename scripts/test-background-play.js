@@ -52,7 +52,7 @@ function makeWorld(scriptSource, { hostname = 'music.example.com', quiet = false
       this.attached = attached;
       this.paused = true;
       this.ended = false;
-      this.muted = false;
+      this._muted = false;
       this.isConnected = attached;
       this.duration = 200;
       this.currentTime = 0;
@@ -60,15 +60,29 @@ function makeWorld(scriptSource, { hostname = 'music.example.com', quiet = false
       this.loop = false;
       this.own = {};
       this.playCalls = 0;
+      this.heard = []; // the events the page's own player got to see
       this.blockPlay = false; // the system refuses (audio taken by a call)
       media.push(this);
+    }
+    get muted() { return this._muted; }
+    set muted(value) {
+      if (value === this._muted) return;
+      this._muted = value;
+      if (this.own) { this.fire('volumechange'); if (!value) this.claim(); }
     }
     addEventListener(type, fn) { (this.own[type] ||= []).push(fn); }
     fire(type) {
       setTimeoutFake(() => {
-        const e = { type, target: this, isTrusted: false };
-        (this.own[type] || []).forEach((fn) => fn(e));
-        if (this.attached) (docListeners[type] || []).forEach((fn) => fn(e));
+        // As in a page: the window's capturing listeners, then the document's, then the
+        // element's own (the page's player); any of them can keep it from the rest.
+        let stopped = false;
+        const e = { type, target: this, isTrusted: false, stopImmediatePropagation() { stopped = true; } };
+        const chain = this.attached ? [...(winListeners[type] || []), ...(docListeners[type] || [])] : [];
+        for (const fn of [...chain, ...(this.own[type] || [])]) {
+          if (stopped) break;
+          fn(e);
+        }
+        if (!stopped) this.heard.push(type);
       }, 0);
     }
     play() {
@@ -82,12 +96,7 @@ function makeWorld(scriptSource, { hostname = 'music.example.com', quiet = false
         if (this.kind === 'audio') this.fire('playing');
       }
       // Admission: a video with sound that starts pauses the other players in the page.
-      if (this.kind === 'video') {
-        setTimeoutFake(() => {
-          if (this.paused) return;
-          for (const other of media) if (other !== this && !other.paused) other.systemPause();
-        }, 1);
-      }
+      this.claim();
       return Promise.resolve();
     }
     pause() {
@@ -104,7 +113,15 @@ function makeWorld(scriptSource, { hostname = 'music.example.com', quiet = false
     nowPlaying() { this.fire('playing'); }
     finish() { this.ended = true; this.paused = true; this.fire('pause'); this.fire('ended'); }
     tick(by = 1) { this.currentTime += by; this.fire('timeupdate'); }
-    setMuted(muted) { this.muted = muted; this.fire('volumechange'); }
+    // (Getting its sound while playing does the same as starting: see the muted setter.)
+    setMuted(muted) { this.muted = muted; }
+    claim() {
+      if (this.kind !== 'video') return;
+      setTimeoutFake(() => {
+        if (this.paused || this.muted) return;
+        for (const other of media) if (other !== this && !other.paused) other.systemPause();
+      }, 1);
+    }
     // Taken out of the page: it stops, and the page's listeners never hear of it.
     remove() { this.attached = false; this.isConnected = false; this.paused = true; }
   }
@@ -857,7 +874,7 @@ test('media the script never saw start is still played again when the system pau
   w.advance(5);
   v.nowPlaying();
   w.advance(2000);
-  v.muted = false; // unmuted without the page saying so
+  v._muted = false; // unmuted without the page hearing of it
   w.advance(2000);
   v.paused = true; // the system's pause, on its way
   w.app('background');
@@ -876,6 +893,90 @@ test('Control Center while the app is on screen: a handler the page removes is r
   w.mediaSession.handlers.pause();
   w.advance(50);
   check('paused', v.paused);
+});
+
+test('a play that is undone, and its pause, never reach the page\'s player', (w, check) => {
+  const v = startPlaying(w);
+  w.mediaSession.constructor.prototype.setActionHandler.call(w.mediaSession, 'pause', () => v.pause());
+  leave(w, v);
+  v.nowPlaying();
+  w.advance(5000);
+  w.mediaSession.handlers.pause();
+  w.advance(5000);
+  v.heard.length = 0;
+  v.paused = false; v.fire('play'); v.fire('playing'); // WebKit, as the app returns
+  w.app('foreground');
+  w.app('active');
+  w.advance(200);
+  check('paused', v.paused);
+  check('the player heard nothing of it', v.heard.length === 0);
+  // And the user's own tap is heard as usual.
+  w.gesture();
+  v.play();
+  w.advance(50);
+  check('the tap\'s play is heard', v.heard.includes('play') && !v.paused);
+});
+
+test('the next video starts muted in the background (no tap led to it): it gets its sound back', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  for (let i = 0; i < 5; i++) { w.advance(1000); v.tick(); }
+  v.finish();
+  w.advance(8000);
+  v.setMuted(true); // the page, for the video it starts by itself
+  v.play();
+  w.advance(50);
+  check('still muted while it loads', v.muted);
+  v.nowPlaying();
+  w.advance(100);
+  check('sound is back', !v.muted);
+  check('playing with the carrier', !v.paused && !w.carrier.paused);
+});
+
+test('on screen a video the page starts muted stays muted (the user can tap)', (w, check) => {
+  const v = startPlaying(w);
+  v.finish();
+  w.advance(8000);
+  v.setMuted(true);
+  v.play();
+  w.advance(50);
+  v.nowPlaying();
+  w.advance(100);
+  check('left muted', v.muted);
+});
+
+test('a page that insists on muting is left alone after three tries', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  for (let i = 0; i < 5; i++) { w.advance(1000); v.tick(); }
+  v.finish();
+  w.advance(5000);
+  v.setMuted(true);
+  v.play();
+  w.advance(50);
+  v.nowPlaying();
+  let tries = 0;
+  for (let i = 0; i < 30; i++) {
+    w.advance(1000);
+    if (!v.muted) { tries++; v.setMuted(true); } // the page mutes it again
+    v.tick();
+  }
+  w.advance(100);
+  check('three tries, not more (' + tries + ')', tries === 3);
+  check('left muted', v.muted);
+});
+
+test('muted by the user before leaving: stays muted in the background', (w, check) => {
+  const v = startPlaying(w);
+  w.gesture();
+  v.setMuted(true);
+  w.advance(2000);
+  w.app('inactive');
+  w.app('background');
+  for (let i = 0; i < 5; i++) { w.advance(1000); v.tick(); }
+  check('still muted', v.muted);
 });
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');

@@ -5,11 +5,12 @@ import WebKit
 
 /// Per-host scriptlet injections built by `filter-compiler` (see scripts/filters/build.mjs):
 /// `{ lib: {name: js}, calls: [js], generic: [[deps], [callIdx]], hosts: {host: [[deps], [callIdx]]} }`
+/// A host key ending in `.*` is a site family (see `familyEntry`).
 final class ScriptletIndex {
   private let lib: [String: String]
   private let calls: [String]
   private let generic: [Any]
-  private let hosts: [String: Any]
+  fileprivate let hosts: [String: Any]
 
   init?(data: Data) {
     guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -33,6 +34,10 @@ final class ScriptletIndex {
       guard let dot = candidate.firstIndex(of: ".") else { break }
       candidate = String(candidate[candidate.index(after: dot)...])
     }
+    if entry == nil, let family = familyEntry(forHost: host.lowercased()) {
+      entry = family.entry
+      matched = family.site
+    }
     let chosen = entry ?? generic
     guard chosen.count == 2,
           let deps = chosen[0] as? [String],
@@ -55,6 +60,27 @@ final class ScriptletIndex {
     \(body)
     })();
     """
+  }
+}
+
+extension ScriptletIndex {
+  /// The lists cover sites that keep changing their address as a family: `name.*`, the name
+  /// under any ending. A host that isn't listed itself is looked up by its name without the
+  /// ending, which is one label (`.com`) or two (`.co.uk`: a short label before the last).
+  /// `site` is the part of the host the family matched (`name.ending`).
+  fileprivate func familyEntry(forHost host: String) -> (entry: [Any], site: String)? {
+    let labels = host.split(separator: ".").map(String.init)
+    for ending in 1...2 where labels.count > ending {
+      if ending == 2, labels[labels.count - 2].count > 3 { continue }
+      var name = Array(labels.dropLast(ending))
+      while !name.isEmpty {
+        if let entry = hosts[name.joined(separator: ".") + ".*"] as? [Any] {
+          return (entry, (name + labels.suffix(ending)).joined(separator: "."))
+        }
+        name.removeFirst()
+      }
+    }
+    return nil
   }
 }
 

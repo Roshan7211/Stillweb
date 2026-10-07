@@ -208,38 +208,60 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   )
 
   /// Reports whether a frame has media with sound playing, so the app never releases the web
-  /// view of a tab that is being listened to.
+  /// view of a tab that is being listened to. "Playing" is told at once; "silent" only after
+  /// a minute and a half without sound, because a pause is often short: the system's when
+  /// the app leaves the screen, or the gap between two videos.
   private static let mediaStateScript = WKUserScript(
     source: """
     (function () {
       var id = Math.random().toString(36).slice(2);
       var playing = new Set();
       var told = false;
-      var timer = 0;
+      var checkTimer = 0;
+      var silentTimer = 0;
       function audible(m) {
         return !m.paused && !m.ended && !m.muted && m.isConnected;
       }
-      function tell() {
+      function post(value) {
+        told = value;
+        try { window.webkit.messageHandlers.shieldMedia.postMessage({ id: id, playing: value }); } catch (err) {}
+      }
+      function update(atOnce) {
         // Media removed from the page stops without saying so.
         playing.forEach(function (m) { if (!audible(m)) playing.delete(m); });
-        var now = playing.size > 0;
-        if (now === told) return;
-        told = now;
-        clearInterval(timer);
-        if (now) timer = setInterval(tell, 5000);
-        try { window.webkit.messageHandlers.shieldMedia.postMessage({ id: id, playing: now }); } catch (err) {}
+        if (playing.size > 0) {
+          clearTimeout(silentTimer);
+          silentTimer = 0;
+          if (!checkTimer) checkTimer = setInterval(update, 5000);
+          if (!told) post(true);
+          return;
+        }
+        clearInterval(checkTimer);
+        checkTimer = 0;
+        if (!told) return;
+        if (atOnce === true) {
+          clearTimeout(silentTimer);
+          silentTimer = 0;
+          return post(false);
+        }
+        if (!silentTimer) {
+          silentTimer = setTimeout(function () {
+            silentTimer = 0;
+            if (!playing.size && told) post(false);
+          }, 90000);
+        }
       }
       ['playing', 'pause', 'ended', 'emptied', 'volumechange'].forEach(function (type) {
         document.addEventListener(type, function (e) {
           var m = e.target;
           if (!m || typeof m.pause !== 'function') return;
           if (audible(m)) playing.add(m);
-          tell();
+          update();
         }, true);
       });
       window.addEventListener('pagehide', function () {
         playing.clear();
-        tell();
+        update(true);
       });
     })();
     """,
@@ -439,6 +461,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       // - The carrier only runs while real media is heard to make progress, or is expected to
       //   start within a minute. A video that stalls, or a page that keeps pausing what was
       //   started again, lets the page (and the app) rest.
+      // - Sites start the next video of a playlist muted when no tap led to it ("tap to
+      //   unmute"). In the background nobody can tap: what is being listened to keeps its sound.
       var background = false;
       var listening = false; // in the background: the user wants to hear this page
       var interrupted = false; // the system took the audio away
@@ -460,6 +484,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       var fights = 0; // times media was started again without it getting anywhere since
       var nudges = 0;
       var fightFrom = -1;
+      var unmutes = 0; // times the media being listened to got its sound back (per video)
+      var unmutedAt = 0;
+      var siteUnmute = function () { return false; }; // a site's own way to unmute its player
       // Listening is remembered for the tab's next page (see `fresh`), for a minute and a half.
       var MARK = '__stillwebListening';
       var markedAt = 0;
@@ -772,25 +799,56 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         if (now - gestureAt < 1500 || now - userActionAt < 2500) return false;
         return background ? userPaused : now < keepPausedUntil;
       }
-      function silence(m) {
-        if (m.paused) return;
-        silenced = m;
-        try { m.pause(); } catch (e) {}
+      // It is paused again before the page hears of the play (these listeners come first), and
+      // the page doesn't hear of that pause either: a player that is told "play" and then
+      // "pause" out of the blue can be left waiting for data forever, its button gone.
+      ['play', 'playing'].forEach(function (type) {
+        window.addEventListener(type, function (e) {
+          var m = e.target;
+          if (!audible(m) || quiet() || !unwanted(Date.now())) return;
+          e.stopImmediatePropagation();
+          if (m.paused) return;
+          silenced = m;
+          try { m.pause(); } catch (err) {}
+        }, true);
+      });
+      window.addEventListener('pause', function (e) {
+        var m = e.target;
+        if (!m || m !== silenced || !m.paused) return;
+        silenced = null;
+        if (m === started) started = null;
+        e.stopImmediatePropagation();
+      }, true);
+
+      // The page plays what is being listened to muted, in the background (where the user can't
+      // have muted it, and can't tap "unmute"): it gets its sound back. Through the site's own
+      // player where there is a way (it would mute the element again), a few times per video.
+      function keepSound(m) {
+        if (!background || !listening || interrupted || userPaused || quiet()) return;
+        if (m !== current || !m.muted || m.paused || unmutes >= 3) return;
+        var now = Date.now();
+        if (now - unmutedAt < 2000) return;
+        unmutedAt = now;
+        unmutes++;
+        // (A video that gets its sound pauses the other players, like one that starts.)
+        playAt = now;
+        if (!siteUnmute()) {
+          try { m.muted = false; } catch (e) {}
+        }
       }
+      document.addEventListener('emptied', function (e) { if (e.target === current) unmutes = 0; }, true);
 
       document.addEventListener('play', function (e) {
         var m = e.target;
         if (!audible(m) || quiet()) return;
-        var now = Date.now();
-        if (unwanted(now)) return silence(m);
-        playAt = now;
+        playAt = Date.now();
         started = m;
       }, true);
       document.addEventListener('playing', function (e) {
         var m = e.target;
+        keepSound(m);
         if (!audible(m) || quiet()) return;
         var now = Date.now();
-        if (unwanted(now)) return silence(m);
         started = m;
         current = m;
         if (!background) return;
@@ -809,10 +867,6 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         if (m && m === started && m.paused) started = null;
         if (!audible(m) || quiet()) return;
         var now = Date.now();
-        if (m === silenced) {
-          silenced = null;
-          return;
-        }
         // Already playing again (this pause was undone before it was announced).
         if (!m.paused) return;
         if (m.ended) return;
@@ -872,12 +926,15 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         } else if (!m.paused && !m.ended && m !== started) {
           started = m;
           current = m;
+          // With its sound it pauses the other players in the page, like a video that starts.
+          playAt = Date.now();
         }
       }, true);
       var progressAt = -1;
       var carrierRetryAt = 0;
       document.addEventListener('timeupdate', function (e) {
         var m = e.target;
+        keepSound(m);
         if (!background || !listening || !audible(m) || m.paused || quiet()) return;
         var now = Date.now();
         if (m !== current) {
@@ -1022,6 +1079,23 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       } catch (e) {}
 
       if (window === window.top && /(^|\\.)youtube\\.com$/.test(location.hostname)) {
+        // YouTube starts the next video muted when no tap led to it, and mutes the element
+        // again when it is unmuted directly: its player's own unmute is used ("Tap to unmute").
+        siteUnmute = function () {
+          try {
+            var player = document.querySelector('#movie_player, .html5-video-player');
+            if (player && typeof player.unMute === 'function') {
+              player.unMute();
+              return true;
+            }
+            var button = document.querySelector('.ytp-unmute');
+            if (button && button.offsetParent !== null) {
+              button.click();
+              return true;
+            }
+          } catch (e) {}
+          return false;
+        };
         var setTimer = window.setInterval.bind(window);
         setTimer(function () {
           try { if (typeof window._lact === 'number') window._lact = Date.now(); } catch (e) {}

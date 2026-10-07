@@ -20,6 +20,8 @@ use std::path::PathBuf;
 
 /// WebKit's per-list rule limit (ContentExtensionParser maxRuleCount).
 const MAX_RULES_PER_LIST: usize = 150_000;
+/// A real ending (so the family of `name.<ending>` is `name.*`) that sites in the lists don't use.
+const FAMILY_PROBE_ENDING: &str = "bv";
 
 struct Args {
     lists: Vec<(PathBuf, bool)>,
@@ -132,8 +134,11 @@ fn write_content_rules(texts: &[(String, bool)], context: &[String], out: &PathB
             _ => network.push(rule),
         }
     }
-    let groups: Vec<(String, Vec<CbRule>)> =
-        vec![(format!("{prefix}-0.json"), network), (format!("{prefix}-1.json"), cosmetic_rules(cosmetic, &exceptions))];
+    cosmetic.extend(family_hiding_rules(texts));
+    let groups: Vec<(String, Vec<CbRule>)> = vec![
+        (format!("{prefix}-0.json"), site_family_rules(network)),
+        (format!("{prefix}-1.json"), cosmetic_rules(cosmetic, &exceptions)),
+    ];
 
     groups
         .into_iter()
@@ -201,6 +206,103 @@ impl CosmeticExceptions {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Site families. The lists write `name.*` for a site under every ending it uses (uBO's
+// "entity"): sites that change their address every few weeks are only covered that way.
+// WebKit's `if-domain` has no such wildcard (`*name.*` matches nothing), so a family is
+// matched by the address of the page instead (`if-top-url`).
+
+/// `name` of a `name.*` (or `*name.*`) entry.
+fn family_name(entry: &str) -> Option<&str> {
+    let name = entry.trim_start_matches('*').strip_suffix(".*")?;
+    let valid = !name.is_empty()
+        && !name.starts_with('.')
+        && !name.ends_with('.')
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
+    valid.then_some(name)
+}
+
+/// Pages of `host` and its subdomains; with `family`, under any ending.
+fn top_url_pattern(host: &str, family: bool) -> String {
+    let host = host.replace('.', "\\.");
+    let ending = if family { "\\.[^:/]+" } else { "" };
+    format!("^[^:]+://([^:/]+\\.)?{host}{ending}[:/]")
+}
+
+/// Moves the families of `if-domain` / `unless-domain` to `if-top-url` / `unless-top-url`. A
+/// trigger takes one kind of condition, so a rule for plain sites and families becomes two
+/// (kept together: an ignore-previous-rules only undoes what comes before it).
+fn site_family_rules(rules: Vec<CbRule>) -> Vec<CbRule> {
+    let mut out = Vec::with_capacity(rules.len());
+    for mut rule in rules {
+        let has_family = |list: &Option<Vec<String>>| list.iter().flatten().any(|d| family_name(d).is_some());
+        if has_family(&rule.trigger.if_domain) {
+            let domains = rule.trigger.if_domain.take().unwrap_or_default();
+            let (families, plain): (Vec<String>, Vec<String>) = domains.into_iter().partition(|d| family_name(d).is_some());
+            if !plain.is_empty() {
+                let mut for_plain = rule.clone();
+                for_plain.trigger.if_domain = Some(plain);
+                out.push(for_plain);
+            }
+            rule.trigger.if_top_url =
+                Some(families.iter().filter_map(|d| family_name(d)).map(|name| top_url_pattern(name, true)).collect());
+            out.push(rule);
+        } else if has_family(&rule.trigger.unless_domain) {
+            // "Everywhere but": every entry becomes a page address pattern.
+            let domains = rule.trigger.unless_domain.take().unwrap_or_default();
+            rule.trigger.unless_top_url = Some(
+                domains
+                    .iter()
+                    .map(|d| match family_name(d) {
+                        Some(name) => top_url_pattern(name, true),
+                        None => top_url_pattern(d.trim_start_matches('*'), false),
+                    })
+                    .collect(),
+            );
+            out.push(rule);
+        } else {
+            out.push(rule);
+        }
+    }
+    out
+}
+
+/// Element hiding for families (`name.*##.ad`), which adblock-rust's conversion leaves out.
+fn family_hiding_rules(texts: &[(String, bool)]) -> Vec<CbRule> {
+    // selector -> families, so a selector shared by many families is one rule.
+    let mut by_selector: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (text, _) in texts {
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with('!') || !line.contains(".*") {
+                continue;
+            }
+            let Some(idx) = line.find("##") else { continue };
+            if line[idx..].starts_with("##+js(") || line[idx..].starts_with("##^") {
+                continue;
+            }
+            let families: Vec<&str> = line[..idx].split(',').filter_map(|d| family_name(d.trim())).collect();
+            if families.is_empty() {
+                continue;
+            }
+            let Ok(filter) = CosmeticFilter::parse(line, false, PermissionMask::default()) else { continue };
+            let Some(selector) = filter.plain_css_selector() else { continue };
+            by_selector.entry(selector.to_string()).or_default().extend(families.iter().map(|f| f.to_string()));
+        }
+    }
+    by_selector
+        .into_iter()
+        .map(|(selector, families)| {
+            let patterns: Vec<String> = families.iter().map(|name| top_url_pattern(name, true)).collect();
+            serde_json::from_value(json!({
+                "trigger": { "url-filter": ".*", "if-top-url": patterns },
+                "action": { "type": "css-display-none", "selector": selector },
+            }))
+            .unwrap()
+        })
+        .collect()
+}
+
 fn plain_hostname(s: &str) -> Option<String> {
     let s = s.trim().to_ascii_lowercase();
     let valid = s.contains('.')
@@ -258,7 +360,7 @@ fn cosmetic_rules(rules: Vec<CbRule>, exceptions: &CosmeticExceptions) -> Vec<Cb
             }
             _ => {}
         }
-        if t.if_domain.is_some() {
+        if t.if_domain.is_some() || t.if_top_url.is_some() {
             specific.push(rule);
         } else {
             generic.push(rule);
@@ -274,8 +376,8 @@ fn cosmetic_rules(rules: Vec<CbRule>, exceptions: &CosmeticExceptions) -> Vec<Cb
 // ---------------------------------------------------------------------------
 // Scriptlets
 
-/// Hostnames that have `##+js(...)` filters. Entity (`example.*`), regex and
-/// negated domains are skipped since they cannot be keyed by hostname.
+/// Hostnames that have `##+js(...)` filters, and site families (`example.*`, kept with
+/// their `.*`). Regex and negated domains are skipped since they cannot be keyed by hostname.
 fn scriptlet_hosts(texts: &[(String, bool)]) -> BTreeSet<String> {
     let mut hosts = BTreeSet::new();
     for (text, _) in texts {
@@ -292,6 +394,8 @@ fn scriptlet_hosts(texts: &[(String, bool)]) -> BTreeSet<String> {
                     && domain.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
                 if valid {
                     hosts.insert(domain);
+                } else if family_name(&domain).is_some() {
+                    hosts.insert(domain.trim_start_matches('*').to_string());
                 }
             }
         }
@@ -367,7 +471,13 @@ fn write_scriptlets(texts: &[(String, bool)], resources: &PathBuf, out: &PathBuf
 
     let mut hosts = Map::new();
     for host in scriptlet_hosts(texts) {
-        let script = engine.url_cosmetic_resources(&format!("https://{host}/")).injected_script;
+        // A family is asked about under an ending that no list names a site for; the app
+        // looks it up by `name.*` when a site's own address isn't listed.
+        let asked = match family_name(&host) {
+            Some(name) => format!("{name}.{FAMILY_PROBE_ENDING}"),
+            None => host.clone(),
+        };
+        let script = engine.url_cosmetic_resources(&format!("https://{asked}/")).injected_script;
         if script.is_empty() || script == generic_script {
             continue;
         }
