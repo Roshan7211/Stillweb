@@ -1,4 +1,5 @@
-import { useColorScheme } from 'react-native';
+import { useSyncExternalStore } from 'react';
+import { Appearance, AppState, type ColorSchemeName } from 'react-native';
 
 export type Theme = {
   dark: boolean;
@@ -66,9 +67,28 @@ export type AccentId = keyof typeof ACCENTS;
 
 const themes = new Map<string, Theme>();
 
+// The system appearance as last seen while the app was in use. On its way to the background
+// iOS reports the other appearance and back (it photographs the app in both for the app
+// switcher); following that would restyle the whole app, and every open page, twice.
+let systemScheme: ColorSchemeName | null | undefined = Appearance.getColorScheme();
+const schemeListeners = new Set<() => void>();
+const notifySchemeListeners = () => schemeListeners.forEach((listener) => listener());
+Appearance.addChangeListener(notifySchemeListeners);
+AppState.addEventListener('change', notifySchemeListeners);
+function subscribeToScheme(listener: () => void) {
+  schemeListeners.add(listener);
+  return () => {
+    schemeListeners.delete(listener);
+  };
+}
+function getSystemScheme() {
+  if (AppState.currentState === 'active') systemScheme = Appearance.getColorScheme();
+  return systemScheme;
+}
+
 /** Follows the system appearance unless a preference overrides it, in the chosen accent. */
 export function useTheme(override?: 'system' | 'light' | 'dark', accent: AccentId = 'blue'): Theme {
-  const system = useColorScheme();
+  const system = useSyncExternalStore(subscribeToScheme, getSystemScheme);
   const mode = override && override !== 'system' ? override : system;
   const isDark = mode === 'dark';
   // One object per mode and accent, so screens don't re-render for a "new" theme.

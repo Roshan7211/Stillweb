@@ -10,6 +10,7 @@
     "build:rust:android": "bash scripts/build-rust-android.sh",
     "build:filters": "node scripts/filters/build.mjs",
     "build:licenses": "node scripts/gen-licenses.mjs",
+    "test:background-play": "node scripts/test-background-play.js",
     "typecheck": "tsc --noEmit"
   },
   "expo": {

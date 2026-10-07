@@ -31,6 +31,7 @@ Run lint and typecheck before declaring any task done.
 - Never use brand names (for example video sites) in the app name, UI text or store assets. Credit filter list licenses in `AboutScreen`.
 - After changing Rust: `npm run build:rust:android`. After changing filter lists or the catalog: `npm run build:filters -- --bundle`.
 - After adding or upgrading dependencies, vendored scripts or filter lists: `npm run build:licenses` (About › Open-source licenses must list everything the app ships).
+- After changing iOS background playback (`backgroundPlayScript` in `ios/ShieldWebView.swift`): `npm run test:background-play`. It simulates how WebKit pauses and resumes media on iOS; add a scenario for every behavior you change.
 
 ## Building with EAS
 

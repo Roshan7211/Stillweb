@@ -23,7 +23,8 @@ public class ShieldWebViewModule: Module {
         "onFindResult",
         "onCloseRequest",
         "onLinkAction",
-        "onChromeChange"
+        "onChromeChange",
+        "onMediaStateChange"
       )
 
       Prop("initialUrl") { (view: ShieldWebView, url: String?) in view.initialUrl = url }
@@ -39,6 +40,7 @@ public class ShieldWebViewModule: Module {
       Prop("textZoom") { (view: ShieldWebView, value: Int?) in view.textZoom = value ?? 100 }
       Prop("active") { (view: ShieldWebView, value: Bool?) in view.active = value ?? true }
       Prop("popupId") { (view: ShieldWebView, value: String?) in view.popupId = value }
+      Prop("restored") { (view: ShieldWebView, value: Bool?) in view.restored = value ?? false }
       Prop("chromeCollapsed") { (view: ShieldWebView, value: Bool?) in view.syncChrome(collapsed: value ?? false) }
 
       OnViewDidUpdateProps { (view: ShieldWebView) in view.applyProps() }

@@ -73,6 +73,8 @@ function BrowserTabView(props: Props) {
   // The URL the web view is created with. App-driven navigations after that (address bar,
   // bookmarks) bump tab.navigationKey and go through loadUrl.
   const initialUrl = useRef<string>(tab.url);
+  // A page the tab already had open (see Tab.visited), as opposed to one just asked for.
+  const [restored] = useState(() => !!tab.visited);
   const handledKey = useRef(tab.navigationKey);
   const [loadError, setLoadError] = useState<LoadError | null>(null);
   // Progress arrives many times a second; the bar only needs visible steps.
@@ -84,6 +86,11 @@ function BrowserTabView(props: Props) {
   }
   // A page's pop-up starts out blank and is already loading in native code.
   const showWeb = !isBlank(initialUrl.current) || !!tab.popupId;
+
+  // A new web view starts out silent, whatever the one before it last reported.
+  useEffect(() => {
+    updateTab(tab.id, { playing: undefined });
+  }, [tab.id, updateTab]);
 
   useEffect(() => {
     if (tab.navigationKey === handledKey.current) return;
@@ -119,6 +126,7 @@ function BrowserTabView(props: Props) {
         style={StyleSheet.absoluteFill}
         initialUrl={initialUrl.current}
         popupId={tab.popupId}
+        restored={restored}
         active={active}
         chromeCollapsed={chromeCollapsed}
         incognito={tab.incognito}
@@ -148,7 +156,7 @@ function BrowserTabView(props: Props) {
         onLoadStart={() => {
           lastProgress.current = 0;
           setLoadError(null);
-          updateTab(tab.id, { loading: true, reader: false });
+          updateTab(tab.id, { loading: true, reader: false, visited: true });
         }}
         onLoadError={({ nativeEvent }) => {
           // A navigation that turned into a download (or was replaced) isn't a failure.
@@ -203,6 +211,7 @@ function BrowserTabView(props: Props) {
         }}
         onLinkAction={({ nativeEvent }) => onLinkAction({ link: nativeEvent.url, image: '', incognito: tab.incognito }, nativeEvent.action)}
         onChromeChange={({ nativeEvent }) => active && onChromeChange(nativeEvent.collapsed)}
+        onMediaStateChange={({ nativeEvent }) => updateTab(tab.id, { playing: nativeEvent.playing })}
         onPopupBlocked={({ nativeEvent }) => {
           if (active) onToast(nativeEvent.kind === 'redirect' ? 'Blocked a redirect' : 'Blocked a pop-up');
         }}

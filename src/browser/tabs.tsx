@@ -35,6 +35,13 @@ export type Tab = {
   stopAtEnd?: string;
   /** The page's own background is dark (iOS: the status bar over it stays readable). */
   pageDark?: boolean;
+  /**
+   * The tab has had its page open before: a web view created for it now (after a restart, or
+   * after its view was released) loads the page again without playing its media.
+   */
+  visited?: boolean;
+  /** iOS: media with sound is playing in the tab (its web view is never released meanwhile). */
+  playing?: boolean;
 };
 
 type State = { tabs: Tab[]; activeId: string | null; restored: boolean };
@@ -49,7 +56,10 @@ type Action =
   | { type: 'update'; id: string; patch: Partial<Tab> };
 
 const STORAGE_KEY = 'tabs.v1';
-/** How many recently used tabs keep a live web view; others reload when revisited. */
+/**
+ * How many recently used tabs keep a live web view; others reload when revisited. A tab that
+ * is playing media stays live beyond that, so music doesn't stop because more tabs were opened.
+ */
 export const LIVE_TAB_LIMIT = 3;
 
 /** Snapshot files live in the cache and never outlive the session (private tabs included). */
@@ -197,7 +207,13 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
               tabs: { id: string; url: string; title: string; profileId?: string }[];
               activeId: string | null;
             };
-            tabs = saved.tabs.map((t) => ({ ...makeTab(t.url, false, undefined, undefined, t.profileId), id: t.id, title: t.title }));
+            tabs = saved.tabs.map((t) => ({
+              ...makeTab(t.url, false, undefined, undefined, t.profileId),
+              id: t.id,
+              title: t.title,
+              // A new tab page has nothing to load again: its first page is one the user asks for.
+              visited: !!t.url,
+            }));
             activeId = tabs.some((t) => t.id === saved.activeId) ? saved.activeId : (tabs[0]?.id ?? null);
           }
         } catch {}
@@ -230,7 +246,8 @@ export function TabsProvider({ children, clearOnStart }: { children: ReactNode; 
     const ids = state.tabs.map((t) => t.id);
     let next = live.current.filter((id) => ids.includes(id));
     if (state.activeId) next = [state.activeId, ...next.filter((id) => id !== state.activeId)];
-    live.current = next.slice(0, LIVE_TAB_LIMIT);
+    const playing = new Set(state.tabs.filter((t) => t.playing).map((t) => t.id));
+    live.current = next.filter((id, index) => index < LIVE_TAB_LIMIT || playing.has(id));
     return new Set(live.current);
   }, [state.tabs, state.activeId]);
 

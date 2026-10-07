@@ -58,6 +58,14 @@ export type ShieldWebViewProps = ViewProps & {
   popupId?: string;
   /** iOS: whether the browser bars are currently shrunk (see onChromeChange). */
   chromeCollapsed?: boolean;
+  /** iOS: the page started or stopped playing media with sound. */
+  onMediaStateChange?: (event: NativeEvent<{ playing: boolean }>) => void;
+  /**
+   * iOS: `initialUrl` is a page the tab had open before (after a restart, or after its web view
+   * was released), not one the user just asked for: its media waits for a touch. Read once,
+   * at creation.
+   */
+  restored?: boolean;
   onLoadStart?: (event: NativeEvent<{ url: string }>) => void;
   onLoadEnd?: (event: NativeEvent<{ url: string }>) => void;
   onLoadProgress?: (event: NativeEvent<{ progress: number }>) => void;

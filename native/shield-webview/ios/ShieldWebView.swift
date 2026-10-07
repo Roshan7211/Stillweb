@@ -18,6 +18,10 @@ final class ShieldContentController: WKUserContentController {
   var appliedHost: String?
   var appliedGeneration = -1
   var rulesAttached = false
+  /// The page was loaded again without the user asking (restored tab, ended process): media
+  /// stays silent until the user touches the page.
+  var quiet = false
+  var appliedQuiet = false
 }
 
 /// The view controller to present system UI (dialogs, share sheets, previews) from.
@@ -106,6 +110,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   let onLinkAction = EventDispatcher()
   /// iOS: scrolling down asks the browser bars to shrink, scrolling up to come back.
   let onChromeChange = EventDispatcher()
+  /// iOS: the page started or stopped playing media with sound (a playing tab is kept alive).
+  let onMediaStateChange = EventDispatcher()
 
   var initialUrl: String?
   var incognito = false
@@ -122,6 +128,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   var chromeInsets: UIEdgeInsets?
   /// Adopts the web view created for a page's window.open instead of making a new one.
   var popupId: String?
+  /// The tab's page is being loaded again from its saved address (after a restart, or after
+  /// its web view was released): it doesn't start playing by itself.
+  var restored = false
 
   private var webView: WKWebView?
   /// Last load progress sent to the app.
@@ -191,6 +200,47 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         var src = img ? (img.currentSrc || img.src || '') : '';
         try { window.webkit.messageHandlers.shieldTouch.postMessage(src); } catch (err) {}
       }, { capture: true, passive: true });
+    })();
+    """,
+    injectionTime: .atDocumentStart,
+    forMainFrameOnly: false,
+    in: .defaultClient
+  )
+
+  /// Reports whether a frame has media with sound playing, so the app never releases the web
+  /// view of a tab that is being listened to.
+  private static let mediaStateScript = WKUserScript(
+    source: """
+    (function () {
+      var id = Math.random().toString(36).slice(2);
+      var playing = new Set();
+      var told = false;
+      var timer = 0;
+      function audible(m) {
+        return !m.paused && !m.ended && !m.muted && m.isConnected;
+      }
+      function tell() {
+        // Media removed from the page stops without saying so.
+        playing.forEach(function (m) { if (!audible(m)) playing.delete(m); });
+        var now = playing.size > 0;
+        if (now === told) return;
+        told = now;
+        clearInterval(timer);
+        if (now) timer = setInterval(tell, 5000);
+        try { window.webkit.messageHandlers.shieldMedia.postMessage({ id: id, playing: now }); } catch (err) {}
+      }
+      ['playing', 'pause', 'ended', 'emptied', 'volumechange'].forEach(function (type) {
+        document.addEventListener(type, function (e) {
+          var m = e.target;
+          if (!m || typeof m.pause !== 'function') return;
+          if (audible(m)) playing.add(m);
+          tell();
+        }, true);
+      });
+      window.addEventListener('pagehide', function () {
+        playing.clear();
+        tell();
+      });
     })();
     """,
     injectionTime: .atDocumentStart,
@@ -276,11 +326,80 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     in: .page
   )
 
+  /// For pages the app loaded again by itself (a restored tab, a page whose process iOS ended,
+  /// a reload for the theme): media with sound doesn't start until the user touches the page,
+  /// as in Safari. Otherwise a song starts over, or starts at all, just because the app was
+  /// opened. Muted video may still play.
+  private static let quietScript = WKUserScript(
+    source: """
+    (function () {
+      var quiet = true;
+      try {
+        Object.defineProperty(window, '__stillwebQuiet', { get: function () { return quiet; }, configurable: true });
+      } catch (e) {}
+      function lift() {
+        if (!quiet) return;
+        quiet = false;
+        for (var i = 0; i < window.frames.length; i++) {
+          try { window.frames[i].postMessage({ __stillwebAllowPlay: true }, '*'); } catch (e) {}
+        }
+      }
+      ['touchend', 'mousedown', 'keydown', 'click'].forEach(function (type) {
+        window.addEventListener(type, function (e) { if (e.isTrusted) lift(); }, true);
+      });
+      window.addEventListener('message', function (e) {
+        if (e.source === window.parent && window.parent !== window && e.data && e.data.__stillwebAllowPlay === true) lift();
+      });
+      try {
+        var play = HTMLMediaElement.prototype.play;
+        HTMLMediaElement.prototype.play = function () {
+          if (quiet && !this.muted) {
+            return Promise.reject(new DOMException('Playback waits for the user after the page was restored.', 'NotAllowedError'));
+          }
+          return play.apply(this, arguments);
+        };
+      } catch (e) {}
+      // Media that starts without play() (the autoplay attribute), or is unmuted while playing.
+      function hush(e) {
+        var m = e.target;
+        if (quiet && m && typeof m.pause === 'function' && !m.muted && !m.paused) {
+          try { m.pause(); } catch (err) {}
+        }
+      }
+      document.addEventListener('play', hush, true);
+      document.addEventListener('volumechange', hush, true);
+    })();
+    """,
+    injectionTime: .atDocumentStart,
+    forMainFrameOnly: false,
+    in: .page
+  )
+
+  /// Tells the app about the first touch on a quiet page, so the pages after it aren't quiet.
+  private static let quietTouchScript = WKUserScript(
+    source: """
+    (function () {
+      var told = false;
+      ['touchend', 'mousedown', 'keydown'].forEach(function (type) {
+        window.addEventListener(type, function (e) {
+          if (told || !e.isTrusted) return;
+          told = true;
+          try { window.webkit.messageHandlers.shieldGesture.postMessage(1); } catch (err) {}
+        }, true);
+      });
+    })();
+    """,
+    injectionTime: .atDocumentStart,
+    forMainFrameOnly: false,
+    in: .defaultClient
+  )
+
   /// Keeps pages reporting "visible" so audio continues in the background (web/shieldjs/background-play.js).
   /// iOS also pauses video with sound when the app leaves the screen and suspends a page once
   /// nothing plays; with `__shieldAppState`, called by the app (and passed on to frames), the
   /// script plays again what the system paused, keeps animation-frame callbacks running and
-  /// bridges the gap to the next video of a playlist with silence.
+  /// bridges the gap to the next video of a playlist with silence. What the user paused, or a
+  /// call or another app silenced, is left alone.
   private static let backgroundPlayScript = WKUserScript(
     source: """
     (function () {
@@ -297,27 +416,87 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         document.addEventListener(t, swallow, true);
       });
 
-      // In the background iOS pauses video with sound, suspends the page as soon as nothing
-      // plays (so the next video of a playlist never starts) and doesn't let video on a
-      // hidden page drive the lock screen (it keeps showing the previous video). The app
-      // calls __shieldAppState(true/false) when it leaves / returns to the screen; then a
-      // silent audio player keeps the page running and carries the lock screen, with the
-      // page's own title and artwork plus the real video's position and play state.
+      // What WebKit does on iOS, and what this script does about it. The app calls
+      // __shieldAppState with 'inactive' when it starts to leave the screen (also for Control
+      // Center and the like), 'background' once it has left, 'foreground' on its way back and
+      // 'active' when it is in use again. A page that loads while the app is in the background
+      // (the next video of a playlist, on sites that open it as a new page) is told so with
+      // `fresh`: if the page before it was being listened to, so is this one.
+      // - Leaving the screen (or locking it) pauses video with sound. While the user is
+      //   listening, it is played again.
+      // - Once nothing in the page is audible, iOS suspends the app within seconds, so the next
+      //   video of a playlist never starts. A silent audio player (the carrier) keeps the page
+      //   running for as long as the user is listening. It also carries the lock screen, which a
+      //   hidden page's video may not: with the page's own title and artwork, and the real
+      //   media's position and play state.
+      // - A video that starts playing pauses the other players in its page, the carrier
+      //   included: it is started again right away, so it also covers the time the video takes
+      //   to load.
+      // - A call, another app's audio or unplugged headphones pause everything. Nothing is
+      //   started again then, until the system (or the user) does.
+      // - Back on screen WebKit plays what it paused on the way out, also when the user has
+      //   paused it from the lock screen since: that play is undone.
       var background = false;
-      var resumeUntil = 0;
-      var recent = [];
-      var userPausedAt = 0;
+      var listening = false; // in the background: the user wants to hear this page
+      var interrupted = false; // the system took the audio away
       var current = null; // the media being listened to
+      var started = null; // media that was asked to play and hasn't paused since
+      var lastPause = null; // the latest pause on screen
+      var resignAt = 0; // when the app started to leave the screen
+      var atResign = null; // and what was playing then
+      var resumeUntil = 0;
+      var userPausedAt = 0;
+      var userActionAt = 0; // lock screen / Control Center buttons
+      var gestureAt = 0; // taps and keys in the page
+      var playAt = 0; // the latest start of any media
+      var keepPausedUntil = 0;
+      var silenced = null;
+      var resumes = [];
+      var lenient = false; // a page that loaded in the background may start its media
+      // Listening is remembered for the tab's next page (see `fresh`), for a minute and a half.
+      var MARK = '__stillwebListening';
+      var markedAt = 0;
+      function mark(on) {
+        markedAt = on ? Date.now() : 0;
+        try {
+          if (on) sessionStorage.setItem(MARK, String(markedAt));
+          else sessionStorage.removeItem(MARK);
+        } catch (e) {}
+      }
+      function marked() {
+        try {
+          var t = Number(sessionStorage.getItem(MARK));
+          return t > 0 && Date.now() - t < 90000;
+        } catch (e) {
+          return false;
+        }
+      }
+      function quiet() {
+        try { return window.__stillwebQuiet === true; } catch (e) { return false; }
+      }
       function resume(m) {
         try { var r = m.play(); if (r && r.catch) r.catch(function () {}); } catch (e) {}
       }
+      // The system pausing again and again isn't fought forever.
+      function resumeAgain(m) {
+        var now = Date.now();
+        resumes = resumes.filter(function (t) { return now - t < 10000; });
+        if (resumes.length >= 8) return;
+        resumes.push(now);
+        resume(m);
+      }
+      ['touchend', 'click', 'keydown'].forEach(function (type) {
+        window.addEventListener(type, function (e) { if (e.isTrusted) gestureAt = Date.now(); }, true);
+      });
 
-      var keepAlive = null;
-      var keepAliveStarted = 0;
+      var carrier = null;
+      var carrierOn = false; // it should be playing
+      var carrierPlayed = false; // and it has been, since it was last started
+      var carrierStarts = [];
       var gapTimer = 0;
-      var noCarrier = null; // media that can't play alongside the silent player
+      var nudgeTimer = 0;
       function silentWav() {
-        var rate = 8000, n = rate, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+        var rate = 8000, n = rate * 2, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
         var text = function (at, str) { for (var i = 0; i < str.length; i++) v.setUint8(at + i, str.charCodeAt(i)); };
         text(0, 'RIFF'); v.setUint32(4, 36 + n, true); text(8, 'WAVE'); text(12, 'fmt ');
         v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
@@ -326,58 +505,106 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         for (var i = 0; i < n; i++) v.setUint8(44 + i, 128);
         return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
       }
-      function startKeepAlive() {
+      function startCarrier() {
         clearTimeout(gapTimer);
-        if (current && current === noCarrier) return;
         try {
-          if (!keepAlive) {
-            keepAlive = new Audio(silentWav());
-            keepAlive.loop = true;
+          if (!carrier) {
+            carrier = new Audio(silentWav());
+            carrier.loop = true;
+            carrier.addEventListener('playing', carrierPlaying);
+            carrier.addEventListener('pause', carrierPaused);
           }
-          if (keepAlive.paused) {
-            keepAliveStarted = Date.now();
-            resume(keepAlive);
-          }
+          carrierOn = true;
+          if (carrier.paused) resume(carrier);
         } catch (e) {}
       }
-      function stopKeepAlive() {
+      function stopCarrier() {
         clearTimeout(gapTimer);
         clearTimeout(nudgeTimer);
-        if (keepAlive && !keepAlive.paused) keepAlive.pause();
+        carrierOn = false;
+        carrierPlayed = false;
+        try { if (carrier && !carrier.paused) carrier.pause(); } catch (e) {}
       }
-      // Keeps the page running until the next media plays; nothing after a minute: let it rest.
+      function carrierPlaying() {
+        carrierPlayed = true;
+        if (!interrupted) return;
+        // The system gave the audio back (the call ended).
+        interrupted = false;
+        if (background && listening && current && current.paused && !current.ended) {
+          bridgeGap();
+          nudge(current, Date.now(), 0);
+        }
+      }
+      function carrierPaused() {
+        if (!carrierOn || !carrier || !carrier.paused) return;
+        var now = Date.now();
+        if (now - playAt < 2000) {
+          // A video that started playing paused it.
+          carrierStarts = carrierStarts.filter(function (t) { return now - t < 10000; });
+          if (carrierStarts.length < 6) {
+            carrierStarts.push(now);
+            resume(carrier);
+          }
+          return;
+        }
+        if (carrierPlayed) systemTookAudio();
+      }
+      function systemTookAudio() {
+        interrupted = true;
+        clearTimeout(gapTimer);
+        clearTimeout(nudgeTimer);
+        syncLockScreen();
+      }
+      // Keeps the page running until the next media plays; nothing after a minute: the user
+      // isn't listening any more, and the page may rest.
       function bridgeGap() {
-        startKeepAlive();
-        gapTimer = setTimeout(stopKeepAlive, 60000);
+        startCarrier();
+        gapTimer = setTimeout(function () {
+          listening = false;
+          mark(false);
+          stopCarrier();
+        }, 60000);
       }
       // Media the page left paused in the background (not by the user) is started again,
       // a few times, a few seconds apart.
-      var nudgeTimer = 0;
       function nudge(m, pausedAt, attempt) {
         clearTimeout(nudgeTimer);
         nudgeTimer = setTimeout(function () {
-          if (!background || !m.paused || m.ended || !m.isConnected || userPausedAt > pausedAt) return;
+          if (!background || !listening || interrupted) return;
+          if (!m.paused || m.ended || !m.isConnected || userPausedAt > pausedAt) return;
           resumeUntil = Date.now() + 2000;
           resume(m);
           if (attempt < 2) nudge(m, pausedAt, attempt + 1);
         }, 4000);
       }
 
-      // Lock screen and Control Center buttons. The page's own handlers are used as they
-      // are (its pause marked as the user's, which is never undone); for the basic buttons
-      // it doesn't handle, the app's act on the media being listened to (otherwise they
-      // would control the silent player).
+      // Lock screen and Control Center buttons. The page's own handlers are used as they are;
+      // for the basic buttons it doesn't handle, the app's act on the media being listened to
+      // (otherwise they would control the carrier). Each press is the user's: a pause is never
+      // undone, and a play makes the page worth keeping awake again.
       var mediaSession = navigator.mediaSession;
       var setActionHandler = null;
       var setPositionState = null;
+      var setPlaybackState = null;
       var pageHandlers = {};
       var pageSetsPosition = false;
+      var pageSetsState = false;
       var ownPosition = false;
+      var ownState = false;
       function userAction(action, handler) {
-        if (action !== 'pause' && action !== 'stop') return handler;
         return function () {
-          userPausedAt = Date.now();
-          stopKeepAlive();
+          var now = Date.now();
+          userActionAt = now;
+          if (action === 'pause' || action === 'stop') {
+            userPausedAt = now;
+            listening = false;
+            mark(false);
+            stopCarrier();
+          } else if (background && (action === 'play' || action === 'nexttrack' || action === 'previoustrack')) {
+            listening = true;
+            interrupted = false;
+            bridgeGap();
+          }
           return handler.apply(this, arguments);
         };
       }
@@ -408,6 +635,19 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
           pageSetsPosition = true;
           return setPositionState.apply(this, arguments);
         };
+        var stateProperty = Object.getOwnPropertyDescriptor(MediaSession.prototype, 'playbackState');
+        if (stateProperty && stateProperty.set) {
+          setPlaybackState = stateProperty.set;
+          Object.defineProperty(MediaSession.prototype, 'playbackState', {
+            get: stateProperty.get,
+            set: function (value) {
+              pageSetsState = true;
+              return setPlaybackState.call(this, value);
+            },
+            configurable: true,
+            enumerable: stateProperty.enumerable,
+          });
+        }
       } catch (e) {}
 
       // The lock screen's progress and play state follow the real media.
@@ -416,7 +656,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         var m = current;
         if (!background || !m || !mediaSession) return;
         lastSync = Date.now();
-        try { mediaSession.playbackState = m.paused ? 'paused' : 'playing'; } catch (e) {}
+        if (setPlaybackState) {
+          try {
+            setPlaybackState.call(mediaSession, m.paused ? 'paused' : 'playing');
+            ownState = true;
+          } catch (e) {}
+        }
         if (pageSetsPosition || !setPositionState || !isFinite(m.duration) || !(m.duration > 0)) return;
         try {
           setPositionState.call(mediaSession, {
@@ -469,25 +714,67 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
       // Only media you can hear counts (muted previews are ignored).
       function audible(m) {
-        return !!m && typeof m.play === 'function' && m !== keepAlive && !m.muted;
+        return !!m && typeof m.play === 'function' && m !== carrier && !m.muted;
+      }
+      // Media started by the system or the page while the user wants silence.
+      function unwanted(now) {
+        if (now - gestureAt < 1500 || now - userActionAt < 2500) return false;
+        return background ? !listening && !lenient : now < keepPausedUntil;
+      }
+      function silence(m) {
+        if (m.paused) return;
+        silenced = m;
+        try { m.pause(); } catch (e) {}
       }
 
+      document.addEventListener('play', function (e) {
+        var m = e.target;
+        if (!audible(m) || quiet()) return;
+        var now = Date.now();
+        if (unwanted(now)) return silence(m);
+        playAt = now;
+        started = m;
+      }, true);
+      document.addEventListener('playing', function (e) {
+        var m = e.target;
+        if (!audible(m) || quiet()) return;
+        var now = Date.now();
+        if (unwanted(now)) return silence(m);
+        started = m;
+        current = m;
+        if (!background) return;
+        listening = true;
+        interrupted = false;
+        mark(true);
+        // A video started in the background can be stopped by the system right away.
+        resumeUntil = now + 2000;
+        startCarrier();
+        syncLockScreen();
+      }, true);
       document.addEventListener('pause', function (e) {
         var m = e.target;
-        if (!audible(m) || m.ended) return;
+        if (!audible(m) || quiet()) return;
         var now = Date.now();
-        // Starting the silent player stopped this media (it can't play alongside it): give
-        // way, and leave this media to drive the lock screen itself.
-        if (background && m === current && keepAlive && !keepAlive.paused && now - keepAliveStarted < 1000) {
-          noCarrier = m;
-          stopKeepAlive();
-          return resume(m);
+        if (m === silenced) {
+          silenced = null;
+          if (m === started) started = null;
+          return;
         }
+        // Already playing again (this pause was undone before it was announced).
+        if (!m.paused) return;
+        if (m === started) started = null;
+        if (m.ended) return;
         if (now - userPausedAt < 1500) return syncLockScreen();
-        if (now < resumeUntil) return resume(m);
-        recent.push({ m: m, t: now });
-        if (recent.length > 4) recent.shift();
-        if (background && (m === current || !current || !current.isConnected)) {
+        if (!background) {
+          lastPause = { m: m, t: now };
+          return;
+        }
+        if (!listening) return syncLockScreen();
+        // The carrier was stopped too, and not by a video starting: the system took the audio.
+        if (carrierOn && carrierPlayed && carrier && carrier.paused && now - playAt > 2000) return systemTookAudio();
+        if (interrupted) return;
+        if (now < resumeUntil) return resumeAgain(m);
+        if (m === current || !current || !current.isConnected) {
           // Paused by the page, not the user: a player switching to the next video pauses
           // first, and YouTube waits out a removed ad and sometimes leaves the next video
           // paused at the start. The page is kept running (so iOS doesn't suspend it in
@@ -498,69 +785,126 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
           nudge(m, now, 0);
         }
       }, true);
-      document.addEventListener('playing', function (e) {
-        var m = e.target;
-        if (!audible(m)) return;
-        current = m;
-        if (!background) return;
-        // A video started in the background can be stopped by the system right away.
-        resumeUntil = Date.now() + 2000;
-        startKeepAlive();
-        syncLockScreen();
-      }, true);
       document.addEventListener('ended', function (e) {
-        if (!background || !audible(e.target)) return;
+        var m = e.target;
+        if (!audible(m) || quiet()) return;
+        if (m === started) started = null;
+        if (!background || !listening || interrupted) return;
+        mark(true);
         syncLockScreen();
         bridgeGap();
       }, true);
-      // A new source (the next video in the same player) gets another chance at the carrier.
-      document.addEventListener('emptied', function (e) { if (e.target === noCarrier) noCarrier = null; }, true);
       ['seeked', 'ratechange', 'durationchange'].forEach(function (type) {
         document.addEventListener(type, function (e) { if (e.target === current) syncLockScreen(); }, true);
       });
+      var progressAt = -1;
+      var carrierRetryAt = 0;
       document.addEventListener('timeupdate', function (e) {
-        if (e.target === current && Date.now() - lastSync > 10000) syncLockScreen();
+        var m = e.target;
+        if (m !== current || !background) return;
+        var now = Date.now();
+        if (listening && !m.paused && m.currentTime !== progressAt) {
+          // It can be heard: whatever stopped the carrier is over.
+          progressAt = m.currentTime;
+          interrupted = false;
+          if (carrierOn && carrier && carrier.paused && now - carrierRetryAt > 3000) {
+            carrierRetryAt = now;
+            resume(carrier);
+          }
+        }
+        if (now - lastSync > 10000) syncLockScreen();
+        if (listening && now - markedAt > 10000) mark(true);
       }, true);
 
-      function applyAppState(isBackground) {
+      function applyAppState(state, fresh) {
         var now = Date.now();
         var wasBackground = background;
-        background = isBackground;
-        resumeUntil = background ? now + 3000 : 0;
-        if (background && !wasBackground) {
+        if (state === 'inactive') {
+          if (!background && !resignAt) {
+            resignAt = now;
+            atResign = started;
+            // Control Center's buttons count as the user's from here on.
+            useFallbacks(true);
+          }
+        } else if (state === 'active') {
+          resignAt = 0;
+          atResign = null;
+          if (!background) useFallbacks(false);
+        } else if (state === 'background' && !wasBackground) {
+          background = true;
           useFallbacks(true);
-          // The system pause can land just before the app is told it went to the background.
-          recent.forEach(function (r) { if (now - r.t < 1500 && r.m.paused) resume(r.m); });
-          if (current && !current.paused && !current.ended) {
-            startKeepAlive();
+          // What was playing when the app left the screen. The system's pause can land just
+          // before the app is told, or be on its way; a pause from before the app started to
+          // leave was the user's.
+          var m = started;
+          if (!m && lastPause && userPausedAt < lastPause.t) {
+            if (resignAt ? lastPause.m === atResign && lastPause.t >= resignAt : now - lastPause.t < 1500) m = lastPause.m;
+          }
+          listening = !!m && m.isConnected && !m.ended && !quiet();
+          interrupted = false;
+          keepPausedUntil = 0;
+          resumes = [];
+          if (listening) {
+            current = m;
+            resumeUntil = now + 3000;
+            startCarrier();
+            if (m.paused) resume(m);
             syncLockScreen();
+            mark(true);
+          } else if (fresh && !quiet()) {
+            lenient = true;
+            if (marked()) {
+              // Its media is about to start: the page stays awake for it.
+              listening = true;
+              bridgeGap();
+            }
           }
           moveFramesToTimers();
-        } else if (!background && wasBackground) {
-          stopKeepAlive();
+          lastPause = null;
+        } else if (state === 'foreground' && wasBackground) {
+          background = false;
+          // Paused by the user, or silenced by a call or another app: it stays that way.
+          keepPausedUntil = listening && !interrupted ? 0 : now + 2500;
+          listening = false;
+          lenient = false;
+          mark(false);
+          interrupted = false;
+          resumeUntil = 0;
+          resignAt = 0;
+          atResign = null;
+          lastPause = null;
+          stopCarrier();
           useFallbacks(false);
           // Back on screen the media drives the lock screen itself again.
           if (ownPosition) {
             ownPosition = false;
             try { setPositionState.call(mediaSession); } catch (e) {}
           }
+          if (ownState) {
+            ownState = false;
+            try {
+              setPlaybackState.call(mediaSession, pageSetsState ? (current && !current.paused ? 'playing' : 'paused') : 'none');
+            } catch (e) {}
+          }
         }
-        recent = [];
         // Players inside frames (embedded videos) get the news too.
         for (var i = 0; i < window.frames.length; i++) {
-          try { window.frames[i].postMessage({ __shieldAppState: background }, '*'); } catch (e) {}
+          try { window.frames[i].postMessage({ __shieldAppState: state, fresh: !!fresh }, '*'); } catch (e) {}
         }
       }
       window.addEventListener('message', function (e) {
-        if (e.source === window.parent && window.parent !== window && e.data && typeof e.data.__shieldAppState === 'boolean') {
-          applyAppState(e.data.__shieldAppState);
+        if (e.source === window.parent && window.parent !== window && e.data && typeof e.data.__shieldAppState === 'string') {
+          applyAppState(e.data.__shieldAppState, e.data.fresh === true);
         }
       });
       // The sleep timer's pause: the user's, never undone.
       // Also used when headphones are unplugged; players in frames are told too.
       function userPause() {
         userPausedAt = Date.now();
-        stopKeepAlive();
+        listening = false;
+        lenient = false;
+        mark(false);
+        stopCarrier();
         try { if (current) current.pause(); } catch (e) {}
         for (var i = 0; i < window.frames.length; i++) {
           try { window.frames[i].postMessage({ __stillwebUserPause: true }, '*'); } catch (e) {}
@@ -574,7 +918,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       } catch (e) {}
       try {
         Object.defineProperty(window, '__shieldAppState', {
-          value: function (isBackground) { applyAppState(!!isBackground); }
+          value: function (state, fresh) { applyAppState(String(state), fresh === true); }
         });
       } catch (e) {}
 
@@ -679,7 +1023,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         emitNavigationState()
       } else {
         createWebView()
-        if let url = initialUrl { navigate(url) }
+        if let url = initialUrl { load(url) }
       }
     }
     guard let webView else { return }
@@ -700,6 +1044,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     if webView.scrollView.scrollsToTop != active { webView.scrollView.scrollsToTop = active }
     // A background tab whose theme changed is checked once it's on screen.
     if active, themeCheckPending { scheduleThemeCheck() }
+    // And one whose process ended while it was hidden is loaded again.
+    reloadIfNeeded()
     applyChromeInsets()
   }
 
@@ -761,6 +1107,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldStats")
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldTouch")
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldConsentFrame")
+    config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldGesture")
+    config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldMedia")
+    (config.userContentController as? ShieldContentController)?.quiet = restored
 
     // The page's viewport is set up from the web view's first width; one created before the
     // view is laid out (zero width) can leave pages slightly zoomed in. Start at the window's
@@ -833,32 +1182,51 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       },
     ]
 
-    // Tells the page when the app leaves or returns to the screen (background play).
+    // Tells the page when the app leaves or returns to the screen (background play). The
+    // page hears that the app is about to leave before WebKit pauses its video, so it knows
+    // what was playing at that moment.
     let center = NotificationCenter.default
-    appObservers = [
-      center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
-        self?.sendAppState(background: true)
-      },
-      center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
-        self?.sendAppState(background: false)
-      },
+    let states: [(Notification.Name, String)] = [
+      (UIApplication.willResignActiveNotification, "inactive"),
+      (UIApplication.didEnterBackgroundNotification, "background"),
+      (UIApplication.willEnterForegroundNotification, "foreground"),
+      (UIApplication.didBecomeActiveNotification, "active"),
     ]
+    appObservers = states.map { name, state in
+      center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        self?.sendAppState(state)
+        if state == "active" { self?.reloadIfNeeded() }
+      }
+    }
   }
 
-  private func sendAppState(background: Bool) {
+  /// `fresh`: the page committed while the app is in the background.
+  private func sendAppState(_ state: String, fresh: Bool = false) {
     guard ShieldEngine.shared.backgroundPlay else { return }
-    webView?.evaluateJavaScript("window.__shieldAppState && window.__shieldAppState(\(background))")
+    webView?.evaluateJavaScript("window.__shieldAppState && window.__shieldAppState('\(state)', \(fresh))")
+  }
+
+  private var contentController: ShieldContentController? {
+    webView?.configuration.userContentController as? ShieldContentController
   }
 
   // MARK: - Commands
 
   private var pendingNavigation: String?
 
+  /// An address the app asks for (address bar, bookmarks, links): the user's doing, so the
+  /// page may play media as usual.
   func navigate(_ string: String) {
+    contentController?.quiet = false
+    load(string)
+  }
+
+  private func load(_ string: String) {
     guard let webView else {
       initialUrl = string
       return
     }
+    needsReload = false
     // Don't let the first page load unfiltered while rule lists are still compiling.
     let engine = ShieldEngine.shared
     if !engine.isReady && engine.lastError == nil {
@@ -868,7 +1236,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         engine.whenReady { [weak self] in
           guard let self, let next = self.pendingNavigation else { return }
           self.pendingNavigation = nil
-          self.navigate(next)
+          self.load(next)
         }
       }
       return
@@ -912,16 +1280,46 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     reload()
   }
 
-  func goBack() { webView?.goBack() }
-  func goForward() { webView?.goForward() }
+  func goBack() {
+    contentController?.quiet = false
+    webView?.goBack()
+  }
+
+  func goForward() {
+    contentController?.quiet = false
+    webView?.goForward()
+  }
+
   func stopLoading() { webView?.stopLoading() }
   func clearHistory() { /* WKWebView has no API to clear its back-forward list. */ }
 
+  /// The user's reload (button, pull to refresh, Try again).
   func reload() {
+    reload(quiet: false)
+  }
+
+  private func reload(quiet: Bool) {
+    guard let webView else { return }
+    needsReload = false
     // Force rules and scripts to be reapplied (shield settings may have changed).
-    (webView?.configuration.userContentController as? ShieldContentController)?.appliedGeneration = -1
-    applyShields(for: webView?.url)
-    webView?.reload()
+    contentController?.appliedGeneration = -1
+    contentController?.quiet = quiet
+    applyShields(for: webView.url)
+    if webView.url == nil, let first = initialUrl {
+      // Nothing was committed yet (the process ended during the first load).
+      load(first)
+    } else {
+      webView.reload()
+    }
+  }
+
+  /// The page's process ended while the tab was hidden or the app was away: the page is
+  /// loaded again when it is looked at, like in Safari.
+  private var needsReload = false
+
+  private func reloadIfNeeded() {
+    guard needsReload, active, webView != nil, UIApplication.shared.applicationState == .active else { return }
+    reload(quiet: true)
   }
 
   func evaluate(_ script: String, completion: @escaping (String?) -> Void) {
@@ -996,11 +1394,16 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       controller.rulesAttached = false
     }
 
-    if host != controller.appliedHost || controller.appliedGeneration != engine.generation {
+    if host != controller.appliedHost || controller.appliedGeneration != engine.generation || controller.quiet != controller.appliedQuiet {
       controller.removeAllUserScripts()
       controller.addUserScript(Self.statsScript)
       controller.addUserScript(Self.touchScript)
+      controller.addUserScript(Self.mediaStateScript)
       controller.addUserScript(Self.privacyScript)
+      if controller.quiet {
+        controller.addUserScript(Self.quietScript)
+        controller.addUserScript(Self.quietTouchScript)
+      }
       controller.addUserScript(Self.inlineVideoScript)
       if engine.backgroundPlay { controller.addUserScript(Self.backgroundPlayScript) }
       if active, let host, let source = engine.scriptletSource(forHost: host) {
@@ -1019,6 +1422,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     }
     controller.appliedHost = host
     controller.appliedGeneration = engine.generation
+    controller.appliedQuiet = controller.quiet
   }
 
   private func upgradeIfNeeded(_ url: URL) -> URL? {
@@ -1065,6 +1469,17 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     ])
   }
 
+  /// Frames with media playing (ids from mediaStateScript), and what the app was last told.
+  private var playingFrames = Set<String>()
+  private var sentPlaying = false
+
+  private func emitMediaState() {
+    let playing = !playingFrames.isEmpty
+    guard playing != sentPlaying else { return }
+    sentPlaying = playing
+    onMediaStateChange(["playing": playing])
+  }
+
   // MARK: - WKScriptMessageHandler
 
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -1078,6 +1493,14 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       let engine = ShieldEngine.shared
       guard shieldsActive, engine.calmMode, let source = engine.autoconsentSource, let target = message.webView else { return }
       target.evaluateJavaScript(source + "\n;void 0;", in: message.frameInfo, in: .page, completionHandler: nil)
+    } else if message.name == "shieldMedia" {
+      guard let body = message.body as? [String: Any], let id = body["id"] as? String else { return }
+      if body["playing"] as? Bool == true { playingFrames.insert(id) } else { playingFrames.remove(id) }
+      emitMediaState()
+    } else if message.name == "shieldGesture" {
+      // The user is using the page: what loads from here on (frames included) may play.
+      contentController?.quiet = false
+      applyShields(for: webView?.url)
     } else if message.name == "shieldTouch" {
       let src = message.body as? String ?? ""
       let url = URL(string: src)
@@ -1178,7 +1601,14 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// A page that loads while the app is in the background (the next video of a playlist on
   /// a site without in-page navigation) must know it from the start.
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-    if UIApplication.shared.applicationState == .background { sendAppState(background: true) }
+    // The page before it took its media with it.
+    playingFrames.removeAll()
+    emitMediaState()
+    switch UIApplication.shared.applicationState {
+    case .background: sendAppState("background", fresh: true)
+    case .inactive: sendAppState("inactive")
+    default: break
+    }
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -1245,7 +1675,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         return
       }
       self.themeReloads += 1
-      self.reload()
+      // Nothing was playing (the check says so), and the reload must not start it.
+      self.reload(quiet: true)
     }
   }
 
@@ -1338,17 +1769,26 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   private var terminations: [Date] = []
 
-  /// The page's process crashed or was ended to free memory. Reload it, unless it keeps
-  /// crashing: after a third time within a minute the error page is shown instead.
+  /// The page's process crashed or was ended to free memory (iOS does that to apps that are
+  /// away). The page on screen is loaded again, without starting its media; hidden tabs and
+  /// an app that is away wait until they are looked at, so nothing loads (or plays) behind
+  /// the user's back and the memory stays free. A page that keeps crashing while it's being
+  /// used gets the error page after a third time within a minute.
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    webView.scrollView.refreshControl?.endRefreshing()
+    playingFrames.removeAll()
+    emitMediaState()
+    guard active, UIApplication.shared.applicationState == .active else {
+      needsReload = true
+      return
+    }
     let now = Date()
     terminations = terminations.filter { now.timeIntervalSince($0) < 60 } + [now]
     if terminations.count >= 3 {
       terminations.removeAll()
-      webView.scrollView.refreshControl?.endRefreshing()
       onLoadError(["url": webView.url?.absoluteString ?? initialUrl ?? "", "code": -10001, "description": "PAGE_CRASHED"])
     } else {
-      webView.reload()
+      reload(quiet: true)
     }
   }
 
