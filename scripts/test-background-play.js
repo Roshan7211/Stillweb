@@ -448,14 +448,26 @@ test('back on screen while listening: keeps playing, carrier stops', (w, check) 
   check('carrier plays again', !w.carrier.paused);
 });
 
-test('nothing was playing: a start in the background is undone', (w, check) => {
+test('a song is tapped and the phone locked before it starts: it plays', (w, check) => {
   const v = w.video();
+  w.gesture(); // the tap; the page needs three seconds before it calls play()
+  w.advance(500);
+  w.app('inactive');
+  w.app('background');
+  w.advance(2500);
+  v.play();
+  w.advance(50);
+  check('not silenced', !v.paused);
+  v.nowPlaying();
+  w.advance(100);
+  check('carrier keeps it going', w.carrier && !w.carrier.paused);
+});
+
+test('nothing was playing and nothing starts: no carrier', (w, check) => {
+  w.video();
   w.app('inactive');
   w.app('background');
   w.advance(5000);
-  v.play();
-  w.advance(50);
-  check('silenced', v.paused);
   check('no carrier', !w.carrier || w.carrier.paused);
 });
 
@@ -465,9 +477,9 @@ test('gap of more than a minute: the carrier rests', (w, check) => {
   v.nowPlaying();
   w.advance(5000);
   v.finish();
-  w.advance(59000);
+  w.advance(55000);
   check('carrier still on', !w.carrier.paused);
-  w.advance(2000);
+  w.advance(11000);
   check('carrier off', w.carrier.paused);
 });
 
@@ -636,7 +648,7 @@ test('the next track takes more than a minute to load: it still plays', (w, chec
   v.nowPlaying();
   w.advance(5000);
   v.finish();
-  w.advance(61000);
+  w.advance(66000);
   check('carrier rests', w.carrier.paused);
   v.play();
   w.advance(50);
@@ -697,11 +709,10 @@ test('the video finishes just as the app leaves: the page is kept awake for the 
 
 test('a player that starts on touch-down, right after the app is back', (w, check) => {
   const v = startPlaying(w);
-  w.gesture();
-  v.pause();
+  leave(w, v);
+  v.nowPlaying();
   w.advance(3000);
-  w.app('inactive');
-  w.app('background');
+  w.userPause(); // the sleep timer
   w.advance(5000);
   w.app('foreground');
   w.app('active');
@@ -747,11 +758,10 @@ test('a page told only that it loaded in the background, then that the app is ac
 
 test('back in the app, a video is tapped at once and takes two seconds to start', (w, check) => {
   const v = startPlaying(w);
-  w.gesture();
-  v.pause();
+  leave(w, v);
+  v.nowPlaying();
   w.advance(3000);
-  w.app('inactive');
-  w.app('background');
+  w.userPause(); // the sleep timer
   w.advance(5000);
   w.app('foreground');
   w.app('active');
@@ -763,6 +773,109 @@ test('back in the app, a video is tapped at once and takes two seconds to start'
   v.nowPlaying();
   w.advance(50);
   check('plays', !v.paused);
+});
+
+test('paused in the page before leaving: the page may still start something on return', (w, check) => {
+  const v = startPlaying(w);
+  w.gesture();
+  v.pause();
+  w.advance(3000);
+  w.app('inactive');
+  w.app('background');
+  w.advance(5000);
+  w.app('foreground');
+  w.app('active');
+  w.advance(200);
+  v.play(); // the page's own doing (WebKit doesn't start what was paused before leaving)
+  w.advance(50);
+  check('not silenced', !v.paused);
+});
+
+test('the video stalls (no network): the carrier rests after a minute', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  for (let i = 0; i < 20; i++) { w.advance(1000); v.tick(); }
+  w.advance(100);
+  check('carrier on while it plays', !w.carrier.paused);
+  // From here on it makes no progress, and never says so.
+  w.advance(55000);
+  check('carrier still on for a minute', !w.carrier.paused);
+  w.advance(11000);
+  check('carrier rests', w.carrier.paused);
+  // And when it plays on after all, everything is back.
+  v.nowPlaying();
+  w.advance(100);
+  check('carrier back with the video', !w.carrier.paused);
+});
+
+test('a long video keeps the carrier for as long as it plays', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  for (let i = 0; i < 300; i++) { w.advance(1000); v.tick(); }
+  check('carrier on after five minutes', !w.carrier.paused);
+  check('video playing', !v.paused);
+});
+
+test('a page that keeps pausing what was started again is left alone after three tries', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  w.advance(5000);
+  const before = v.playCalls;
+  v.pause();
+  for (let i = 0; i < 40; i++) {
+    w.advance(500);
+    if (!v.paused) { w.advance(2500); v.pause(); } // the page wants it paused
+  }
+  w.advance(20000);
+  check('at most three tries', v.playCalls - before <= 3);
+  check('paused in the end', v.paused);
+  w.advance(60000);
+  check('and the carrier rests', w.carrier.paused);
+});
+
+test('tries start over once the media has played on', (w, check) => {
+  const v = startPlaying(w);
+  leave(w, v);
+  v.nowPlaying();
+  w.advance(5000);
+  for (let round = 0; round < 5; round++) {
+    v.pause(); // between two videos
+    w.advance(4100);
+    check('started again in round ' + round, !v.paused);
+    v.nowPlaying();
+    for (let i = 0; i < 10; i++) { w.advance(1000); v.tick(); }
+  }
+});
+
+test('media the script never saw start is still played again when the system pauses it', (w, check) => {
+  const v = w.video();
+  v.muted = true;
+  v.play();
+  w.advance(5);
+  v.nowPlaying();
+  w.advance(2000);
+  v.muted = false; // unmuted without the page saying so
+  w.advance(2000);
+  v.paused = true; // the system's pause, on its way
+  w.app('background');
+  v.fire('pause');
+  w.advance(50);
+  check('played again', !v.paused);
+  check('carrier plays', w.carrier && !w.carrier.paused);
+});
+
+test('Control Center while the app is on screen: a handler the page removes is replaced', (w, check) => {
+  const v = startPlaying(w);
+  const proto = w.mediaSession.constructor.prototype;
+  w.app('inactive');
+  proto.setActionHandler.call(w.mediaSession, 'pause', null);
+  check('the app\'s pause is in place', typeof w.mediaSession.handlers.pause === 'function');
+  w.mediaSession.handlers.pause();
+  w.advance(50);
+  check('paused', v.paused);
 });
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
