@@ -150,6 +150,7 @@ fn write_content_rules(texts: &[(String, bool)], context: &[String], out: &PathB
                 );
                 rules.truncate(MAX_RULES_PER_LIST);
             }
+            check_conditions(&name, &rules);
             let data = serde_json::to_vec(&rules).expect("serialize rules");
             std::fs::write(out.join(&name), data).expect("write rules");
             json!({ "file": name, "count": rules.len() })
@@ -227,6 +228,32 @@ fn top_url_pattern(host: &str, family: bool) -> String {
     let host = host.replace('.', "\\.");
     let ending = if family { "\\.[^:/]+" } else { "" };
     format!("^[^:]+://([^:/]+\\.)?{host}{ending}[:/]")
+}
+
+/// Whether `host` is a site of the family that `pattern` (from `top_url_pattern`) is for.
+fn family_pattern_covers(pattern: &str, host: &str) -> bool {
+    let Some(name) = pattern
+        .strip_prefix("^[^:]+://([^:/]+\\.)?")
+        .and_then(|rest| rest.strip_suffix("\\.[^:/]+[:/]"))
+    else {
+        return false;
+    };
+    let name = name.replace("\\.", ".");
+    host.starts_with(&format!("{name}.")) || host.contains(&format!(".{name}."))
+}
+
+/// WebKit rejects a whole list for one trigger with more than one of these conditions.
+fn check_conditions(name: &str, rules: &[CbRule]) {
+    for rule in rules {
+        let t = &rule.trigger;
+        let conditions = [t.if_domain.is_some(), t.unless_domain.is_some(), t.if_top_url.is_some(), t.unless_top_url.is_some()];
+        if conditions.iter().filter(|c| **c).count() > 1 {
+            die(&format!(
+                "{name}: a rule has more than one condition (WebKit would reject the list): {}",
+                serde_json::to_string(rule).unwrap_or_default()
+            ));
+        }
+    }
 }
 
 /// Moves the families of `if-domain` / `unless-domain` to `if-top-url` / `unless-top-url`. A
@@ -345,6 +372,19 @@ fn cosmetic_rules(rules: Vec<CbRule>, exceptions: &CosmeticExceptions) -> Vec<Cb
             }
         }
         let exempt = rule.action.selector.as_ref().and_then(|s| exceptions.unhide.get(s));
+        if t.if_top_url.is_some() {
+            // A rule for site families (see family_hiding_rules). A trigger takes a single
+            // condition, so it can't also say "unless on these sites": the families that an
+            // exempt site belongs to are left out.
+            let patterns = t.if_top_url.as_mut().unwrap();
+            if let Some(exempt) = exempt {
+                patterns.retain(|pattern| !exempt.iter().any(|host| family_pattern_covers(pattern, host)));
+            }
+            if !patterns.is_empty() {
+                specific.push(rule);
+            }
+            continue;
+        }
         match (&mut t.if_domain, exempt) {
             (Some(domains), Some(exempt)) => {
                 domains.retain(|d| !exempt.iter().any(|e| within(&d[1..], e)));

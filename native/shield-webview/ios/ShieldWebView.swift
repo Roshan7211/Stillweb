@@ -2284,7 +2284,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     guard let old, let new, abs(new - old) > 0.001 else { return }
     if new > old {
       let justGrew = Date().timeIntervalSince(areaGrewAt) < 2
-      if justGrew, zoomBeforePush == nil, scroll.zoomScale < new - 0.001, !userIsZooming(scroll) {
+      // Only a page at its natural size: putting back a smaller zoom later could leave a
+      // page zoomed out instead.
+      if justGrew, zoomBeforePush == nil, scroll.zoomScale >= 0.999, scroll.zoomScale < new - 0.001, !userIsZooming(scroll) {
         zoomBeforePush = scroll.zoomScale
       }
     } else if let before = zoomBeforePush {

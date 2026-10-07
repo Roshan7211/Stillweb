@@ -515,13 +515,15 @@ final class ShieldEngine {
     completion?(.failure(error))
   }
 
-  /// Compiles (or finds already compiled) rule lists `{prefix}-{index}`; all-or-nothing.
+  /// Compiles (or finds already compiled) rule lists `{prefix}-{index}`. Completes with the
+  /// lists WebKit accepted and, if some weren't, the first error (WebKit rejects a whole list
+  /// for a single rule it doesn't take).
   private func compileLists(
     _ entries: [[String: Any]],
     prefix: String,
     dir: URL,
     store: WKContentRuleListStore,
-    completion: @escaping ([WKContentRuleList]?, Error?) -> Void
+    completion: @escaping ([WKContentRuleList], Error?) -> Void
   ) {
     var compiled = [WKContentRuleList?](repeating: nil, count: entries.count)
     var firstError: Error?
@@ -547,7 +549,11 @@ final class ShieldEngine {
             }
             store.compileContentRuleList(forIdentifier: identifier, encodedContentRuleList: json) { list, error in
               compiled[index] = list
-              if let error { firstError = firstError ?? error }
+              if let error {
+                // WebKit's reason is in the help anchor ("Rule list compilation failed: ...").
+                let reason = (error as NSError).userInfo[NSHelpAnchorErrorKey] as? String
+                firstError = firstError ?? ShieldError("\(file): \(reason ?? error.localizedDescription)")
+              }
               group.leave()
             }
           }
@@ -557,11 +563,8 @@ final class ShieldEngine {
 
     group.notify(queue: .main) {
       let lists = compiled.compactMap { $0 }
-      if lists.count == entries.count {
-        completion(lists, nil)
-      } else {
-        completion(nil, firstError ?? ShieldError("rule compilation failed"))
-      }
+      let incomplete = lists.count != entries.count
+      completion(lists, incomplete ? firstError ?? ShieldError("rule compilation failed") : nil)
     }
   }
 
@@ -578,7 +581,7 @@ final class ShieldEngine {
     let calm = ios["calm"] as? [[String: Any]] ?? []
 
     let idPrefix = "shield-" + version.filter { $0.isLetter || $0.isNumber }
-    var coreLists: [WKContentRuleList]?
+    var coreLists: [WKContentRuleList] = []
     var coreError: Error?
     let group = DispatchGroup()
 
@@ -597,15 +600,18 @@ final class ShieldEngine {
     }
 
     group.notify(queue: .main) {
-      guard let lists = coreLists else {
+      // A downloaded bundle has to be whole: the bundled one is there to fall back on. The
+      // bundled one is the last resort, so it is used as far as WebKit accepts it (blocking
+      // without element hiding beats no protection at all); Settings shows the problem.
+      guard !coreLists.isEmpty, coreError == nil || source == "bundled" else {
         return self.fail(coreError ?? ShieldError("rule compilation failed"), completion)
       }
-      self.ruleLists = lists
+      self.ruleLists = coreLists
       self.calmRuleLists = []
       self.scriptlets = index
       self.version = version
       self.source = source
-      self.lastError = nil
+      self.lastError = coreError.map { "Some rules could not be loaded (\($0.localizedDescription))" }
       self.buildMillis = Int(Date().timeIntervalSince(started) * 1000)
       self.generation += 1
       self.removeStaleRuleLists(keepingPrefix: idPrefix, store: store)
@@ -616,7 +622,7 @@ final class ShieldEngine {
       // Calm Mode's lists after the core ones, so the first pages never wait for them.
       guard !calm.isEmpty else { return }
       self.compileLists(calm, prefix: "\(idPrefix)-calm", dir: dir, store: store) { lists, _ in
-        guard let lists, self.version == version else { return }
+        guard !lists.isEmpty, self.version == version else { return }
         self.calmRuleLists = lists
         self.generation += 1
       }

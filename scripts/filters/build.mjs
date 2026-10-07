@@ -311,6 +311,30 @@ function compilerPath() {
   return bin;
 }
 
+/**
+ * Has WebKit itself compile the iOS rule lists (macOS only; skipped elsewhere and without the
+ * Swift compiler). A list WebKit rejects gives the app no rules at all, so the build fails.
+ */
+function checkWithWebKit(files) {
+  if (process.platform !== 'darwin') return log('WebKit check skipped (not macOS)');
+  const tool = path.join(CACHE, 'webkit-check');
+  const source = path.join(ROOT, 'scripts/filters/webkit-check.swift');
+  try {
+    if (!fs.existsSync(tool) || fs.statSync(tool).mtimeMs < fs.statSync(source).mtimeMs) {
+      fs.mkdirSync(CACHE, { recursive: true });
+      execFileSync('xcrun', ['swiftc', '-O', source, '-o', tool], { stdio: ['ignore', 'ignore', 'inherit'] });
+    }
+  } catch {
+    return log('WebKit check skipped (no Swift compiler)');
+  }
+  log('checking the iOS rule lists with WebKit');
+  try {
+    execFileSync(tool, files, { stdio: ['ignore', 'inherit', 'inherit'] });
+  } catch {
+    throw new Error('WebKit rejected an iOS rule list (see above): the app would get no rules from it');
+  }
+}
+
 async function main() {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
@@ -366,6 +390,7 @@ async function main() {
       calm: calm.ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
     };
     log(`ios: ${[...summary.ruleFiles, ...calm.ruleFiles].map((f) => `${f.file}=${f.count}`).join(', ')}, ${summary.scriptletHosts} scriptlet hosts`);
+    checkWithWebKit([...summary.ruleFiles, ...calm.ruleFiles].map((f) => path.join(iosOut, f.file)));
   }
 
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
