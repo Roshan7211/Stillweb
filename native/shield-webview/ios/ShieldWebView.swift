@@ -1432,6 +1432,41 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     webView.load(request)
   }
 
+  /// Sizes, zoom and insets of the page view, for "Page layout info" in test builds: layout
+  /// problems that only show on a device can be read off instead of guessed at.
+  func layoutInfo() -> [String: Any] {
+    guard let webView else { return [:] }
+    let scroll = webView.scrollView
+    let edges = { (i: UIEdgeInsets) -> [Double] in [i.top, i.left, i.bottom, i.right].map { Double($0) } }
+    let rect = { (r: CGRect) -> [Double] in [r.minX, r.minY, r.width, r.height].map { Double($0) } }
+    var info: [String: Any] = [
+      "system": UIDevice.current.systemVersion,
+      "screen": rect(UIScreen.main.bounds),
+      "window": rect(window?.bounds ?? .zero),
+      "view": rect(bounds),
+      // In the window's coordinates: differs from `view` in size when something scales it.
+      "viewInWindow": rect(convert(bounds, to: nil)),
+      "webView": rect(webView.frame),
+      "content": [Double(scroll.contentSize.width), Double(scroll.contentSize.height)],
+      "offset": [Double(scroll.contentOffset.x), Double(scroll.contentOffset.y)],
+      "zoom": Double(scroll.zoomScale),
+      "minZoom": Double(scroll.minimumZoomScale),
+      "maxZoom": Double(scroll.maximumZoomScale),
+      "inset": edges(scroll.contentInset),
+      "adjustedInset": edges(scroll.adjustedContentInset),
+      "insetBehavior": scroll.contentInsetAdjustmentBehavior.rawValue,
+      "safeArea": edges(safeAreaInsets),
+      "chrome": chromeInsets.map(edges) ?? [],
+      "pageZoom": Double(webView.pageZoom),
+      "bounce": [scroll.bounces, scroll.alwaysBounceVertical, scroll.alwaysBounceHorizontal],
+      "zoomBeforePush": zoomBeforePush.map { Double($0) } ?? -1,
+    ]
+    #if compiler(>=6.2)
+    if #available(iOS 26.0, *) { info["obscured"] = edges(webView.obscuredContentInsets) }
+    #endif
+    return info
+  }
+
   /// Snapshot of the visible page as a small JPEG in Caches/thumbs; completes with a file URL.
   func captureThumbnail(key: String, completion: @escaping (String?) -> Void) {
     guard let webView, webView.bounds.width > 0 else { return completion(nil) }

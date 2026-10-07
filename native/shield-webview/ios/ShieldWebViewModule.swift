@@ -55,6 +55,7 @@ public class ShieldWebViewModule: Module {
       AsyncFunction("findNext") { (view: ShieldWebView, forward: Bool) in view.findNext(forward: forward) }
       AsyncFunction("clearFind") { (view: ShieldWebView) in view.clearFind() }
       AsyncFunction("showFindNavigator") { (view: ShieldWebView) -> Bool in view.showFindNavigator() }.runOnQueue(.main)
+      AsyncFunction("layoutInfo") { (view: ShieldWebView) -> [String: Any] in view.layoutInfo() }.runOnQueue(.main)
       AsyncFunction("captureThumbnail") { (view: ShieldWebView, key: String, promise: Promise) in
         view.captureThumbnail(key: key) { promise.resolve($0) }
       }

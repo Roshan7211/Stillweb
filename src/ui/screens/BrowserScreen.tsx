@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   AppState,
   BackHandler,
   Dimensions,
@@ -57,6 +58,23 @@ import VaultScreen from './VaultScreen';
 type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus' | 'vault';
 
 const NO_PROFILES: Profile[] = [];
+
+/** The page's own view of its size and zoom (for "Page layout info" in test builds). */
+const PAGE_LAYOUT_SCRIPT = `(function () {
+  var d = document.documentElement, b = document.body, v = window.visualViewport;
+  var m = document.querySelector('meta[name=viewport]');
+  return {
+    host: location.hostname,
+    inner: [innerWidth, innerHeight],
+    screen: [screen.width, screen.height],
+    doc: [d.scrollWidth, d.scrollHeight, d.clientWidth, d.clientHeight],
+    body: b ? [b.scrollWidth, b.scrollHeight] : null,
+    visual: v ? [v.width, v.height, v.scale, v.offsetLeft, v.offsetTop] : null,
+    scroll: [scrollX, scrollY],
+    dpr: devicePixelRatio,
+    viewport: m ? m.content : null
+  };
+})()`;
 
 export default function BrowserScreen() {
   const { settings, setSiteFix } = useSettings();
@@ -586,6 +604,21 @@ export default function BrowserScreen() {
         }, Platform.OS === 'ios' ? 350 : 0);
         return;
       }
+      case 'layoutInfo': {
+        // What the app, the web view and the page each think the page's size and zoom are.
+        const ref = activeRef();
+        const native = await ref?.layoutInfo?.().catch(() => null);
+        const page = await ref?.evaluateJavaScript(PAGE_LAYOUT_SCRIPT).catch(() => null);
+        let pageInfo: unknown = null;
+        try {
+          pageInfo = page ? JSON.parse(page) : null;
+        } catch {}
+        const app = { insets, barsHeight, keyboardHeight, textZoom: settings.textZoom };
+        const text = JSON.stringify({ app, native, page: pageInfo });
+        Clipboard.setStringAsync(text).catch(() => {});
+        setTimeout(() => Alert.alert('Page layout info (copied)', text), afterMenu);
+        return;
+      }
       case 'desktop': {
         const site = siteKey(url);
         if (!site) return;
@@ -1010,6 +1043,7 @@ export default function BrowserScreen() {
         desktop={!!activeTab && !!settings.siteFixes[siteKey(activeTab.url)]?.desktop}
         showQuit={Platform.OS === 'android'}
         clearsOnQuit={settings.clearDataOnExit}
+        showLayoutInfo={Platform.OS === 'ios' && plus.sandbox}
         navigation={
           single
             ? {

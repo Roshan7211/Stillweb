@@ -17,6 +17,7 @@ export type MenuAction =
   | 'listen'
   | 'desktop'
   | 'hideElement'
+  | 'layoutInfo'
   | 'vault'
   | 'quit'
   | 'back'
@@ -35,6 +36,8 @@ type Props = {
   clearsOnQuit: boolean;
   /** Single bottom bar: forward (and back, for the long reach) live in the menu. */
   navigation?: { canGoBack: boolean; canGoForward: boolean };
+  /** Test builds: a row that shows the page's sizes and zoom, for reporting layout problems. */
+  showLayoutInfo?: boolean;
   onAction: (action: MenuAction) => void;
 };
 
@@ -49,6 +52,7 @@ export default function MenuSheet({
   showQuit,
   clearsOnQuit,
   navigation,
+  showLayoutInfo,
   onAction,
 }: Props) {
   const quick: { action: MenuAction; icon: IconName; label: string; active?: boolean }[] = [
@@ -115,6 +119,15 @@ export default function MenuSheet({
               onPress={() => onAction('desktop')}
             />
             <Row title="Hide an element" icon="crosshair" theme={theme} onPress={() => onAction('hideElement')} />
+            {showLayoutInfo ? (
+              <Row
+                title="Page layout info"
+                subtitle="Test builds only: sizes and zoom, to send with a report"
+                icon="info"
+                theme={theme}
+                onPress={() => onAction('layoutInfo')}
+              />
+            ) : null}
           </>
         ) : null}
         <Row title="New tab" icon="plus" theme={theme} onPress={() => onAction('newTab')} />

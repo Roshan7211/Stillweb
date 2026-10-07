@@ -108,6 +108,8 @@ export type ShieldWebViewRef = {
   clearFind(): Promise<void>;
   /** iOS: shows the system find bar (with match counts); false if it isn't available. */
   showFindNavigator(): Promise<boolean>;
+  /** iOS: sizes, zoom and insets of the page view, for "Page layout info" in test builds. */
+  layoutInfo?(): Promise<Record<string, unknown>>;
   /** Completes onFileChooser with picked file URIs, or null when cancelled. */
   resolveFileChooser(uris: string[] | null): Promise<void>;
   /** Saves a small JPEG of the visible page (for the tab switcher); resolves with its file URI. */
