@@ -32,33 +32,34 @@ print(types[-1]["identifier"] if types else "com.apple.CoreSimulator.SimDeviceTy
 echo "== runtime $RUNTIME, device $DEVICE_TYPE"
 [ -n "$RUNTIME" ] || { echo "no iOS simulator runtime on this machine"; exit 1; }
 
-echo "== build"
-python3 - "$OUT/src" <<'EOF'
-import sys
-out = sys.argv[1]
-web = open('native/shield-webview/ios/ShieldWebView.swift').read().replace('import ExpoModulesCore\n', '\n')
-engine = open('native/shield-webview/ios/ShieldEngine.swift').read()
-# Test only: each site script set leaves its name on the page, so the check can tell which one
-# a document actually ran (the app itself leaves no such trace).
-guard = "if (h !== '\\(quoted)' && !h.endsWith('.\\(quoted)')) return;"
-assert engine.count(guard) == 1, 'site script guard not found'
-engine = engine.replace(guard, guard + "\n      window.__swSet = (window.__swSet || '') + '[\\(quoted)]';")
-open(out + '/ShieldWebView.swift', 'w').write(web)
-open(out + '/ShieldEngine.swift', 'w').write(engine)
-EOF
-ARCH=$(uname -m)
-SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
-echo "sdk: $SDK"
-xcrun -sdk iphonesimulator swiftc -O -module-name Test \
-  -target "${ARCH}-apple-ios17.0-simulator" -sdk "$SDK" \
-  "$HERE/Stubs.swift" "$OUT/src/ShieldWebView.swift" "$OUT/src/ShieldEngine.swift" "$HERE/main.swift" \
-  -o "$OUT/Test.app/Test" 2>&1 | grep -v "warning:" | head -60
-[ -x "$OUT/Test.app/Test" ] || { echo "build failed"; exit 1; }
-cp "$HERE/Info.plist" "$OUT/Test.app/Info.plist"
-mkdir -p "$OUT/Test.app/ShieldWebViewAssets.bundle"
-cp -R native/shield-webview/ios/Resources/shield "$OUT/Test.app/ShieldWebViewAssets.bundle/shield"
-cp native/shield-webview/ios/Resources/vendor/autoconsent.js "$OUT/Test.app/ShieldWebViewAssets.bundle/autoconsent.js"
-codesign -s - --force "$OUT/Test.app" 2>&1 | tail -1
+# Builds the test app from the native sources of a commit (or of the checkout: "tree"), and
+# installs it once the simulator is there.
+build() {
+  local ref=$1
+  echo "== build ($ref)"
+  rm -rf "$OUT/src" "$OUT/Test.app" && mkdir -p "$OUT/src" "$OUT/Test.app"
+  for f in ShieldWebView.swift ShieldEngine.swift; do
+    if [ "$ref" = tree ]; then cp "native/shield-webview/ios/$f" "$OUT/src/$f.in"
+    else git show "$ref:native/shield-webview/ios/$f" > "$OUT/src/$f.in"; fi
+  done
+  python3 "$HERE/prepare.py" "$OUT/src" || exit 1
+  local arch sdk
+  arch=$(uname -m)
+  sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
+  xcrun -sdk iphonesimulator swiftc -O -module-name Test \
+    -target "${arch}-apple-ios17.0-simulator" -sdk "$sdk" \
+    "$HERE/Stubs.swift" "$OUT/src/ShieldWebView.swift" "$OUT/src/ShieldEngine.swift" "$HERE/main.swift" \
+    -o "$OUT/Test.app/Test" 2>&1 | grep -v "warning:" | head -60
+  [ -x "$OUT/Test.app/Test" ] || { echo "build failed"; exit 1; }
+  cp "$HERE/Info.plist" "$OUT/Test.app/Info.plist"
+  mkdir -p "$OUT/Test.app/ShieldWebViewAssets.bundle"
+  cp -R native/shield-webview/ios/Resources/shield "$OUT/Test.app/ShieldWebViewAssets.bundle/shield"
+  cp native/shield-webview/ios/Resources/vendor/autoconsent.js "$OUT/Test.app/ShieldWebViewAssets.bundle/autoconsent.js"
+  codesign -s - --force "$OUT/Test.app" 2>&1 | tail -1
+  if [ -n "${UDID:-}" ]; then xcrun simctl install "$UDID" "$OUT/Test.app" || { echo "install failed"; exit 1; }; fi
+}
+UDID=
+build "${BEFORE:-tree}"
 
 echo "== simulator"
 UDID=$(xcrun simctl create stillweb-check "$DEVICE_TYPE" "$RUNTIME")
@@ -84,14 +85,19 @@ run() {
 if [ $# -gt 0 ]; then
   run custom "$@"
 else
-  run video-home-plain "https://youtube.com/"
-  run video-watch-www "https://www.youtube.com/watch?v=kJQP7kiw5Fk"
-  run video-home-mobile "https://m.youtube.com/"
-  run video-home-restored "https://m.youtube.com/" restored
-  run video-home-link "https://youtube.com/" via-link
-  run video-home-bar "https://youtube.com/" via-bar
-  run music "https://music.youtube.com/"
-  run news "https://www.cnn.com/"
+  # A tab whose page process iOS ended while it was hidden, opened again: before the fix
+  # (BEFORE, a commit) and with the code of this checkout.
+  if [ -n "${BEFORE:-}" ]; then
+    run before-video-plain "https://youtube.com/" kill
+    run before-video-typed "https://youtube.com/" via-bar kill
+    run before-news "https://www.cnn.com/" kill
+    build tree
+  fi
+  run video-plain "https://youtube.com/" kill
+  run video-typed "https://youtube.com/" via-bar kill
+  run video-watch "https://www.youtube.com/watch?v=kJQP7kiw5Fk" kill
+  run music "https://music.youtube.com/" kill
+  run news "https://www.cnn.com/" kill
 fi
 
 # Smaller pictures: they are only looked at, and are kept in the repository's results branch.

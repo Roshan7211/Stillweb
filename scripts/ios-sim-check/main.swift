@@ -84,7 +84,9 @@ final class Runner {
     view.onNavigationStateChange.handler = { [weak self] body in
       guard let self, let url = body["url"] as? String, url != self.lastURL else { return }
       self.lastURL = url
-      log("page: address is now " + String(url.prefix(110)))
+      let shown: String = url.isEmpty ? "(empty)" : String(url.prefix(110))
+      let title: String = (body["title"] as? String) ?? ""
+      log("page: address is now \(shown), title '\(title.prefix(40))'")
     }
     view.onLoadError.handler = { body in log("page: ERROR \(body)") }
     view.onLoadEnd.handler = { [weak self] _ in self?.loaded() }
@@ -106,8 +108,30 @@ final class Runner {
     }
   }
 
+  var web: WKWebView? { view.subviews.compactMap { $0 as? WKWebView }.first }
+
+  /// What the app shows and what the page got, under `name`; then `next`.
+  func report(_ name: String, then next: @escaping () -> Void) {
+    view.evaluate(probe) { result in
+      let info = self.view.layoutInfo()
+      log("[\(name)] blocked count shown by the app: \(self.blocked)")
+      log("[\(name)] app: scripts=\(info["scripts"] ?? "?") builtFor=\(info["scriptsFor"] ?? "?") attached=\(info["attached"] ?? "?") scriptsInPage=\(info["scriptsInPage"] ?? "?") repairs=\(info["repairs"] ?? "?") quiet=\(info["quiet"] ?? "?")")
+      log("[\(name)] view: zoom=\(info["zoom"] ?? "?") minZoom=\(info["minZoom"] ?? "?") content=\(info["content"] ?? "?") webView=\(info["webView"] ?? "?")")
+      log("[\(name)] page: \(result ?? "nil")")
+      log("SHOT \(name)")
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: next)
+    }
+  }
+
+  func userReload() {
+    stage = "reload"
+    log("--- the user's reload")
+    view.reload()
+  }
+
   func check() {
-    if stage == "before" {
+    switch stage {
+    case "before":
       stage = "first"
       if viaBar {
         log("--- the address typed into the address bar: \(target)")
@@ -116,25 +140,45 @@ final class Runner {
         log("--- the page sends the tab to \(target)")
         view.evaluate("location.href = '\(target)'; 1") { _ in }
       }
-      return
-    }
-    let name = stage
-    view.evaluate(probe) { result in
-      let info = self.view.layoutInfo()
-      log("[\(name)] blocked count shown by the app: \(self.blocked)")
-      log("[\(name)] app: scripts=\(info["scripts"] ?? "?") builtFor=\(info["scriptsFor"] ?? "?") attached=\(info["attached"] ?? "?") scriptsInPage=\(info["scriptsInPage"] ?? "?") repairs=\(info["repairs"] ?? "?") quiet=\(info["quiet"] ?? "?")")
-      log("[\(name)] view: zoom=\(info["zoom"] ?? "?") minZoom=\(info["minZoom"] ?? "?") content=\(info["content"] ?? "?") webView=\(info["webView"] ?? "?")")
-      log("[\(name)] page: \(result ?? "nil")")
-      log("SHOT \(name)")
-      DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-        if name == "first" && !once {
-          self.stage = "reload"
-          log("--- the user's reload")
-          self.view.reload()
-        } else {
-          log("done")
-          exit(0)
+    case "first":
+      report("first") {
+        if arguments.contains("kill") { self.endProcess() } else if once { log("done"); exit(0) } else { self.userReload() }
+      }
+    case "reopened":
+      report("reopened") {
+        // The first touch on a page the app loaded again by itself: the page tells the app.
+        log("--- the first touch on the page (as the page reports it to the app)")
+        self.web?.evaluateJavaScript("window.webkit.messageHandlers.shieldGesture.postMessage(1); 1", in: nil, in: .defaultClient) { _ in }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+          self.report("touched") { self.userReload() }
         }
+      }
+    default:
+      report("reload") { log("done"); exit(0) }
+    }
+  }
+
+  /// What iOS does to tabs in the background: the page's process ends while the tab is hidden.
+  /// The tab must keep its address, and show the same page again when it is opened.
+  func endProcess() {
+    stage = "reopened"
+    view.active = false
+    view.applyProps()
+    let before = (web?.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
+    log("--- the hidden tab's page process (\(before)) is ended")
+    kill(before, SIGKILL)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+      let now = (self.web?.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
+      if now == before {
+        log("(it is still there: ended through WebKit instead)")
+        _ = self.web?.perform(NSSelectorFromString("_killWebContentProcess"))
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        let shown: String = self.lastURL.isEmpty ? "(empty)" : self.lastURL
+        log("the app's address for the tab: \(shown); the web view's own: \(self.web?.url?.absoluteString ?? "none")")
+        log("--- the tab is opened again")
+        self.view.active = true
+        self.view.applyProps()
       }
     }
   }

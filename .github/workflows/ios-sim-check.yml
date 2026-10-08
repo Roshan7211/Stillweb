@@ -17,10 +17,15 @@ concurrency:
 jobs:
   check:
     runs-on: macos-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Run
+        env:
+          # The commit before the fix for tabs whose page process ended.
+          BEFORE: 89357f6
         run: bash scripts/ios-sim-check/run.sh > result.log 2>&1 || true
       - name: Store the results
         if: always()
