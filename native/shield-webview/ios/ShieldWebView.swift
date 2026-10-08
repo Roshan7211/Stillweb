@@ -1419,6 +1419,14 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     webView?.configuration.userContentController as? ShieldContentController
   }
 
+  /// The address of the page the tab is on. Once iOS has ended the page's process (it does
+  /// that to tabs in the background all the time) the web view reports no address until the
+  /// page is loaded again; its history still knows which page that is.
+  private var pageURL: URL? {
+    guard let webView else { return nil }
+    return webView.url ?? webView.backForwardList.currentItem?.url
+  }
+
   // MARK: - Commands
 
   private var pendingNavigation: String?
@@ -1515,7 +1523,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   /// Snapshot of the visible page as a small JPEG in Caches/thumbs; completes with a file URL.
   func captureThumbnail(key: String, completion: @escaping (String?) -> Void) {
-    guard let webView, webView.bounds.width > 0 else { return completion(nil) }
+    // No address: nothing loaded yet, or the page's process has ended and the view is blank
+    // (the picture taken before stays).
+    guard let webView, webView.bounds.width > 0, webView.url != nil else { return completion(nil) }
     let config = WKSnapshotConfiguration()
     config.snapshotWidth = 360
     webView.takeSnapshot(with: config) { image, _ in
@@ -1537,7 +1547,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   }
 
   @objc private func pullToRefresh() {
-    guard let webView, webView.url != nil else {
+    guard pageURL != nil else {
       webView?.scrollView.refreshControl?.endRefreshing()
       return
     }
@@ -1568,11 +1578,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     // Rules and scripts are attached afresh, whatever is there.
     forceShields()
     contentController?.quiet = quiet
-    applyShields(for: webView.url)
-    if webView.url == nil, let first = initialUrl {
+    applyShields(for: pageURL)
+    if pageURL == nil, let first = initialUrl {
       // Nothing was committed yet (the process ended during the first load).
       load(first)
     } else {
+      // Also after the page's process ended: the page the tab was on, from its history.
       webView.reload()
     }
   }
@@ -1749,10 +1760,13 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   private func emitNavigationState() {
     guard let webView else { return }
-    let url = webView.url?.absoluteString ?? ""
+    // A page whose process has ended keeps its address and title in the app (see pageURL): a
+    // tab must not turn into an empty one because iOS took its page out of memory.
+    let ended = webView.url == nil ? webView.backForwardList.currentItem : nil
+    let url = pageURL?.absoluteString ?? ""
     onNavigationStateChange([
       "url": url,
-      "title": webView.title ?? "",
+      "title": ended?.title ?? webView.title ?? "",
       "canGoBack": webView.canGoBack,
       "canGoForward": webView.canGoForward,
       "loading": webView.isLoading,
@@ -2124,7 +2138,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     terminations = terminations.filter { now.timeIntervalSince($0) < 60 } + [now]
     if terminations.count >= 3 {
       terminations.removeAll()
-      onLoadError(["url": webView.url?.absoluteString ?? initialUrl ?? "", "code": -10001, "description": "PAGE_CRASHED"])
+      onLoadError(["url": pageURL?.absoluteString ?? initialUrl ?? "", "code": -10001, "description": "PAGE_CRASHED"])
     } else {
       reload(quiet: true)
     }
