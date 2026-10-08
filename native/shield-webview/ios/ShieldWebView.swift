@@ -16,8 +16,10 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 /// controller, so what has been installed in it is tracked here rather than per view.
 final class ShieldContentController: WKUserContentController {
   var appliedHost: String?
-  var appliedGeneration = -1
-  var rulesAttached = false
+  /// Identifiers of the rule lists attached (empty: none).
+  var attachedLists: [String] = []
+  /// What the installed user scripts were built from (see ShieldWebView.scriptsKey).
+  var scriptsKey: String?
   /// The page was loaded again without the user asking (restored tab, ended process): media
   /// stays silent until the user touches the page.
   var quiet = false
@@ -133,6 +135,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   var restored = false
 
   private var webView: WKWebView?
+  /// The web view is created once the engine has its rule lists (see applyProps).
+  private var waitingForEngine = false
   /// Last load progress sent to the app.
   private var sentProgress = 0.0
   private var observations: [NSKeyValueObservation] = []
@@ -158,6 +162,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private static let statsScript = WKUserScript(
     source: """
     (function () {
+      // The app's scripts reached this page (checked after it starts: see verifyScripts).
+      window.__stillwebScripts = true;
       var pending = 0, hosts = {}, timer = 0;
       var tags = /^(SCRIPT|IMG|IFRAME|LINK|VIDEO|AUDIO|SOURCE|EMBED|OBJECT)$/;
       function flush() {
@@ -1204,6 +1210,19 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         applyShields(for: popup.url ?? initialUrl.flatMap { URL(string: $0) })
         emitNavigationState()
       } else {
+        // With its rules and scripts in place from the start (see createWebView): while the
+        // rule lists are still being compiled, it waits for them.
+        let engine = ShieldEngine.shared
+        if !engine.isReady && engine.lastError == nil {
+          if !waitingForEngine {
+            waitingForEngine = true
+            engine.whenReady { [weak self] in
+              self?.waitingForEngine = false
+              self?.applyProps()
+            }
+          }
+          return
+        }
         createWebView()
         if let url = initialUrl { load(url) }
       }
@@ -1276,7 +1295,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     config.websiteDataStore = incognito
       ? ShieldEngine.shared.privateDataStore()
       : ShieldEngine.profileDataStore(profileId) ?? .default()
-    config.userContentController = ShieldContentController()
+    let controller = ShieldContentController()
+    config.userContentController = controller
     config.applicationNameForUserAgent = Self.safariApplicationName
     config.allowsInlineMediaPlayback = true
     // Players start video right after the tap that opened them (a page load or app route
@@ -1291,14 +1311,16 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldConsentFrame")
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldGesture")
     config.userContentController.add(WeakScriptHandler(self), contentWorld: .defaultClient, name: "shieldMedia")
-    (config.userContentController as? ShieldContentController)?.quiet = restored
+    controller.quiet = restored
+    // Rule lists and scripts for the first page go in before the web view (and the process
+    // that will run the page) exists, so the first load can't start without them.
+    applyShields(to: controller, for: initialUrl.flatMap { URL(string: $0) })
 
     // The page's viewport is set up from the web view's first width; one created before the
     // view is laid out (zero width) can leave pages slightly zoomed in. Start at the window's
     // width; layoutSubviews applies the exact size.
     let initialFrame = bounds.width > 0 ? bounds : (window?.bounds ?? UIScreen.main.bounds)
     install(WKWebView(frame: initialFrame, configuration: config))
-    applyShields(for: nil)
   }
 
   /// The media stopped because the user wanted it to (headphones unplugged): background play
@@ -1405,6 +1427,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// page may play media as usual.
   func navigate(_ string: String) {
     contentController?.quiet = false
+    // (Before the web view exists: it is created for this address, not as a restored page.)
+    if webView == nil { restored = false }
     load(string)
   }
 
@@ -1464,6 +1488,24 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       "pageZoom": Double(webView.pageZoom),
       "bounce": [scroll.bounces, scroll.alwaysBounceVertical, scroll.alwaysBounceHorizontal],
       "zoomBeforePush": zoomBeforePush.map { Double($0) } ?? -1,
+      // Blocking: what the engine has, what this view attached, and whether the page got it.
+      "engine": [
+        "ready": ShieldEngine.shared.isReady,
+        "version": ShieldEngine.shared.version ?? "",
+        "error": ShieldEngine.shared.lastError ?? "",
+        "lists": ShieldEngine.shared.ruleLists.map { $0.identifier ?? "" },
+        "calmLists": ShieldEngine.shared.calmRuleLists.count,
+        "calmMode": ShieldEngine.shared.calmMode,
+        "enabled": ShieldEngine.shared.enabled,
+      ] as [String: Any],
+      "attached": contentController?.attachedLists ?? [],
+      "scripts": webView.configuration.userContentController.userScripts.count,
+      "scriptsFor": contentController?.appliedHost ?? "",
+      "quiet": contentController?.quiet ?? false,
+      "shieldsActive": shieldsActive,
+      "scriptsInPage": scriptsSeen,
+      "repairs": repairs,
+      "blockedOnPage": blockedOnPage,
     ]
     #if compiler(>=6.2)
     if #available(iOS 26.0, *) { info["obscured"] = edges(webView.obscuredContentInsets) }
@@ -1523,8 +1565,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private func reload(quiet: Bool) {
     guard let webView else { return }
     needsReload = false
-    // Force rules and scripts to be reapplied (shield settings may have changed).
-    contentController?.appliedGeneration = -1
+    // Rules and scripts are attached afresh, whatever is there.
+    forceShields()
     contentController?.quiet = quiet
     applyShields(for: webView.url)
     if webView.url == nil, let first = initialUrl {
@@ -1533,6 +1575,14 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     } else {
       webView.reload()
     }
+  }
+
+  /// Makes the next applyShields attach the rule lists and install the scripts again.
+  private func forceShields() {
+    guard let controller = contentController else { return }
+    controller.attachedLists = []
+    controller.scriptsKey = nil
+    controller.removeAllContentRuleLists()
   }
 
   /// The page's process ended while the tab was hidden or the app was away: the page is
@@ -1590,9 +1640,14 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// Attaches or detaches rule lists and installs the scriptlets for the page's host.
   /// Called before each main-frame navigation is allowed, so new documents pick them up.
   private func applyShields(for url: URL?) {
-    guard let webView, let controller = webView.configuration.userContentController as? ShieldContentController else {
-      return
-    }
+    guard let controller = contentController else { return }
+    applyShields(to: controller, for: url)
+  }
+
+  /// Attaches or detaches rule lists and installs the scripts for the page's host. Only what
+  /// changed is touched: detaching and attaching the same lists (or scripts) again while a
+  /// page is on its way leaves a moment in which the page has neither.
+  private func applyShields(to controller: ShieldContentController, for url: URL?) {
     let engine = ShieldEngine.shared
     let host = url?.host?.lowercased()
     let active = engine.shieldsEnabled(forHost: host)
@@ -1606,24 +1661,31 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     shieldsActive = active
     countedHost = host
 
-    if active {
-      if !controller.rulesAttached || controller.appliedGeneration != engine.generation {
-        controller.removeAllContentRuleLists()
-        engine.ruleLists.forEach(controller.add)
-        // Calm Mode (Stillweb Plus): the annoyance lists on top.
-        if engine.calmMode { engine.calmRuleLists.forEach(controller.add) }
-        controller.rulesAttached = !engine.ruleLists.isEmpty
-      }
-    } else if controller.rulesAttached {
+    // Calm Mode (Stillweb Plus): the annoyance lists on top.
+    let lists = active ? engine.ruleLists + (engine.calmMode ? engine.calmRuleLists : []) : []
+    let identifiers = lists.map { $0.identifier ?? "" }
+    if identifiers != controller.attachedLists {
       controller.removeAllContentRuleLists()
-      controller.rulesAttached = false
+      lists.forEach(controller.add)
+      controller.attachedLists = identifiers
     }
 
-    if host != controller.appliedHost || controller.appliedGeneration != engine.generation || controller.quiet != controller.appliedQuiet {
+    let key = scriptsKey(host: host, active: active, quiet: controller.quiet)
+    if key != controller.scriptsKey {
       installUserScripts(in: controller, host: host, active: active)
+      controller.scriptsKey = key
     }
     controller.appliedHost = host
-    controller.appliedGeneration = engine.generation
+  }
+
+  /// Everything the user scripts are built from: the same key means the same scripts.
+  private func scriptsKey(host: String?, active: Bool, quiet: Bool) -> String {
+    let engine = ShieldEngine.shared
+    let hidden = engine.siteFix(forHost: host)?.hidden.joined(separator: "\u{1}") ?? ""
+    return [
+      host ?? "", active ? "on" : "off", quiet ? "quiet" : "", engine.backgroundPlay ? "bg" : "",
+      engine.calmMode ? "calm" : "", engine.version ?? "", hidden,
+    ].joined(separator: "\u{0}")
   }
 
   /// The scripts the tab's next documents (and frames) get, for `host` with shields `active`.
@@ -1737,6 +1799,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       controller.quiet = false
       if controller.appliedQuiet {
         installUserScripts(in: controller, host: controller.appliedHost, active: shieldsActive)
+        controller.scriptsKey = scriptsKey(host: controller.appliedHost, active: shieldsActive, quiet: false)
       }
     } else if message.name == "shieldTouch" {
       let src = message.body as? String ?? ""
@@ -1839,7 +1902,32 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   /// A page that loads while the app is in the background (the next video of a playlist on
   /// a site without in-page navigation) must know it from the start.
+  /// How often this view found a page without the app's scripts and attached everything again.
+  private var repairs = 0
+  private var repairedURL: URL?
+  private var scriptsSeen = "not checked"
+
+  /// The app's scripts mark every page they run in (`statsScript`). A page without the mark
+  /// started without them, and so most likely without the rule lists too: seen on iPhones
+  /// with the first page of a new web view, where reloading by hand put it right. That is
+  /// done here: rules and scripts are attached again and the page loaded once more.
+  private func verifyScripts() {
+    guard let url = webView?.url, ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+      guard let self, let webView = self.webView, webView.url == url else { return }
+      webView.evaluateJavaScript("window.__stillwebScripts === true", in: nil, in: .defaultClient) { [weak self] result in
+        guard let self, self.webView?.url == url, case .success(let value) = result, let present = value as? Bool else { return }
+        self.scriptsSeen = present ? "present" : "MISSING"
+        guard !present, self.repairs < 3, self.repairedURL != url else { return }
+        self.repairs += 1
+        self.repairedURL = url
+        self.reload(quiet: self.contentController?.quiet ?? false)
+      }
+    }
+  }
+
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    verifyScripts()
     zoomBeforePush = nil
     // The page before it took its media with it.
     playingFrames.removeAll()

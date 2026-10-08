@@ -72,7 +72,13 @@ const PAGE_LAYOUT_SCRIPT = `(function () {
     visual: v ? [v.width, v.height, v.scale, v.offsetLeft, v.offsetTop] : null,
     scroll: [scrollX, scrollY],
     dpr: devicePixelRatio,
-    viewport: m ? m.content : null
+    viewport: m ? m.content : null,
+    // Whether the app's page scripts ran here, and what loaded from other sites.
+    pageScripts: typeof window.__shieldAppState,
+    gpc: navigator.globalPrivacyControl === true,
+    otherSites: Array.from(new Set(performance.getEntriesByType('resource').map(function (e) {
+      try { return new URL(e.name).hostname; } catch (err) { return ''; }
+    }).filter(function (h) { return h && h !== location.hostname; }))).slice(0, 25)
   };
 })()`;
 
