@@ -1838,6 +1838,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     guard let url = action.request.url else { return decisionHandler(.cancel) }
     let scheme = url.scheme?.lowercased() ?? ""
     let isMainFrame = action.targetFrame?.isMainFrame ?? true
+    if isMainFrame { mainRequestIsGet = (action.request.httpMethod ?? "GET").uppercased() == "GET" }
 
     // <a download> links.
     if action.shouldPerformDownload { return decisionHandler(.download) }
@@ -1881,6 +1882,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     decidePolicyFor navigationResponse: WKNavigationResponse,
     decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
   ) {
+    if navigationResponse.isForMainFrame {
+      let type = navigationResponse.response.mimeType?.lowercased() ?? ""
+      mainResponseIsHTML = type == "text/html" || type == "application/xhtml+xml"
+    }
     // Files the server marks as attachments are downloaded, like in Safari.
     let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
     let attachment = disposition?.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("attachment") ?? false
@@ -1906,6 +1911,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private var repairs = 0
   private var repairedURL: URL?
   private var scriptsSeen = "not checked"
+  /// The page on its way was asked for with GET and is an HTML document: only such a page is
+  /// loaded again by verifyScripts (never a submitted form, a PDF or a download).
+  private var mainRequestIsGet = true
+  private var mainResponseIsHTML = false
 
   /// The app's scripts mark every page they run in (`statsScript`). A page without the mark
   /// started without them, and so most likely without the rule lists too: seen on iPhones
@@ -1918,7 +1927,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       webView.evaluateJavaScript("window.__stillwebScripts === true", in: nil, in: .defaultClient) { [weak self] result in
         guard let self, self.webView?.url == url, case .success(let value) = result, let present = value as? Bool else { return }
         self.scriptsSeen = present ? "present" : "MISSING"
-        guard !present, self.repairs < 3, self.repairedURL != url else { return }
+        guard !present, self.mainRequestIsGet, self.mainResponseIsHTML else { return }
+        guard self.repairs < 3, self.repairedURL != url else { return }
         self.repairs += 1
         self.repairedURL = url
         self.reload(quiet: self.contentController?.quiet ?? false)
