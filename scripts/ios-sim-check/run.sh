@@ -85,18 +85,15 @@ run() {
 if [ $# -gt 0 ]; then
   run custom "$@"
 else
-  # The size of the page, under the app's bars as in the app: a video opened from a list, the
-  # bars shrinking and returning, then the user's reload. BEFORE (a commit) runs the same
-  # with older native code first, to compare.
-  if [ -n "${BEFORE:-}" ]; then
-    run before-list "https://m.youtube.com/results?search_query=live+news" bars open-video
-    run before-watch "https://m.youtube.com/watch?v=Nae8rachpOM" bars
-    build tree
-  fi
-  run list "https://m.youtube.com/results?search_query=live+news" bars open-video
-  run watch "https://m.youtube.com/watch?v=Nae8rachpOM" bars
-  run home "https://m.youtube.com/" bars
-  run news "https://www.cnn.com/" bars
+  # A video opened from a list (no page load: the site swaps the page itself), with all of
+  # the app's blocking, then without its site scripts, without its rule lists, and with
+  # protection off. Shows what the page's own requests returned in each case.
+  L="https://m.youtube.com/results?search_query=live+news"
+  run list-all "$L" bars open-video short
+  run list-no-site-scripts "$L" bars open-video short no-site-scripts
+  run list-no-rules "$L" bars open-video short no-rules
+  run list-off "$L" bars open-video short no-shields
+  run list-all-again "$L" bars open-video
 fi
 
 # Smaller pictures: they are only looked at, and are kept in the repository's results branch.

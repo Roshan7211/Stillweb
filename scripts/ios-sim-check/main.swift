@@ -48,6 +48,8 @@ let probe = """
     width: [innerWidth, document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, v ? v.scale : null, v ? v.width : null],
     video: video ? { paused: video.paused, t: Math.round(video.currentTime * 10) / 10, ready: video.readyState, muted: video.muted } : null,
     quiet: window.__stillwebQuiet === true, appState: typeof window.__shieldAppState,
+    requests: window.__requests || null,
+    sections: document.querySelectorAll('ytm-item-section-renderer, ytm-slim-video-metadata-section-renderer, ytm-video-with-context-renderer').length,
     size: (function () {
       var d = document.documentElement, b = document.body, m = document.querySelector('meta[name=viewport]');
       function box(sel) { var e = document.querySelector(sel); if (!e) return null; var r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }
@@ -82,6 +84,7 @@ final class Runner {
       log("engine: ready=\(engine.isReady) version=\(engine.version ?? "?") error=\(engine.lastError ?? "none") lists=\(engine.ruleLists.map { $0.identifier ?? "" })")
     }
     ShieldEngine.shared.initialize()
+    if arguments.contains("no-shields") { ShieldEngine.shared.setOptions(["enabled": false]) }
     // As in the app: the first tab's view is created while the engine may still be loading.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.createView(in: root) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 420) { log("timeout"); exit(3) }
@@ -200,7 +203,10 @@ final class Runner {
     stage = "busy"
     var steps: [(name: String, wait: Double, action: () -> Void)] = []
     if openVideo {
-      steps.append(("video", 8, {
+      steps.append(("video", 9, {
+        // What the page's own requests to the site return from here on (as the page gets them).
+        let watch = "window.__requests = []; var f = window.fetch; window.fetch = function (input) { var u = String(input && input.url || input); var p = f.apply(this, arguments); if (u.indexOf('/youtubei/') >= 0) { p.then(function (r) { r.clone().text().then(function (t) { var keys = '?'; try { keys = Object.keys(JSON.parse(t)).slice(0, 8).join(','); } catch (e) { keys = 'NOT JSON: ' + t.slice(0, 60); } window.__requests.push(u.split('/youtubei/')[1].split('?')[0] + ' ' + r.status + ' ' + t.length + 'b [' + keys + ']'); }); }, function (e) { window.__requests.push(u.split('/youtubei/')[1].split('?')[0] + ' FAILED ' + e); }); } return p; }; 1"
+        self.view.evaluate(watch) { _ in }
         let click = #"var a = document.querySelector('ytm-video-with-context-renderer a[href^="/watch"], a[href^="/watch"]'); if (a) a.click(); a ? a.getAttribute('href') : null"#
         self.view.evaluate(click) { result in log("--- the first video of the list is opened: \(result ?? "nil")") }
       }))
@@ -210,6 +216,7 @@ final class Runner {
     steps.append(("shrunk-again", 4, { log("--- and shrink again"); self.setBars(collapsed: true) }))
     steps.append(("top", 4, { log("--- back at the top, bars shown"); self.scroll(to: 0); self.setBars(collapsed: false) }))
     func next() {
+      if arguments.contains("short"), steps.count == 4 { log("done"); exit(0) }
       guard !steps.isEmpty else { return self.userReload() }
       let step = steps.removeFirst()
       step.action()

@@ -40,5 +40,12 @@ extension ShieldWebView {
   }
 }
 """
+# Test switches: the page without its site scripts, or without the rule lists.
+a = "    scriptlets?.script(forHost: host)\n"
+if engine.count(a) == 1:
+    engine = engine.replace(a, '    if CommandLine.arguments.contains("no-site-scripts") { return nil }\n    return scriptlets?.script(forHost: host)\n')
+a = "    let lists = active ? engine.ruleLists"
+if web.count(a) == 1:
+    web = web.replace(a, '    let lists = active && !CommandLine.arguments.contains("no-rules") ? engine.ruleLists')
 open(out + '/ShieldWebView.swift', 'w').write(web)
 open(out + '/ShieldEngine.swift', 'w').write(engine)

@@ -23,9 +23,6 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run
-        env:
-          # Older native code to run first, for comparison: from before the zoom changes.
-          BEFORE: c6dbf86
         run: bash scripts/ios-sim-check/run.sh > result.log 2>&1 || true
       - name: Store the results
         if: always()
