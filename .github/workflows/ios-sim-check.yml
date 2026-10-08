@@ -23,9 +23,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run
-        env:
-          # The commit before the fix for tabs whose page process ended.
-          BEFORE: 89357f6
+        # Set BEFORE to a commit (env) to run the same checks with older native code first.
         run: bash scripts/ios-sim-check/run.sh > result.log 2>&1 || true
       - name: Store the results
         if: always()

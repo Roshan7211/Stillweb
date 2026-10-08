@@ -85,17 +85,18 @@ run() {
 if [ $# -gt 0 ]; then
   run custom "$@"
 else
-  # A tab whose page process iOS ended while it was hidden, opened again: before the fix
-  # (BEFORE, a commit) and with the code of this checkout.
+  # The mobile site, as iPhones get it. Each page: first load, then (kill) its process ends
+  # while the tab is hidden and the tab is opened again, then the user's reload.
+  # BEFORE (a commit) runs the same with older native code first, to compare.
   if [ -n "${BEFORE:-}" ]; then
-    run before-video-plain "https://youtube.com/" kill
-    run before-video-typed "https://youtube.com/" via-bar kill
-    run before-news "https://www.cnn.com/" kill
+    run before-video-watch "https://m.youtube.com/watch?v=Nae8rachpOM" kill
+    run before-video-home "https://m.youtube.com/" via-bar kill
     build tree
   fi
-  run video-plain "https://youtube.com/" kill
-  run video-typed "https://youtube.com/" via-bar kill
-  run video-watch "https://www.youtube.com/watch?v=kJQP7kiw5Fk" kill
+  run video-watch "https://m.youtube.com/watch?v=Nae8rachpOM" kill
+  run video-home "https://m.youtube.com/" kill
+  run video-home-typed "https://m.youtube.com/" via-bar kill
+  run video-home-restored "https://m.youtube.com/" restored
   run music "https://music.youtube.com/" kill
   run news "https://www.cnn.com/" kill
 fi
