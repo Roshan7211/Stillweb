@@ -135,9 +135,11 @@ function BrowserTabView(props: Props) {
         forceDark={theme.dark && settings.darkPages}
         textZoom={settings.textZoom}
         onNavigationStateChange={({ nativeEvent: s }) => {
+          // A view that has no page (just created, or its page was taken out of memory) reports
+          // no address: the tab keeps the one it has instead of turning into an empty tab.
+          const keepAddress = isBlank(s.url) && !isBlank(tab.url);
           updateTab(tab.id, {
-            url: s.url,
-            title: s.title,
+            ...(keepAddress ? null : { url: s.url, title: s.title }),
             // Also for a page's pop-up, whose first load starts before this view exists.
             ...(isBlank(s.url) ? null : { visited: true }),
             canGoBack: s.canGoBack,
