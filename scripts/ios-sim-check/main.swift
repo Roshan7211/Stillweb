@@ -17,6 +17,12 @@ let restored = arguments.contains("restored")
 let viaLink = arguments.contains("via-link")
 let viaBar = arguments.contains("via-bar")
 let once = arguments.contains("once")
+// bars: the page is under the app's bars as in the app (edge to edge), and they shrink and come
+// back as they do when the user scrolls. open-video: the first video of a list is opened first.
+let bars = arguments.contains("bars")
+let openVideo = arguments.contains("open-video")
+let barsShown = UIEdgeInsets(top: 0, left: 0, bottom: 100, right: 0)
+let barsShrunk = UIEdgeInsets(top: 0, left: 0, bottom: 22, right: 0)
 let settle = 9.0
 
 let probe = """
@@ -41,7 +47,21 @@ let probe = """
     third: Object.keys(third).slice(0, 40), resources: res.length,
     width: [innerWidth, document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, v ? v.scale : null, v ? v.width : null],
     video: video ? { paused: video.paused, t: Math.round(video.currentTime * 10) / 10, ready: video.readyState, muted: video.muted } : null,
-    quiet: window.__stillwebQuiet === true, appState: typeof window.__shieldAppState
+    quiet: window.__stillwebQuiet === true, appState: typeof window.__shieldAppState,
+    size: (function () {
+      var d = document.documentElement, b = document.body, m = document.querySelector('meta[name=viewport]');
+      function box(sel) { var e = document.querySelector(sel); if (!e) return null; var r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }
+      function font(sel) { var e = document.querySelector(sel); return e ? getComputedStyle(e).fontSize : null; }
+      return {
+        inner: [innerWidth, innerHeight], client: [d.clientWidth, d.clientHeight], scroll: [Math.round(scrollX), Math.round(scrollY)],
+        visual: v ? [Math.round(v.width * 10) / 10, Math.round(v.height * 10) / 10, v.scale, v.offsetLeft, v.offsetTop] : null,
+        viewport: m ? m.content : null, rootFont: getComputedStyle(d).fontSize,
+        player: box('#player-container-id, #player, .html5-video-player'),
+        below: box('ytm-slim-video-metadata-section-renderer, ytm-single-column-watch-next-results-renderer, ytm-item-section-renderer'),
+        title: box('.slim-video-information-title, h2'), titleFont: font('.slim-video-information-title, h2'),
+        item: box('ytm-video-with-context-renderer, ytm-media-item'), itemFont: font('ytm-video-with-context-renderer h3, ytm-media-item h3, h3')
+      };
+    })()
   };
 })()
 """
@@ -91,6 +111,7 @@ final class Runner {
     view.onLoadError.handler = { body in log("page: ERROR \(body)") }
     view.onLoadEnd.handler = { [weak self] _ in self?.loaded() }
     // The props the app sets, then what Expo calls after setting them.
+    if bars { view.chromeInsets = barsShown }
     view.initialUrl = first
     view.restored = restored
     view.active = true
@@ -117,6 +138,7 @@ final class Runner {
       log("[\(name)] blocked count shown by the app: \(self.blocked)")
       log("[\(name)] app: scripts=\(info["scripts"] ?? "?") builtFor=\(info["scriptsFor"] ?? "?") attached=\(info["attached"] ?? "?") scriptsInPage=\(info["scriptsInPage"] ?? "?") repairs=\(info["repairs"] ?? "?") quiet=\(info["quiet"] ?? "?")")
       log("[\(name)] view: zoom=\(info["zoom"] ?? "?") minZoom=\(info["minZoom"] ?? "?") content=\(info["content"] ?? "?") webView=\(info["webView"] ?? "?")")
+      log("[\(name)] insets: content=\(info["inset"] ?? "?") obscured=\(info["obscured"] ?? "?") offset=\(info["offset"] ?? "?")")
       log("[\(name)] page: \(result ?? "nil")")
       log("SHOT \(name)")
       DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: next)
@@ -142,6 +164,7 @@ final class Runner {
       }
     case "first":
       report("first") {
+        if bars { return self.barsFlow() }
         if arguments.contains("kill") { self.endProcess() } else if once { log("done"); exit(0) } else { self.userReload() }
       }
     case "reopened":
@@ -153,9 +176,46 @@ final class Runner {
           self.report("touched") { self.userReload() }
         }
       }
+    case "busy":
+      break
     default:
       report("reload") { log("done"); exit(0) }
     }
+  }
+
+  func setBars(collapsed: Bool) {
+    view.chromeInsets = collapsed ? barsShrunk : barsShown
+    view.syncChrome(collapsed: collapsed)
+    view.applyProps()
+  }
+
+  func scroll(to y: CGFloat) {
+    guard let scroll = web?.scrollView else { return }
+    scroll.setContentOffset(CGPoint(x: 0, y: y - scroll.adjustedContentInset.top), animated: false)
+  }
+
+  /// What happens to the page while it is used: a video is opened from a list, the page is
+  /// scrolled (the bars shrink), scrolled back (they return); then the user's reload.
+  func barsFlow() {
+    stage = "busy"
+    var steps: [(name: String, wait: Double, action: () -> Void)] = []
+    if openVideo {
+      steps.append(("video", 8, {
+        let click = #"var a = document.querySelector('ytm-video-with-context-renderer a[href^="/watch"], a[href^="/watch"]'); if (a) a.click(); a ? a.getAttribute('href') : null"#
+        self.view.evaluate(click) { result in log("--- the first video of the list is opened: \(result ?? "nil")") }
+      }))
+    }
+    steps.append(("scrolled", 4, { log("--- scrolled down: the bars shrink"); self.scroll(to: 500); self.setBars(collapsed: true) }))
+    steps.append(("bars-back", 4, { log("--- the bars come back"); self.setBars(collapsed: false) }))
+    steps.append(("shrunk-again", 4, { log("--- and shrink again"); self.setBars(collapsed: true) }))
+    steps.append(("top", 4, { log("--- back at the top, bars shown"); self.scroll(to: 0); self.setBars(collapsed: false) }))
+    func next() {
+      guard !steps.isEmpty else { return self.userReload() }
+      let step = steps.removeFirst()
+      step.action()
+      DispatchQueue.main.asyncAfter(deadline: .now() + step.wait) { self.report(step.name, then: next) }
+    }
+    next()
   }
 
   /// What iOS does to tabs in the background: the page's process ends while the tab is hidden.

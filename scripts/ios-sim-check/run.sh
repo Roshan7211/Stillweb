@@ -85,20 +85,18 @@ run() {
 if [ $# -gt 0 ]; then
   run custom "$@"
 else
-  # The mobile site, as iPhones get it. Each page: first load, then (kill) its process ends
-  # while the tab is hidden and the tab is opened again, then the user's reload.
-  # BEFORE (a commit) runs the same with older native code first, to compare.
+  # The size of the page, under the app's bars as in the app: a video opened from a list, the
+  # bars shrinking and returning, then the user's reload. BEFORE (a commit) runs the same
+  # with older native code first, to compare.
   if [ -n "${BEFORE:-}" ]; then
-    run before-video-watch "https://m.youtube.com/watch?v=Nae8rachpOM" kill
-    run before-video-home "https://m.youtube.com/" via-bar kill
+    run before-list "https://m.youtube.com/results?search_query=live+news" bars open-video
+    run before-watch "https://m.youtube.com/watch?v=Nae8rachpOM" bars
     build tree
   fi
-  run video-watch "https://m.youtube.com/watch?v=Nae8rachpOM" kill
-  run video-home "https://m.youtube.com/" kill
-  run video-home-typed "https://m.youtube.com/" via-bar kill
-  run video-home-restored "https://m.youtube.com/" restored
-  run music "https://music.youtube.com/" kill
-  run news "https://www.cnn.com/" kill
+  run list "https://m.youtube.com/results?search_query=live+news" bars open-video
+  run watch "https://m.youtube.com/watch?v=Nae8rachpOM" bars
+  run home "https://m.youtube.com/" bars
+  run news "https://www.cnn.com/" bars
 fi
 
 # Smaller pictures: they are only looked at, and are kept in the repository's results branch.
