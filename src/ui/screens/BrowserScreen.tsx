@@ -1,6 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { BlurView } from 'expo-blur';
+import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -59,6 +60,15 @@ import VaultScreen from './VaultScreen';
 type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus' | 'vault';
 
 const NO_PROFILES: Profile[] = [];
+
+/** iOS 26+: the system's Liquid Glass, which Safari's own bars are made of. */
+const LIQUID_GLASS = (() => {
+  try {
+    return Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+  } catch {
+    return false;
+  }
+})();
 
 /** The page's own view of its size and zoom (for "Page layout info" in test builds). */
 const PAGE_LAYOUT_SCRIPT = `(function () {
@@ -714,6 +724,13 @@ export default function BrowserScreen() {
   // status bar and the bars (which float over it, frosted).
   const edgeToEdge = Platform.OS === 'ios' && bottomBar;
   const barBg = edgeToEdge ? 'transparent' : chrome;
+  // On iOS 26 the bottom bar is a floating piece of Liquid Glass, like Safari's: the page shows
+  // through it and around it, down to the bottom edge of the screen. Before iOS 26 it is a
+  // frosted panel across the screen.
+  const glass = edgeToEdge && LIQUID_GLASS;
+  // What the bars leave free above the home indicator themselves (the floating bar keeps its
+  // own distance from the edge instead).
+  const homeGap = glass ? 0 : insets.bottom;
   // iOS 26+ keeps a page's fixed headers and footers clear of the bars, so the page scrolls
   // under them too; before that it stops at the top of the bars (still under the status bar).
   const underBars = edgeToEdge && ShieldEngine.obscuredInsetsSupported === true;
@@ -757,6 +774,16 @@ export default function BrowserScreen() {
   const topBg = topColour ?? chrome;
   const bottomBg = bottomColour ?? barBg;
   const barLine = incognito ? theme.privateSurface : theme.border;
+  // On glass the address is part of the bar itself, as in Safari, not a field of its own
+  // (with the toolbar under it, a faint one keeps the two rows apart).
+  const glassTone: BarTone | null = glass
+    ? {
+        fg: incognito ? '#ECE6F7' : theme.text,
+        muted: incognito ? '#B3A8CC' : theme.muted,
+        field: single ? 'transparent' : 'rgba(120,120,128,0.16)',
+        accent: theme.accent,
+      }
+    : null;
   const bottomFg = bottomTone?.fg ?? (incognito ? '#ECE6F7' : theme.text);
   const statusStyle: 'light' | 'dark' = topColour && overlay === 'none' ? (isDarkColour(topColour) ? 'light' : 'dark') : appStatusStyle;
   // Android: the system's own buttons under the bottom bar follow what is drawn there.
@@ -793,7 +820,7 @@ export default function BrowserScreen() {
       onStop={() => activeRef()?.stopLoading()}
       onSwipe={switchTab}
       inline={single && !editing}
-      tone={bottomBar ? bottomTone : topTone}
+      tone={bottomBar ? (bottomTone ?? glassTone) : topTone}
     />
   );
 
@@ -820,8 +847,8 @@ export default function BrowserScreen() {
         <View
           style={[
             styles.findBar,
-            { backgroundColor: barBg, borderColor: theme.border },
-            edgeToEdge && keyboardHeight === 0 && { paddingBottom: insets.bottom },
+            { backgroundColor: barBg, borderColor: glass ? 'transparent' : theme.border },
+            edgeToEdge && keyboardHeight === 0 && { paddingBottom: homeGap },
           ]}>
           <TextInput
             ref={findInput}
@@ -862,7 +889,7 @@ export default function BrowserScreen() {
           takes its place while open. */}
       {/* Picking an element to hide: the bar replaces the browser's bars. */}
       {picking ? (
-        <View style={[styles.pickerBar, { backgroundColor: barBg, borderColor: theme.border, paddingBottom: insets.bottom + 8 }]}>
+        <View style={[styles.pickerBar, { backgroundColor: barBg, borderColor: glass ? 'transparent' : theme.border, paddingBottom: homeGap + (glass ? 12 : 8) }]}>
           <Text style={[styles.pickerHint, { color: fg }]}>Tap what to hide. “Bigger” selects what’s around it.</Text>
           <View style={styles.pickerButtons}>
             <Pressable onPress={cancelPicking} style={[styles.pickerButton, { backgroundColor: theme.surface }]} accessibilityRole="button">
@@ -882,7 +909,7 @@ export default function BrowserScreen() {
       ) : null}
 
       {bottomBar && !findOpen && !picking && collapsed ? (
-        <View style={[styles.compactBottom, { paddingBottom: insets.bottom, backgroundColor: bottomBg }]}>{compactBar}</View>
+        <View style={[styles.compactBottom, { paddingBottom: glass ? 2 : insets.bottom, backgroundColor: bottomBg }]}>{compactBar}</View>
       ) : null}
       {/* Top bar layout, shrunk: the page reaches the bottom edge, clear of the home indicator. */}
       {!bottomBar && collapsed ? <View style={{ height: insets.bottom, backgroundColor: bottomColour ?? chrome }} /> : null}
@@ -891,9 +918,9 @@ export default function BrowserScreen() {
         <View
           style={[
             styles.bottomBar,
-            { top: edgeToEdge ? 0 : -barShift, backgroundColor: bottomBg, borderColor: bottomColour ? 'transparent' : barLine },
+            { top: edgeToEdge ? 0 : -barShift, backgroundColor: bottomBg, borderColor: glass || bottomColour ? 'transparent' : barLine },
             // The single bar is the last thing on screen: it keeps clear of the home indicator.
-            single && { paddingTop: 0, paddingBottom: Platform.OS === 'android' && keyboardHeight > 0 ? 2 : singlePadBottom },
+            single && { paddingTop: 0, paddingBottom: glass ? 0 : Platform.OS === 'android' && keyboardHeight > 0 ? 2 : singlePadBottom },
           ]}>
           {single && !editing ? (
             <View style={styles.singleRow}>
@@ -938,7 +965,7 @@ export default function BrowserScreen() {
           style={[
             styles.toolbar,
             !bottomBar && styles.toolbarBorder,
-            { backgroundColor: bottomBg, paddingBottom: insets.bottom, borderColor: bottomColour ? 'transparent' : barLine },
+            { backgroundColor: bottomBg, paddingBottom: glass ? 2 : insets.bottom, borderColor: glass || bottomColour ? 'transparent' : barLine },
             editing && styles.toolbarHidden,
           ]}>
           <IconButton
@@ -996,7 +1023,8 @@ export default function BrowserScreen() {
         <View style={[styles.statusBackdrop, { height: insets.top }]} pointerEvents="none">
           <BlurView
             tint={statusStyle === 'light' ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-            intensity={60}
+            // Safari on iOS 26 lets the page show through at the top, only softened.
+            intensity={glass ? 24 : 60}
             style={StyleSheet.absoluteFill}
           />
         </View>
@@ -1090,18 +1118,39 @@ export default function BrowserScreen() {
 
       {edgeToEdge ? (
         // Edge to edge (iOS): the bars float over the page, which scrolls under them.
-        <View
-          style={[styles.bottomOverlay, { bottom: keyboardLift + barShift }]}
-          onLayout={(e) => setBarsHeight(Math.round(e.nativeEvent.layout.height))}>
-          {/* Glass: the page shows through, tinted lightly with the app's colour. */}
-          <BlurView
-            tint={incognito || theme.dark ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
-            intensity={80}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: chrome, opacity: 0.2 }]} />
-          {bottomStack}
-        </View>
+        glass ? (
+          // A floating bar of Liquid Glass with the page around it, like Safari's.
+          <View
+            style={[
+              styles.bottomOverlay,
+              styles.floatingBar,
+              // Over the keyboard it sits right on it; otherwise just above the home indicator.
+              { bottom: keyboardLift + barShift, paddingBottom: keyboardHeight > 0 ? 6 : Math.max(insets.bottom - 12, 8) },
+            ]}
+            pointerEvents="box-none"
+            onLayout={(e) => setBarsHeight(Math.round(e.nativeEvent.layout.height))}>
+            <GlassView
+              style={styles.glassBar}
+              glassEffectStyle="regular"
+              colorScheme={incognito || theme.dark ? 'dark' : 'light'}
+              tintColor={incognito ? 'rgba(91,63,160,0.4)' : undefined}>
+              {bottomStack}
+            </GlassView>
+          </View>
+        ) : (
+          <View
+            style={[styles.bottomOverlay, { bottom: keyboardLift + barShift }]}
+            onLayout={(e) => setBarsHeight(Math.round(e.nativeEvent.layout.height))}>
+            {/* Frosted: the page shows through, tinted lightly with the app's colour. */}
+            <BlurView
+              tint={incognito || theme.dark ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
+              intensity={80}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: chrome, opacity: 0.2 }]} />
+            {bottomStack}
+          </View>
+        )
       ) : (
         bottomStack
       )}
@@ -1261,6 +1310,8 @@ const styles = StyleSheet.create({
   toolbarHidden: { opacity: 0 },
   bottomBar: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 6, zIndex: 10 },
   bottomOverlay: { position: 'absolute', left: 0, right: 0, zIndex: 10, overflow: 'hidden' },
+  floatingBar: { overflow: 'visible', paddingHorizontal: 10 },
+  glassBar: { borderRadius: 27, overflow: 'hidden' },
   edgeContent: { position: 'absolute', top: 0 },
   statusBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, overflow: 'hidden' },
   // Back, the address, tabs and menu in one row; the buttons line up with the address field
