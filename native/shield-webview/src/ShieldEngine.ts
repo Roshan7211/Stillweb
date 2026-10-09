@@ -50,6 +50,11 @@ declare class ShieldEngineModule extends NativeModule<ShieldEngineEvents> {
   deleteFile(path: string): Promise<boolean>;
   /** Hides the app's content from the recent-apps / app switcher preview (and, on Android, screenshots). */
   setSecureWindow(secure: boolean): Promise<void>;
+  /**
+   * Android: the system's navigation buttons blend in with the app's bottom bar, dark
+   * (`darkButtons`) or light after what is drawn under them.
+   */
+  setNavigationBar?(darkButtons: boolean): Promise<void>;
   /** Debug builds (Android): route web traffic through `host:port`; null clears it. */
   setDebugProxy(hostPort: string | null): Promise<boolean>;
   /** Opens a link in another app (mailto:, tel:, intent:, ...). */

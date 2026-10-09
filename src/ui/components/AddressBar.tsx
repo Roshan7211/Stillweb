@@ -30,7 +30,11 @@ type Props = {
   onSwipe?: (direction: 'next' | 'previous') => void;
   /** Sits between buttons in the single bottom bar (no side margins of its own). */
   inline?: boolean;
+  /** The bar is drawn in the page's own colour: text, icons and the field follow it. */
+  tone?: BarTone | null;
 };
+
+export type BarTone = { fg: string; muted: string; field: string; accent: string };
 
 export default function AddressBar(props: Props) {
   const { theme, url, incognito, loading, progress, secure, shieldsActive, blocked, position, editing, text } = props;
@@ -74,15 +78,18 @@ export default function AddressBar(props: Props) {
     props.onSubmit(value);
   };
 
-  const bar = incognito ? theme.privateSurface : theme.surface;
-  const fg = incognito ? '#ECE6F7' : theme.text;
-  const muted = incognito ? '#B3A8CC' : theme.muted;
+  // While typing the field is the app's own again (it sits with the suggestions).
+  const tone = editing ? null : props.tone;
+  const bar = tone ? tone.field : incognito ? theme.privateSurface : theme.surface;
+  const fg = tone ? tone.fg : incognito ? '#ECE6F7' : theme.text;
+  const muted = tone ? tone.muted : incognito ? '#B3A8CC' : theme.muted;
+  const accent = tone ? tone.accent : theme.accent;
   const placeholder = incognito ? 'Search privately or enter address' : 'Search or enter address';
   const blank = isBlank(url);
 
   const progressLine =
     loading && progress > 0 && progress < 1 ? (
-      <View style={[styles.progress, { width: `${Math.max(progress, 0.08) * 100}%`, backgroundColor: theme.accent }]} />
+      <View style={[styles.progress, { width: `${Math.max(progress, 0.08) * 100}%`, backgroundColor: props.tone ? props.tone.accent : theme.accent }]} />
     ) : (
       <View style={styles.progressSpacer} />
     );
@@ -104,9 +111,9 @@ export default function AddressBar(props: Props) {
               style={styles.leading}
               accessibilityRole="button"
               accessibilityLabel={shieldsActive ? `Protection on, ${blocked} blocked` : 'Protection off for this site'}>
-              <Icon name={shieldsActive ? 'shield' : 'shield-off'} size={19} color={shieldsActive ? theme.accent : muted} />
+              <Icon name={shieldsActive ? 'shield' : 'shield-off'} size={19} color={shieldsActive ? accent : muted} />
               {shieldsActive && blocked > 0 ? (
-                <Text style={[styles.count, { color: theme.accent }]}>{blocked > 999 ? '999+' : blocked}</Text>
+                <Text style={[styles.count, { color: accent }]}>{blocked > 999 ? '999+' : blocked}</Text>
               ) : null}
             </Pressable>
           )}

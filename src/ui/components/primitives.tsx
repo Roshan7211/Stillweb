@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
-import type { ComponentProps, ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { Animated, Easing, Modal, Pressable, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Theme } from '../theme';
@@ -49,6 +49,16 @@ export function IconButton({
 }
 
 /** Bottom sheet built on Modal; content scrolls itself if it needs to. */
+/** A screen that comes in with a short fade, settling into place (the tab switcher, Settings…). */
+export function Appear({ style, children }: { style?: StyleProp<ViewStyle>; children: ReactNode }) {
+  const [progress] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(progress, { toValue: 1, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [progress]);
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [1.04, 1] });
+  return <Animated.View style={[style, { opacity: progress, transform: [{ scale }] }]}>{children}</Animated.View>;
+}
+
 export function Sheet({
   visible,
   onClose,

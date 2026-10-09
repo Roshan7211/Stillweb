@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ShieldEngine } from '../../../native/shield-webview';
@@ -38,7 +38,10 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string; needsProfile
   {
     icon: 'lock',
     title: 'Private vault',
-    body: 'Bookmarks and downloads from private tabs, locked with Face ID and kept out of your other lists and the Files app.',
+    body:
+      Platform.OS === 'ios'
+        ? 'Bookmarks and downloads from private tabs, locked with Face ID and kept out of your other lists and the Files app.'
+        : 'Bookmarks from private tabs, locked with your fingerprint or screen lock and kept out of your other lists.',
   },
   {
     icon: 'droplet',

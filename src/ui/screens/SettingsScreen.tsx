@@ -1,5 +1,5 @@
 import * as LocalAuthentication from 'expo-local-authentication';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -33,6 +33,15 @@ function formatVersion(v: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? v : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// Where the screen was left for one of its own pages (About, the report, the test…): coming back
+// from there shows the same place again. Leaving Settings itself starts over.
+const place = { y: 0, advanced: false };
+/** Settings was left altogether (also by the system's back key): next time it starts at the top. */
+export function forgetSettingsPlace() {
+  place.y = 0;
+  place.advanced = false;
+}
+
 export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShieldTest, onOpenPlus, onOpenReport, onClearedData }: Props) {
   const { settings, update, setSiteShields, setSiteFix } = useSettings();
   const library = useLibraryActions();
@@ -42,7 +51,16 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [showEngines, setShowEngines] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(place.advanced);
+  const scroll = useRef<ScrollView>(null);
+  const restored = useRef(false);
+  useEffect(() => {
+    place.advanced = showAdvanced;
+  }, [showAdvanced]);
+  const leave = () => {
+    forgetSettingsPlace();
+    onBack();
+  };
 
   // The Plus row shows the starting price once the App Store has the plans.
   const { supported: plusSupported, productsState, loadProducts } = plus;
@@ -94,7 +112,12 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
         const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Lock private tabs' });
         if (!result.success) return;
       } catch {
-        Alert.alert('Couldn’t turn on the lock', 'Face ID or the passcode isn’t available right now. Try again.');
+        Alert.alert(
+          'Couldn’t turn on the lock',
+          Platform.OS === 'ios'
+            ? 'Face ID or the passcode isn’t available right now. Try again.'
+            : 'Your fingerprint or screen lock isn’t available right now. Try again.',
+        );
         return;
       }
     }
@@ -128,8 +151,23 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
-      <ScreenHeader title="Settings" onBack={onBack} theme={theme} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScreenHeader title="Settings" onBack={leave} theme={theme} />
+      <ScrollView
+        ref={scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={64}
+        onScroll={(e) => {
+          place.y = e.nativeEvent.contentOffset.y;
+        }}
+        // Back from one of its own pages: at the place it was left.
+        contentOffset={place.y > 0 ? { x: 0, y: place.y } : undefined}
+        onContentSizeChange={() => {
+          if (place.y > 0 && !restored.current) {
+            restored.current = true;
+            scroll.current?.scrollTo({ y: place.y, animated: false });
+          }
+        }}>
         {plus.supported ? (
           <Row
             title="Stillweb Plus"

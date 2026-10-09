@@ -35,6 +35,9 @@ export type Tab = {
   stopAtEnd?: string;
   /** The page's own background is dark (iOS: the status bar over it stays readable). */
   pageDark?: boolean;
+  /** The colours painted at the page's top and bottom edges (`#rrggbb`): the bars take them. */
+  pageTop?: string;
+  pageBottom?: string;
   /**
    * The tab has had its page open before: a web view created for it now (after a restart, or
    * after its view was released) loads the page again without playing its media.
@@ -130,7 +133,9 @@ function reducer(state: State, action: Action): State {
     case 'closeAll': {
       const tabs = state.tabs.filter((t) => t.incognito !== action.incognito);
       const active = tabs.find((t) => t.id === state.activeId);
-      return { ...state, tabs, activeId: active ? active.id : (tabs[tabs.length - 1]?.id ?? null) };
+      // Back to the tab that was used last, not just the last one in the list.
+      const recent = [...tabs].sort((x, y) => y.lastActive - x.lastActive)[0];
+      return { ...state, tabs, activeId: active ? active.id : (recent?.id ?? null) };
     }
     case 'closeMany': {
       const tabs = state.tabs.filter((t) => !action.ids.includes(t.id));

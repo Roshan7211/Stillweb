@@ -201,6 +201,22 @@ class ShieldEngineModule : Module() {
       Unit
     }.runOnQueue(Queues.MAIN)
 
+    /**
+     * The system's navigation buttons, drawn over the app's own bottom bar: without the grey
+     * band Android puts behind them, and dark or light after what the app draws there.
+     */
+    AsyncFunction("setNavigationBar") { darkButtons: Boolean ->
+      appContext.currentActivity?.window?.let { window ->
+        // Only where the buttons can be made dark: on older systems they are always white,
+        // and the band behind them is what keeps them visible on a light bar.
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+          window.isNavigationBarContrastEnforced = false
+          androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = darkButtons
+        }
+      }
+      Unit
+    }.runOnQueue(Queues.MAIN)
+
     AsyncFunction("openExternal") { url: String ->
       val intent = if (url.startsWith("intent:")) {
         Intent.parseUri(url, Intent.URI_INTENT_SCHEME).apply {
