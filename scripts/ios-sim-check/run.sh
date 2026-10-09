@@ -88,11 +88,12 @@ else
   # The search site and a few others, with the bundled rules: what the engine loaded, and
   # whether results, links and pictures are there.
   run search "https://www.google.com/search?q=best+pizza+recipe" once
-  run search-off "https://www.google.com/search?q=best+pizza+recipe" once no-shields
   run search-home "https://www.google.com/" once
   run video "https://m.youtube.com/watch?v=Nae8rachpOM" once
   run news "https://www.bbc.com/news" once
   run shop "https://www.amazon.co.uk/" once
+  # Last: turning protection off is remembered by the test app.
+  run search-off "https://www.google.com/search?q=best+pizza+recipe" once no-shields
 fi
 
 # Smaller pictures: they are only looked at, and are kept in the repository's results branch.
