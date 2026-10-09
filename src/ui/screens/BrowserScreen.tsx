@@ -711,23 +711,24 @@ export default function BrowserScreen() {
   const showToolbar = !single && (Platform.OS === 'ios' ? keyboardLift === 0 : !editing && keyboardHeight === 0);
   // The single bar's own margin above the home indicator.
   const singlePadBottom = Math.max(insets.bottom - 8, 4);
-  // Part of the page area hidden by the keyboard on iOS (it sits over the toolbar first; the
-  // single bar's home indicator margin goes under the keyboard).
-  const keyboardOverPage =
-    Platform.OS === 'ios'
-      ? Math.max(0, keyboardHeight - (single ? singlePadBottom - 2 : showToolbar ? toolbarHeight : 0))
-      : 0;
-  const barShift = bottomBar && editing ? keyboardOverPage : 0;
-
-  const chrome = incognito ? theme.privateBackground : theme.background;
   // iOS bottom layouts are edge to edge, like Safari: the page fills the screen, under the
   // status bar and the bars (which float over it, frosted).
   const edgeToEdge = Platform.OS === 'ios' && bottomBar;
-  const barBg = edgeToEdge ? 'transparent' : chrome;
   // On iOS 26 the bottom bar is a floating piece of Liquid Glass, like Safari's: the page shows
   // through it and around it, down to the bottom edge of the screen. Before iOS 26 it is a
   // frosted panel across the screen.
   const glass = edgeToEdge && LIQUID_GLASS;
+  // Part of the page area hidden by the keyboard on iOS (it sits over the toolbar first; the
+  // single bar's home indicator margin goes under the keyboard, which the floating glass bar
+  // doesn't have: it rests on the keyboard as it is).
+  const keyboardOverPage =
+    Platform.OS === 'ios'
+      ? Math.max(0, keyboardHeight - (single ? (glass ? 0 : singlePadBottom - 2) : showToolbar ? toolbarHeight : 0))
+      : 0;
+  const barShift = bottomBar && editing ? keyboardOverPage : 0;
+
+  const chrome = incognito ? theme.privateBackground : theme.background;
+  const barBg = edgeToEdge ? 'transparent' : chrome;
   // What the bars leave free above the home indicator themselves (the floating bar keeps its
   // own distance from the edge instead).
   const homeGap = glass ? 0 : insets.bottom;
@@ -774,6 +775,9 @@ export default function BrowserScreen() {
   const topBg = topColour ?? chrome;
   const bottomBg = bottomColour ?? barBg;
   const barLine = incognito ? theme.privateSurface : theme.border;
+  // The floating glass bar: its distance from the bottom edge, and how far the keyboard lifts it.
+  const floatGap = Math.max(insets.bottom - 12, 8);
+  const floatLift = keyboardLift + barShift;
   // On glass the address is part of the bar itself, as in Safari, not a field of its own
   // (with the toolbar under it, a faint one keeps the two rows apart).
   const glassTone: BarTone | null = glass
@@ -1124,8 +1128,9 @@ export default function BrowserScreen() {
             style={[
               styles.bottomOverlay,
               styles.floatingBar,
-              // Over the keyboard it sits right on it; otherwise just above the home indicator.
-              { bottom: keyboardLift + barShift, paddingBottom: keyboardHeight > 0 ? 6 : Math.max(insets.bottom - 12, 8) },
+              // Just above the home indicator; lifted over the keyboard it rests right on it.
+              // Its height stays the same either way (the page under it is laid out around it).
+              { bottom: floatLift > 0 ? Math.max(0, floatLift - (floatGap - 6)) : 0, paddingBottom: floatGap },
             ]}
             pointerEvents="box-none"
             onLayout={(e) => setBarsHeight(Math.round(e.nativeEvent.layout.height))}>

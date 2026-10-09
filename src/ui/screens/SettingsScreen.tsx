@@ -54,6 +54,8 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
   const [showAdvanced, setShowAdvanced] = useState(place.advanced);
   const scroll = useRef<ScrollView>(null);
   const restored = useRef(false);
+  // Where the screen starts, fixed when it opens (it must not follow the scrolling).
+  const [startAt] = useState(() => (place.y > 0 ? { x: 0, y: place.y } : undefined));
   useEffect(() => {
     place.advanced = showAdvanced;
   }, [showAdvanced]);
@@ -161,11 +163,11 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
           place.y = e.nativeEvent.contentOffset.y;
         }}
         // Back from one of its own pages: at the place it was left.
-        contentOffset={place.y > 0 ? { x: 0, y: place.y } : undefined}
+        contentOffset={startAt}
         onContentSizeChange={() => {
-          if (place.y > 0 && !restored.current) {
+          if (startAt && !restored.current) {
             restored.current = true;
-            scroll.current?.scrollTo({ y: place.y, animated: false });
+            scroll.current?.scrollTo({ y: startAt.y, animated: false });
           }
         }}>
         {plus.supported ? (

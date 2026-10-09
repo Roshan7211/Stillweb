@@ -20,18 +20,20 @@ export function pageLookScript(): string {
       for (var i = 0; i < els.length && !page; i++) {
         if (els[i]) page = parse(getComputedStyle(els[i]).backgroundColor);
       }
-      // The site's own choice for browser bars, where it names one.
+      // The site's own choice for browser bars, where it names one. (Read through a canvas
+      // that is never put in the page: nothing the page could notice or react to.)
       var named = null, metas = document.querySelectorAll('meta[name="theme-color"]');
       for (var j = 0; j < metas.length && !named; j++) {
         var media = metas[j].getAttribute('media');
         if (media && !matchMedia(media).matches) continue;
-        var probe = document.createElement('span');
-        probe.style.color = metas[j].getAttribute('content') || '';
-        if (!probe.style.color) continue;
-        probe.style.display = 'none';
-        document.documentElement.appendChild(probe);
-        named = parse(getComputedStyle(probe).color);
-        probe.remove();
+        var pen = document.createElement('canvas').getContext('2d');
+        if (!pen) break;
+        pen.fillStyle = '#010203';
+        pen.fillStyle = metas[j].getAttribute('content') || '';
+        var value = String(pen.fillStyle);
+        if (value === '#010203') continue;
+        var hexed = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(value);
+        named = hexed ? [parseInt(hexed[1], 16), parseInt(hexed[2], 16), parseInt(hexed[3], 16)] : parse(value);
       }
       // The colour painted in the middle of a row of the page: the nearest solid background
       // behind that point (null for pictures, videos and gradients).
