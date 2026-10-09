@@ -85,15 +85,14 @@ run() {
 if [ $# -gt 0 ]; then
   run custom "$@"
 else
-  # A video opened from a list (no page load: the site swaps the page itself), with all of
-  # the app's blocking, then without its site scripts, without its rule lists, and with
-  # protection off. Shows what the page's own requests returned in each case.
-  L="https://m.youtube.com/results?search_query=live+news"
-  run list-all "$L" bars open-video short
-  run list-no-site-scripts "$L" bars open-video short no-site-scripts
-  run list-no-rules "$L" bars open-video short no-rules
-  run list-off "$L" bars open-video short no-shields
-  run list-all-again "$L" bars open-video
+  # The search site and a few others, with the bundled rules: what the engine loaded, and
+  # whether results, links and pictures are there.
+  run search "https://www.google.com/search?q=best+pizza+recipe" once
+  run search-off "https://www.google.com/search?q=best+pizza+recipe" once no-shields
+  run search-home "https://www.google.com/" once
+  run video "https://m.youtube.com/watch?v=Nae8rachpOM" once
+  run news "https://www.bbc.com/news" once
+  run shop "https://www.amazon.co.uk/" once
 fi
 
 # Smaller pictures: they are only looked at, and are kept in the repository's results branch.

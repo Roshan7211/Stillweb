@@ -49,6 +49,10 @@ let probe = """
     video: video ? { paused: video.paused, t: Math.round(video.currentTime * 10) / 10, ready: video.readyState, muted: video.muted } : null,
     quiet: window.__stillwebQuiet === true, appState: typeof window.__shieldAppState,
     requests: window.__requests || null,
+    headings: Array.prototype.filter.call(document.querySelectorAll('a h3, a [role=heading]'), function (e) { return e.offsetParent !== null && e.getBoundingClientRect().height > 0; }).length,
+    links: [document.querySelectorAll('a[href]').length, Array.prototype.filter.call(document.querySelectorAll('a[href]'), function (e) { return e.offsetParent !== null; }).length],
+    text: (document.body && document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 160),
+    images: [document.images.length, Array.prototype.filter.call(document.images, function (i) { return i.complete && i.naturalWidth === 0 && i.src; }).length],
     sections: document.querySelectorAll('ytm-item-section-renderer, ytm-slim-video-metadata-section-renderer, ytm-video-with-context-renderer').length,
     size: (function () {
       var d = document.documentElement, b = document.body, m = document.querySelector('meta[name=viewport]');
