@@ -123,12 +123,16 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
             <Icon name="lock" size={32} color={theme.muted} />
           </View>
           <Text style={[styles.title, { color: theme.text }]}>
-            {lock === 'noPasscode' ? 'Set a passcode first' : 'Your vault is locked'}
+            {lock === 'noPasscode' ? (Platform.OS === 'ios' ? 'Set a passcode first' : 'Set a screen lock first') : 'Your vault is locked'}
           </Text>
           <Text style={[styles.body, { color: theme.muted }]}>
-            {lock === 'noPasscode'
-              ? 'The vault opens with Face ID, Touch ID or your passcode. Set a passcode in Settings to use it.'
-              : 'Unlock with Face ID, Touch ID or your passcode.'}
+            {Platform.OS === 'ios'
+              ? lock === 'noPasscode'
+                ? 'The vault opens with Face ID, Touch ID or your passcode. Set a passcode in Settings to use it.'
+                : 'Unlock with Face ID, Touch ID or your passcode.'
+              : lock === 'noPasscode'
+                ? 'The vault opens with your fingerprint or screen lock. Set a screen lock in the phone’s settings to use it.'
+                : 'Unlock with your fingerprint or screen lock.'}
           </Text>
           {lock === 'locked' ? (
             <Pressable onPress={unlock} style={[styles.button, { backgroundColor: theme.accent }]} accessibilityRole="button">

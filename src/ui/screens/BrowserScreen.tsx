@@ -27,7 +27,7 @@ import { useLibrary } from '../../browser/library';
 import { rateScript, stopAtEndDoneScript, stopAtEndScript, type SleepChoice } from '../../browser/listen';
 import { pickerBiggerScript, pickerCancelScript, pickerFinishScript, pickerStartScript } from '../../browser/picker';
 import { refreshBlockedTotal } from '../../browser/blockedTotal';
-import { pageDarkScript, parsePageDark } from '../../browser/pageTheme';
+import { isDarkColour, pageLookScript, parsePageLook } from '../../browser/pageTheme';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript, readerThemeScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
@@ -37,11 +37,12 @@ import { useTabs } from '../../browser/tabs';
 import { usePlus } from '../../plus/plus';
 import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl, siteKey } from '../../browser/url';
 import AddressBar from '../components/AddressBar';
-import BrowserTabView from '../components/BrowserTabView';
+import BrowserTabView, { type TabEnter } from '../components/BrowserTabView';
+import type { BarTone } from '../components/AddressBar';
 import ContextMenuSheet, { type ContextAction, type ContextTarget } from '../components/ContextMenuSheet';
 import { ErrorBoundary, ProblemScreen } from '../components/ErrorBoundary';
 import MenuSheet, { type MenuAction } from '../components/MenuSheet';
-import { Icon, IconButton } from '../components/primitives';
+import { Appear, Icon, IconButton } from '../components/primitives';
 import ListenSheet, { type SleepState } from '../components/ListenSheet';
 import ShieldPanel from '../components/ShieldPanel';
 import SuggestionsPanel from '../components/SuggestionsPanel';
@@ -50,7 +51,7 @@ import AboutScreen from './AboutScreen';
 import PlusScreen from './PlusScreen';
 import PrivacyReportScreen from './PrivacyReportScreen';
 import { BookmarksScreen, DownloadsScreen, HistoryScreen } from './LibraryScreens';
-import SettingsScreen from './SettingsScreen';
+import SettingsScreen, { forgetSettingsPlace } from './SettingsScreen';
 import ShieldTestScreen from './ShieldTestScreen';
 import TabSwitcherScreen from './TabSwitcherScreen';
 import VaultScreen from './VaultScreen';
@@ -311,16 +312,43 @@ export default function BrowserScreen() {
     setPicking(false);
   }, [activeTab?.id, captureThumbnail]);
 
+  // Moving to a tab: it comes in with a short animation (BrowserTabView) over the tab that was
+  // left, which stays on screen for that moment. `from` is set by whoever switches the tab.
+  const [enterFrom, setEnterFrom] = useState<TabEnter>('zoom');
+  const [shown, setShown] = useState<{ id: string | null; leaving: string | null; from: TabEnter; key: number }>(() => ({
+    id: activeTab?.id ?? null,
+    leaving: null,
+    from: 'zoom',
+    key: 0,
+  }));
+  const activeId = activeTab?.id ?? null;
+  if (shown.id !== activeId) {
+    // Derived while rendering, so the tab that is left never disappears for a frame first.
+    setShown({ id: activeId, leaving: shown.id, from: enterFrom, key: shown.key + 1 });
+    if (enterFrom !== 'zoom') setEnterFrom('zoom');
+  }
+  useEffect(() => {
+    if (!shown.leaving) return;
+    const timer = setTimeout(() => setShown((s) => (s.leaving ? { ...s, leaving: null } : s)), 300);
+    return () => clearTimeout(timer);
+  }, [shown.key, shown.leaving]);
+  useEffect(() => {
+    if (overlay === 'none') forgetSettingsPlace();
+  }, [overlay]);
+  /** Plays the animation again for the tab that is on screen (coming back from the tab switcher). */
+  const replayEnter = useCallback(() => setShown((s) => ({ ...s, from: 'zoom', key: s.key + 1 })), []);
+
   // After a theme change, pages that switch by themselves have new colours: the status bar
   // over them follows (pages that need a reload are re-measured when they finish loading).
   const pagesDark = theme.dark && settings.darkPages;
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
     const timer = setTimeout(() => {
       refs.current.forEach((ref, id) => {
+        // Not the app's own pages (reader view), which are drawn in the app's theme.
+        if (tabsRef.current.find((t) => t.id === id)?.reader) return;
         ref
-          .evaluateJavaScript(pageDarkScript())
-          .then((raw) => updateTab(id, { pageDark: parsePageDark(raw) }))
+          .evaluateJavaScript(pageLookScript())
+          .then((raw) => updateTab(id, parsePageLook(raw)))
           .catch(() => {});
       });
     }, 1200);
@@ -333,7 +361,7 @@ export default function BrowserScreen() {
       .filter((t) => t.reader)
       .forEach((t) => {
         refs.current.get(t.id)?.evaluateJavaScript(readerThemeScript(theme)).catch(() => {});
-        updateTab(t.id, { pageDark: theme.dark });
+        updateTab(t.id, { pageDark: theme.dark, pageTop: undefined, pageBottom: undefined });
       });
   }, [theme, updateTab]);
 
@@ -444,9 +472,13 @@ export default function BrowserScreen() {
     if (!activeTab) return;
     const same = tabs.filter((t) => t.incognito === activeTab.incognito);
     const target = same[same.findIndex((t) => t.id === activeTab.id) + (direction === 'next' ? 1 : -1)];
-    if (target) tabsApi.activate(target.id);
     // Past the last tab: a new one, unless this already is an empty new tab.
-    else if (direction === 'next' && !isBlank(activeTab.url)) newTab(activeTab.incognito);
+    const opensNew = !target && direction === 'next' && !isBlank(activeTab.url);
+    if (!target && !opensNew) return;
+    // The tab comes in from the side it is on.
+    setEnterFrom(direction);
+    if (target) tabsApi.activate(target.id);
+    else newTab(activeTab.incognito);
   };
 
   const startEditing = (initialText = activeTab && !isBlank(activeTab.url) ? activeTab.url : '') => {
@@ -555,7 +587,7 @@ export default function BrowserScreen() {
       .catch(() => null);
     if (result === 'true') {
       // Reader view draws the article in the app's theme.
-      updateTab(activeTab.id, { reader: true, pageDark: theme.dark });
+      updateTab(activeTab.id, { reader: true, pageDark: theme.dark, pageTop: undefined, pageBottom: undefined });
     } else {
       showToast("Reader view isn't available for this page");
     }
@@ -697,11 +729,42 @@ export default function BrowserScreen() {
   // colour; over the browser's own screens (new tab, typing, overlays) after the app's theme.
   const overPage =
     edgeToEdge && overlay === 'none' && !editing && !!activeTab && !isBlank(activeTab.url) && activeTab.pageDark !== undefined;
-  const statusStyle: 'light' | 'dark' = overPage ? (activeTab!.pageDark ? 'light' : 'dark') : incognito || theme.dark ? 'light' : 'dark';
+  const appStatusStyle: 'light' | 'dark' = overPage ? (activeTab!.pageDark ? 'light' : 'dark') : incognito || theme.dark ? 'light' : 'dark';
   const normalCount = tabs.filter((t) => !t.incognito).length;
   const privateCount = tabs.length - normalCount;
   const tabCount = incognito ? privateCount : normalCount;
   const hasPage = !!activeTab && !isBlank(activeTab.url) && !(incognito && privateLocked);
+  // Where the page can't scroll under the bars (Android; iOS with the address at the top), the
+  // bars take the colours of the page's own edges instead, so they read as part of the page,
+  // like Safari's. Private tabs keep their own colour, and so do the app's own pages.
+  const tinted = !edgeToEdge && !incognito && hasPage && !editing && !findOpen && !picking && !activeTab?.reader;
+  const topColour = (tinted && activeTab?.pageTop) || null;
+  const bottomColour = (tinted && activeTab?.pageBottom) || null;
+  const toneFor = (colour: string | null): BarTone | null => {
+    if (!colour) return null;
+    const dark = isDarkColour(colour);
+    const text = dark ? '#F2F3F5' : '#16171A';
+    return {
+      fg: text,
+      muted: dark ? 'rgba(255,255,255,0.64)' : 'rgba(0,0,0,0.56)',
+      field: dark ? 'rgba(255,255,255,0.13)' : 'rgba(0,0,0,0.06)',
+      // The app's accent is picked for the app's own background.
+      accent: dark === theme.dark ? theme.accent : text,
+    };
+  };
+  const topTone = toneFor(topColour);
+  const bottomTone = toneFor(bottomColour);
+  const topBg = topColour ?? chrome;
+  const bottomBg = bottomColour ?? barBg;
+  const barLine = incognito ? theme.privateSurface : theme.border;
+  const bottomFg = bottomTone?.fg ?? (incognito ? '#ECE6F7' : theme.text);
+  const statusStyle: 'light' | 'dark' = topColour && overlay === 'none' ? (isDarkColour(topColour) ? 'light' : 'dark') : appStatusStyle;
+  // Android: the system's own buttons under the bottom bar follow what is drawn there.
+  const bottomEdge = overlay !== 'none' ? theme.background : (bottomColour ?? chrome);
+  const bottomEdgeDark = isDarkColour(bottomEdge);
+  useEffect(() => {
+    if (Platform.OS === 'android') ShieldEngine.setNavigationBar?.(!bottomEdgeDark)?.catch(() => {});
+  }, [bottomEdgeDark]);
   // A locked private tab doesn't reveal where it is.
   const visibleUrl = incognito && privateLocked ? '' : (activeTab?.url ?? '');
   const muted = incognito ? '#B3A8CC' : theme.muted;
@@ -730,18 +793,20 @@ export default function BrowserScreen() {
       onStop={() => activeRef()?.stopLoading()}
       onSwipe={switchTab}
       inline={single && !editing}
+      tone={bottomBar ? bottomTone : topTone}
     />
   );
 
   // Safari's minimized bar: just the site; tapping it brings the bars back.
+  const compactTone = bottomBar ? bottomTone : topTone;
   const compactBar = (
     <Pressable
       style={styles.compact}
       onPress={() => onChromeChange(false)}
       accessibilityRole="button"
       accessibilityLabel={`${displayHost(activeTab?.url ?? '')}, show toolbar`}>
-      {activeTab?.secure ? <Icon name="lock" size={10} color={muted} /> : null}
-      <Text style={[styles.compactText, { color: fg }]} numberOfLines={1}>
+      {activeTab?.secure ? <Icon name="lock" size={10} color={compactTone?.muted ?? muted} /> : null}
+      <Text style={[styles.compactText, { color: compactTone?.fg ?? fg }]} numberOfLines={1}>
         {displayHost(activeTab?.url ?? '')}
       </Text>
     </Pressable>
@@ -784,6 +849,8 @@ export default function BrowserScreen() {
             label="Close find"
             color={fg}
             onPress={() => {
+              // On Android the keyboard would stay up over the page once the field is gone.
+              Keyboard.dismiss();
               setFindOpen(false);
               activeRef()?.clearFind();
             }}
@@ -815,16 +882,16 @@ export default function BrowserScreen() {
       ) : null}
 
       {bottomBar && !findOpen && !picking && collapsed ? (
-        <View style={[styles.compactBottom, { paddingBottom: insets.bottom, backgroundColor: barBg }]}>{compactBar}</View>
+        <View style={[styles.compactBottom, { paddingBottom: insets.bottom, backgroundColor: bottomBg }]}>{compactBar}</View>
       ) : null}
       {/* Top bar layout, shrunk: the page reaches the bottom edge, clear of the home indicator. */}
-      {!bottomBar && collapsed ? <View style={{ height: insets.bottom, backgroundColor: chrome }} /> : null}
+      {!bottomBar && collapsed ? <View style={{ height: insets.bottom, backgroundColor: bottomColour ?? chrome }} /> : null}
 
       {bottomBar && !findOpen && !picking && !collapsed ? (
         <View
           style={[
             styles.bottomBar,
-            { top: edgeToEdge ? 0 : -barShift, backgroundColor: barBg, borderColor: incognito ? theme.privateSurface : theme.border },
+            { top: edgeToEdge ? 0 : -barShift, backgroundColor: bottomBg, borderColor: bottomColour ? 'transparent' : barLine },
             // The single bar is the last thing on screen: it keeps clear of the home indicator.
             single && { paddingTop: 0, paddingBottom: Platform.OS === 'android' && keyboardHeight > 0 ? 2 : singlePadBottom },
           ]}>
@@ -833,7 +900,7 @@ export default function BrowserScreen() {
               <IconButton
                 name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
                 label="Back"
-                color={fg}
+                color={bottomFg}
                 size={Platform.OS === 'ios' ? 26 : 22}
                 disabled={!activeTab || (!activeTab.canGoBack && !activeTab.reader && !activeTab.openerId)}
                 onPress={goBack}
@@ -842,8 +909,8 @@ export default function BrowserScreen() {
               <View style={styles.singleAddress}>{addressBar}</View>
               <IconButton
                 name="square"
-                label={`${tabCount} tabs`}
-                color={fg}
+                label={`${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'}`}
+                color={bottomFg}
                 badge={String(Math.min(tabCount, 99))}
                 onPress={openTabSwitcher}
                 style={styles.singleButton}
@@ -851,7 +918,7 @@ export default function BrowserScreen() {
               <IconButton
                 name={Platform.OS === 'ios' ? 'more-horizontal' : 'more-vertical'}
                 label="Menu"
-                color={fg}
+                color={bottomFg}
                 onPress={() => setMenuOpen(true)}
                 style={styles.singleButton}
               />
@@ -871,13 +938,13 @@ export default function BrowserScreen() {
           style={[
             styles.toolbar,
             !bottomBar && styles.toolbarBorder,
-            { backgroundColor: barBg, paddingBottom: insets.bottom, borderColor: incognito ? theme.privateSurface : theme.border },
+            { backgroundColor: bottomBg, paddingBottom: insets.bottom, borderColor: bottomColour ? 'transparent' : barLine },
             editing && styles.toolbarHidden,
           ]}>
           <IconButton
             name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
             label="Back"
-            color={fg}
+            color={bottomFg}
             size={Platform.OS === 'ios' ? 26 : 22}
             disabled={!activeTab || (!activeTab.canGoBack && !activeTab.reader && !activeTab.openerId)}
             onPress={goBack}
@@ -885,27 +952,27 @@ export default function BrowserScreen() {
           <IconButton
             name={Platform.OS === 'ios' ? 'chevron-right' : 'arrow-right'}
             label="Forward"
-            color={fg}
+            color={bottomFg}
             size={Platform.OS === 'ios' ? 26 : 22}
             disabled={!activeTab?.canGoForward}
             onPress={() => activeRef()?.goForward()}
           />
           {Platform.OS === 'ios' ? (
-            <IconButton name="share" label="Share" color={fg} disabled={!hasPage} onPress={() => onMenu('share')} />
+            <IconButton name="share" label="Share" color={bottomFg} disabled={!hasPage} onPress={() => onMenu('share')} />
           ) : (
-            <IconButton name="plus" label="New tab" color={fg} onPress={() => newTab(incognito)} />
+            <IconButton name="plus" label="New tab" color={bottomFg} onPress={() => newTab(incognito)} />
           )}
           <IconButton
             name="square"
-            label={`${tabCount} tabs`}
-            color={fg}
+            label={`${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'}`}
+            color={bottomFg}
             badge={String(Math.min(tabCount, 99))}
             onPress={openTabSwitcher}
           />
           <IconButton
             name={Platform.OS === 'ios' ? 'more-horizontal' : 'more-vertical'}
             label="Menu"
-            color={fg}
+            color={bottomFg}
             onPress={() => setMenuOpen(true)}
           />
         </View>
@@ -934,7 +1001,7 @@ export default function BrowserScreen() {
           />
         </View>
       ) : (
-        <View style={{ paddingTop: insets.top, backgroundColor: chrome, zIndex: 10 }}>
+        <View style={{ paddingTop: insets.top, backgroundColor: topBg, zIndex: 10 }}>
           {bottomBar ? null : collapsed ? compactBar : addressBar}
         </View>
       )}
@@ -982,6 +1049,10 @@ export default function BrowserScreen() {
               profileLabel={profiles.length && !tab.incognito ? profileName(profileOf(tab, profiles), profiles) : undefined}
               chromeCollapsed={tab.id === activeTab?.id && collapsed}
               edge={edge}
+              enterKey={tab.id === activeTab?.id ? shown.key : 0}
+              enterFrom={tab.id === activeTab?.id ? shown.from : 'zoom'}
+              leaving={tab.id === shown.leaving}
+              tintBars={!edgeToEdge}
             />
             </ErrorBoundary>
           ))}
@@ -1088,7 +1159,7 @@ export default function BrowserScreen() {
       />
 
       {overlay !== 'none' ? (
-        <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: theme.background }]}>
+        <Appear key={overlay} style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: theme.background }]}>
           <ErrorBoundary
             key={overlay}
             fallback={(reset) => (
@@ -1109,6 +1180,7 @@ export default function BrowserScreen() {
               onClose={() => {
                 setOverlay('none');
                 if (!tabsApi.tabs.length) openTab('');
+                replayEnter();
               }}
               onPrivateClosed={onPrivateTabsGone}
               profiles={profiles}
@@ -1167,7 +1239,7 @@ export default function BrowserScreen() {
             />
           ) : null}
           </ErrorBoundary>
-        </View>
+        </Appear>
       ) : null}
     </View>
   );

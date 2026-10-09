@@ -1,79 +1,79 @@
 {
   "schema": 1,
-  "version": "2026-10-07T20:34:15Z",
+  "version": "2026-10-09T08:29:54Z",
   "android": {
     "lists": [
       {
         "id": "easylist",
         "trusted": false,
         "file": "android/easylist.txt",
-        "sha256": "4eaf972378b5b5f89e30596f210cf04c75a99995b2c062a9c05bc7393fa9c2e3",
-        "bytes": 2118073
+        "sha256": "f1071d3deb4f4d63dfe1c0b2ab6215658b269a69467f0756297ce44d298b254f",
+        "bytes": 2128484
       },
       {
         "id": "easyprivacy",
         "trusted": false,
         "file": "android/easyprivacy.txt",
-        "sha256": "aed80f5934fb5e6bb9cc9d0e5aeaaabd7287970640d32a82c7857a9a07cff9e6",
-        "bytes": 1507897
+        "sha256": "73faa44bdd2e76dfd493b7421d58213355ac0a77daeac4ca75fd652001da58cb",
+        "bytes": 1508439
       },
       {
         "id": "adguard-dns",
         "trusted": false,
         "file": "android/adguard-dns.txt",
-        "sha256": "8cef4382dc5d5f0756407b8edbc5e14c74b5ec67aac8942f80acfaee2029dd69",
-        "bytes": 4352921
+        "sha256": "c4521370339617f58b5d8cf0b159a0b302e001f2819e708bc251339c54374555",
+        "bytes": 4362729
       },
       {
         "id": "easylist-cookie",
         "trusted": false,
         "file": "android/easylist-cookie.txt",
-        "sha256": "a0a8d46485710a0da429c4397b79fecc78f257232d75b7c767c6c077f6937b00",
-        "bytes": 1211013
+        "sha256": "4b908787b366e30aac8d40eb9b0d27d3b87ed515e422cabc7e7ffadb353c51b2",
+        "bytes": 1211458
       },
       {
         "id": "ubo-filters",
         "trusted": true,
         "file": "android/ubo-filters.txt",
-        "sha256": "4f28d03203fef057c0df2960c01c232e3e79125c64b893f96ba1950c4ee39a69",
-        "bytes": 2406479
+        "sha256": "9ca507d2aeb83cc3d823213019081125cd19552320207eff7944ec29432c5724",
+        "bytes": 2407974
       },
       {
         "id": "ubo-privacy",
         "trusted": true,
         "file": "android/ubo-privacy.txt",
-        "sha256": "fc8f548fb7857375ba9f2755513ea38599e415d51064793c84d4cd3e8617da4b",
-        "bytes": 187225
+        "sha256": "b9b2eb1eaa38e1b045eb9d5b0cefaa881dc1f287fa02144dfc363ead312a4628",
+        "bytes": 187071
       },
       {
         "id": "ubo-quick-fixes",
         "trusted": true,
         "file": "android/ubo-quick-fixes.txt",
-        "sha256": "fd6c4d680fdda2f73704d964f137c7c9f816af97a7c5515e2c834f1baa9d2527",
-        "bytes": 75951
+        "sha256": "e555a06cf81e256c0e84c5214d55b63b9e3d92609ee217274699a868f4467470",
+        "bytes": 77564
       },
       {
         "id": "ubo-unbreak",
         "trusted": true,
         "file": "android/ubo-unbreak.txt",
-        "sha256": "dd1568486264739af5dce2af3e7f269c62b3eb5133b1b6cff72585ee0d236811",
-        "bytes": 277697
+        "sha256": "0acf24ae1eee9cd68b832c6f9ddae42de33c749aa42f3c0156dc9251457af626",
+        "bytes": 277778
       },
       {
         "id": "fanboy-annoyance",
         "trusted": false,
         "group": "calm",
         "file": "android/fanboy-annoyance.txt",
-        "sha256": "d4dddc61095e3ebeec538bab47d5a51a00fde4300c04d0bfeec3c57571d11696",
-        "bytes": 1723224
+        "sha256": "c645b289bc718800cbb1ff60e93ac511d2d5e856bdc18aefdff6ba36ba390a2e",
+        "bytes": 1723819
       },
       {
         "id": "ubo-annoyances",
         "trusted": true,
         "group": "calm",
         "file": "android/ubo-annoyances.txt",
-        "sha256": "45b60c2005e9c2db7e9e39479bafee573a8a4cb87639d15f77b412df2b349094",
-        "bytes": 408675
+        "sha256": "d300b944166d360ba275b00ae868451e477ff12cab8be9f82b1d186a1b8503e2",
+        "bytes": 408678
       }
     ],
     "resources": {

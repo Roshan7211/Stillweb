@@ -128,6 +128,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   /** Elements the user hid on the current site, and which site/engine state they're for. */
   private var hiddenScript: ScriptHandler? = null
   private var hiddenKey = ""
+  /** Desktop website: the script that gives the page a desktop's width, and the site it's for. */
+  private var desktopScript: ScriptHandler? = null
+  private var desktopHost = ""
 
   /** Calm Mode's cookie pop-up script, registered while it's on (and shields are on here). */
   private var calmScript: ScriptHandler? = null
@@ -180,6 +183,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       hiddenScript?.remove()
       hiddenScript = null
       hiddenKey = ""
+      desktopScript?.remove()
+      desktopScript = null
+      desktopHost = ""
       wv.stopLoading()
       wv.webChromeClient = null
       removeView(wv)
@@ -517,6 +523,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
     syncCalmScript(wv, url)
     syncHiddenScript(wv, url)
+    syncDesktopScript(wv, url)
     resetHostScriptsIfStale()
     val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
     val host = uri.host?.lowercase() ?: return
@@ -575,6 +582,30 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       "s.setAttribute('data-stillweb','hidden');s.textContent=css;(document.head||document.documentElement).appendChild(s);}" +
       "if(document.documentElement)add();else document.addEventListener('DOMContentLoaded',add);})();"
     hiddenScript = WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("https://$host", "http://$host"))
+  }
+
+  /**
+   * Main thread, before a page starts. Desktop website: besides the desktop user agent, the page
+   * is laid out at a desktop's width (as Chrome does). Most sites pick their layout by width
+   * alone, so without this they would look the same as before.
+   */
+  private fun syncDesktopScript(wv: WebView, url: String) {
+    val host = hostOf(url) ?: return
+    val wanted = if (ShieldEngine.siteFixFor(host)?.desktop == true) host else ""
+    if (wanted == desktopHost) return
+    desktopScript?.remove()
+    desktopScript = null
+    desktopHost = wanted
+    if (wanted.isEmpty()) return
+    // The whole width in view to start with, as on a desktop; the user zooms in from there.
+    val script = "(function(){if(window.top!==window)return;" +
+      "var want='width=1280, initial-scale='+(Math.round(screen.width/1280*1000)/1000)+', minimum-scale=0.1';" +
+      "function fix(){var m=document.querySelector('meta[name=\"viewport\"]');" +
+      "if(!m){if(!document.head)return;m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}" +
+      "if(m.getAttribute('content')!==want)m.setAttribute('content',want);}" +
+      "var o=new MutationObserver(fix);o.observe(document,{childList:true,subtree:true});fix();" +
+      "window.addEventListener('load',function(){fix();o.disconnect();});})();"
+    desktopScript = WebViewCompat.addDocumentStartJavaScript(wv, script, setOf("https://$host", "http://$host"))
   }
 
   /** Main thread, before a page starts: adds or removes Calm Mode's cookie pop-up script. */

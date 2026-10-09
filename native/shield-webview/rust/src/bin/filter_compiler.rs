@@ -10,7 +10,7 @@
 //! and prints a JSON summary on stdout.
 
 use adblock::content_blocking::{CbRule, CbType};
-use adblock::filters::cosmetic::CosmeticFilter;
+use adblock::filters::cosmetic::{CosmeticFilter, CosmeticFilterAction};
 use adblock::resources::PermissionMask;
 use adblock::FilterSet;
 use adblock_jni::{build_engine, parse_options, use_resources_json, ListSource};
@@ -116,12 +116,20 @@ fn write_content_rules(texts: &[(String, bool)], context: &[String], out: &PathB
     }
     let mut set = FilterSet::new(true); // debug mode is required for conversion
     for (text, trusted) in texts {
-        let kept: Vec<&str> = text.lines().filter(|line| !exceptions.take(line)).collect();
+        let kept: Vec<String> = text.lines().filter(|line| !exceptions.take(line)).flat_map(separator_endings).collect();
         set.add_filter_list(kept.join("\n"), parse_options(*trusted));
     }
-    let (rules, _) = set
+    let (mut rules, _) = set
         .into_content_blocking()
         .unwrap_or_else(|_| die("content blocking conversion failed"));
+    // A separator (`^`) inside a filter comes out of the conversion as a literal caret, which
+    // no address contains: the rule would never match. It stands for any character that
+    // separates parts of an address.
+    for rule in rules.iter_mut() {
+        if rule.trigger.url_filter.contains("\\^") {
+            rule.trigger.url_filter = rule.trigger.url_filter.replace("\\^", SEPARATOR_CLASS);
+        }
+    }
 
     // Network rules and element hiding always go in separate lists: an ignore-previous-rules
     // only affects earlier rules in its own list, so exceptions in one can't undo the other.
@@ -158,6 +166,52 @@ fn write_content_rules(texts: &[(String, bool)], context: &[String], out: &PathB
         .collect()
 }
 
+/// What a filter's `^` stands for: a character that separates the parts of an address (anything
+/// but letters, digits and `_ - . %`).
+const SEPARATOR_CLASS: &str = "[^a-zA-Z0-9_.%-]";
+
+/// The conversion drops a `^` at the end of a filter, so `||site.com/log^` (the address `/log`,
+/// or `/log` followed by a separator) also matched `/logos/…` and `/login`. With a path in the
+/// filter that is too much: it is written out as the endings that occur in practice instead
+/// (end of the address, `?`, `/`). A filter that is only a site name keeps the short form:
+/// there are a hundred thousand of them, and the difference hardly ever shows.
+fn separator_endings(line: &str) -> Vec<String> {
+    let unchanged = || vec![line.to_string()];
+    let text = line.trim();
+    if text.is_empty() || text.starts_with('!') || text.starts_with('[') || text.contains('#') {
+        return unchanged();
+    }
+    let (pattern, options) = match text.rfind('$') {
+        Some(at) if at > 0 => (&text[..at], &text[at..]),
+        _ => (text, ""),
+    };
+    // Only plain option lists (a `$` can also be part of a pattern or of an option's value).
+    let plain = |c: char| c.is_ascii_alphanumeric() || "$,=|~._-*:".contains(c);
+    if pattern.contains('$') || !options.chars().all(plain) || !pattern.ends_with('^') {
+        return unchanged();
+    }
+    let body = pattern.trim_start_matches("@@").trim_start_matches('|');
+    let stem = &pattern[..pattern.len() - 1];
+    if !body[..body.len() - 1].contains('/') || stem.ends_with('*') {
+        return unchanged();
+    }
+    ["|", "?", "/"].iter().map(|ending| format!("{stem}{ending}{options}")).collect()
+}
+
+/// Whether a cosmetic filter hides (or removes) what its selector matches. Filters that only
+/// change an element (`:style(...)`, `:remove-attr(...)`, `:remove-class(...)`) must never become
+/// hiding rules: `www.google.*###main a[href][ping^="/url?"]:remove-attr(ping)` would hide every
+/// search result, `fmovies.*##*:style(user-select: text)` the whole page.
+fn hides(filter: &CosmeticFilter) -> bool {
+    matches!(filter.action, None | Some(CosmeticFilterAction::Remove))
+}
+
+/// Selectors that take a whole page with them. No list means that with a hiding rule; one that
+/// shows up is a mistake (here or upstream) and is left out.
+fn hides_whole_page(selector: &str) -> bool {
+    selector.split(',').map(str::trim).any(|part| matches!(part, "*" | "html" | "body" | ":root" | "html body" | "html > body"))
+}
+
 /// Element hiding exceptions, collected from the raw lists.
 #[derive(Default)]
 struct CosmeticExceptions {
@@ -181,7 +235,8 @@ impl CosmeticExceptions {
                 return true;
             };
             let hosts: Vec<String> = line[..idx].split(',').filter_map(plain_hostname).collect();
-            if let (Some(selector), false) = (filter.plain_css_selector(), hosts.is_empty()) {
+            // (An exception to a filter that changes an element doesn't unhide anything.)
+            if let (Some(selector), false, true) = (filter.plain_css_selector(), hosts.is_empty(), hides(&filter)) {
                 self.unhide.entry(selector.to_string()).or_default().extend(hosts);
             }
             return true;
@@ -313,7 +368,13 @@ fn family_hiding_rules(texts: &[(String, bool)]) -> Vec<CbRule> {
                 continue;
             }
             let Ok(filter) = CosmeticFilter::parse(line, false, PermissionMask::default()) else { continue };
+            if !hides(&filter) {
+                continue;
+            }
             let Some(selector) = filter.plain_css_selector() else { continue };
+            if hides_whole_page(selector) {
+                continue;
+            }
             by_selector.entry(selector.to_string()).or_default().extend(families.iter().map(|f| f.to_string()));
         }
     }
@@ -362,6 +423,9 @@ fn ignore_rules_for(hosts: &BTreeSet<String>) -> Vec<CbRule> {
 fn cosmetic_rules(rules: Vec<CbRule>, exceptions: &CosmeticExceptions) -> Vec<CbRule> {
     let (mut generic, mut specific) = (vec![], vec![]);
     for mut rule in rules {
+        if rule.action.selector.as_deref().is_some_and(hides_whole_page) {
+            continue;
+        }
         let t = &mut rule.trigger;
         // WebKit matches a bare domain exactly; `*domain` also covers www., m. and the rest.
         for list in [&mut t.if_domain, &mut t.unless_domain].into_iter().flatten() {

@@ -1,6 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, StyleSheet, View } from 'react-native';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, Alert, Animated, AppState, Easing, Platform, StyleSheet } from 'react-native';
 
 import { ShieldEngine, ShieldWebView, type ShieldWebViewRef } from '../../../native/shield-webview';
 import { useLibraryActions } from '../../browser/library';
@@ -9,7 +9,7 @@ import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
 import { useTabActions, type Tab } from '../../browser/tabs';
 import { rateScript, stopAtEndScript } from '../../browser/listen';
-import { pageDarkScript, parsePageDark } from '../../browser/pageTheme';
+import { pageLookScript, parsePageLook } from '../../browser/pageTheme';
 import type { LoadError } from '../../browser/loadErrors';
 import { isBlank, searchUrl, siteKey } from '../../browser/url';
 import type { Theme } from '../theme';
@@ -41,7 +41,36 @@ type Props = {
    * app's bars cover, `safeBottom` the home indicator area within `bottom`. Memoized by the caller.
    */
   edge?: { top: number; bottom: number; safeBottom: number } | null;
+  /**
+   * Moving to this tab: it comes in with a short animation, played again whenever the number
+   * changes (only passed to the active tab). `enterFrom` is where it comes from: the side when
+   * swiping between tabs, otherwise it grows into place.
+   */
+  enterKey?: number;
+  enterFrom?: TabEnter;
+  /** The tab that was just left stays on screen under the one coming in, for that moment. */
+  leaving?: boolean;
+  /**
+   * The bars are drawn in the page's colours (layouts where the page doesn't scroll under
+   * them): the page's edges are looked at again from time to time while it is on screen.
+   */
+  tintBars?: boolean;
 };
+
+export type TabEnter = 'zoom' | 'next' | 'previous';
+
+// People who turned animations down in the system settings get none here.
+let reduceMotion = false;
+AccessibilityInfo.isReduceMotionEnabled()
+  .then((value) => {
+    reduceMotion = value;
+  })
+  .catch(() => {});
+AccessibilityInfo.addEventListener('reduceMotionChanged', (value) => {
+  reduceMotion = value;
+});
+
+const ENTER_MS = 220;
 
 /** Maps an <input accept> list to MIME types the system picker understands. */
 function pickerTypes(accept: string): string[] {
@@ -59,6 +88,7 @@ export default memo(BrowserTabView);
 function BrowserTabView(props: Props) {
   const { tab, active, theme, registerRef, onToast, onContextMenu, onFullscreenChange, onFindResult } = props;
   const { onLinkAction, onChromeChange, chromeCollapsed, onOpenReport, profileLabel, edge } = props;
+  const { enterKey = 0, enterFrom = 'zoom', leaving = false, tintBars = false } = props;
   // WebKit adds the safe area itself; it's told only what the app's bars cover beyond it.
   const chromeInsets = useMemo(() => (edge ? { top: 0, bottom: Math.max(0, edge.bottom - edge.safeBottom) } : undefined), [edge]);
   const pageInsets = edge ?? undefined;
@@ -103,24 +133,94 @@ function BrowserTabView(props: Props) {
     registerRef(tab.id, instance);
   };
 
+  // What the page looks like at its edges (see pageLookScript). The tab is only updated when
+  // something changed, so looking again costs no re-render.
+  const look = useRef({ pageDark: tab.pageDark, pageTop: tab.pageTop, pageBottom: tab.pageBottom, error: false, reader: false });
+  useEffect(() => {
+    look.current = { pageDark: tab.pageDark, pageTop: tab.pageTop, pageBottom: tab.pageBottom, error: !!loadError, reader: !!tab.reader };
+  });
+  const measureLook = () => {
+    ref.current
+      ?.evaluateJavaScript(pageLookScript())
+      .then((raw) => {
+        const now = look.current;
+        // The app's own pages (an error, reader view) are drawn in the app's theme.
+        if (now.error || now.reader) return;
+        const next = parsePageLook(raw);
+        if (next.pageDark !== now.pageDark || next.pageTop !== now.pageTop || next.pageBottom !== now.pageBottom) {
+          updateTab(tab.id, next);
+        }
+      })
+      .catch(() => {});
+  };
+  const measure = useRef(measureLook);
+  useEffect(() => {
+    measure.current = measureLook;
+  });
+  // A page's header changes as it is scrolled, and app-like sites change pages without
+  // loading: while the bars follow the page, it is looked at every little while.
+  useEffect(() => {
+    if (!tintBars || !active || !showWeb) return;
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') measure.current();
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [tintBars, active, showWeb]);
+
+  // Coming on screen: a short fade while the page grows into place (or slides in from the side
+  // it was swiped from). Runs on the native side, so a busy page doesn't make it stutter.
+  const [enter] = useState(() => new Animated.Value(active ? 0 : 1));
+  const played = useRef(-1);
+  useEffect(() => {
+    if (!active) {
+      // Ready for the next time: the first frame it is shown again is the animation's first.
+      played.current = -1;
+      enter.setValue(0);
+      return;
+    }
+    if (played.current === enterKey) return;
+    played.current = enterKey;
+    if (reduceMotion) {
+      enter.setValue(1);
+      return;
+    }
+    enter.setValue(0);
+    Animated.timing(enter, { toValue: 1, duration: ENTER_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [active, enterKey, enter]);
+  const entering = useMemo(
+    () => ({
+      opacity: enter,
+      transform:
+        enterFrom === 'zoom'
+          ? [{ scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }]
+          : [{ translateX: enter.interpolate({ inputRange: [0, 1], outputRange: [enterFrom === 'next' ? 48 : -48, 0] }) }],
+    }),
+    [enter, enterFrom],
+  );
+  const frame = (children: ReactNode) => (
+    <Animated.View
+      style={[StyleSheet.absoluteFill, active ? [styles.shown, entering] : leaving ? styles.leaving : styles.hidden]}
+      pointerEvents={active ? 'auto' : 'none'}>
+      {children}
+    </Animated.View>
+  );
+
   if (!showWeb) {
-    return (
-      <View style={[StyleSheet.absoluteFill, !active && styles.hidden]} pointerEvents={active ? 'auto' : 'none'}>
-        <NewTabPage
-          theme={theme}
-          incognito={tab.incognito}
-          active={active}
-          onOpen={(url) => navigate(tab.id, url)}
-          onOpenReport={onOpenReport}
-          profile={profileLabel}
-          insets={pageInsets}
-        />
-      </View>
+    return frame(
+      <NewTabPage
+        theme={theme}
+        incognito={tab.incognito}
+        active={active}
+        onOpen={(url) => navigate(tab.id, url)}
+        onOpenReport={onOpenReport}
+        profile={profileLabel}
+        insets={pageInsets}
+      />,
     );
   }
 
-  return (
-    <View style={[StyleSheet.absoluteFill, !active && styles.hidden]} pointerEvents={active ? 'auto' : 'none'}>
+  return frame(
+    <>
       <ShieldWebView
         ref={setRef}
         style={StyleSheet.absoluteFill}
@@ -166,8 +266,8 @@ function BrowserTabView(props: Props) {
           // A navigation that turned into a download (or was replaced) isn't a failure.
           if (/ERR_ABORTED|ERR_BLOCKED_BY_RESPONSE/i.test(nativeEvent.description) || nativeEvent.code === -999) return;
           setLoadError(nativeEvent);
-          // Stillweb's error page is drawn in the app's theme: the status bar follows that.
-          updateTab(tab.id, { pageDark: undefined });
+          // Stillweb's error page is drawn in the app's theme: the status bar and bars follow that.
+          updateTab(tab.id, { pageDark: undefined, pageTop: undefined, pageBottom: undefined });
         }}
         onCloseRequest={() => {
           // Like other browsers, pages may only close windows that a page opened.
@@ -178,12 +278,8 @@ function BrowserTabView(props: Props) {
           // Listen Mode: the tab's playback speed carries over to the new page.
           if (tab.playbackRate && tab.playbackRate !== 1) ref.current?.evaluateJavaScript(rateScript(tab.playbackRate)).catch(() => {});
           // Edge to edge, the status bar sits over the page: its text follows the page's colour.
-          if (Platform.OS === 'ios') {
-            ref.current
-              ?.evaluateJavaScript(pageDarkScript())
-              .then((raw) => updateTab(tab.id, { pageDark: parsePageDark(raw) }))
-              .catch(() => {});
-          }
+          // Elsewhere the bars themselves take the page's colours.
+          if (Platform.OS === 'ios' || tintBars) measureLook();
           // "End of this one" follows a playlist onto its next page (same site only).
           if (tab.stopAtEnd) {
             if (tab.stopAtEnd !== siteKey(url)) updateTab(tab.id, { stopAtEnd: undefined });
@@ -290,10 +386,13 @@ function BrowserTabView(props: Props) {
           }}
         />
       ) : null}
-    </View>
+    </>,
   );
 }
 
 const styles = StyleSheet.create({
-  hidden: { opacity: 0, zIndex: -1 },
+  // Never above zero: the suggestions, the lock screen and messages are drawn over the tab.
+  shown: { zIndex: 0 },
+  leaving: { zIndex: -1 },
+  hidden: { opacity: 0, zIndex: -2 },
 });

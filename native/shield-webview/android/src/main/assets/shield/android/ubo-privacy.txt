@@ -1,5 +1,5 @@
 ! Title: uBlock filters – Privacy
-! Last modified: Mon, 05 Oct 2026 10:20:29 +0000
+! Last modified: Thu, 08 Oct 2026 09:32:02 +0000
 ! Expires: 7 days
 ! Description: |
 !   Some of these filters make use of the `important` filter option,`
@@ -219,12 +219,10 @@ search.brave.com##+js(no-fetch-if, body:browser)
 /^https?:\/\/(?!assets|script|static)(?:[0-9a-z]{10,13}|[0-9a-z]{6})\.[0-9A-Za-z.\-_]+\/(?=[0-9a-z+\/\-]*[A-Z])[0-9A-Za-z+\/\-]{80,106}$/$script,1p,match-case,strict3p
 /dataunlocker$script,1p,domain=~dataunlocker.com
 ||data-saver-cindi.herokuapp.com^
-||franchiseplus.nl^$csp=script-src * 'unsafe-inline' 'wasm-unsafe-eval' data: blob: mediastream: filesystem:
 ||a.stateless.me^
-dataunlocker.com,androidacy.com,bolighub.dk##+js(set, _hjSettings, undefined)
-dataunlocker.com,androidacy.com,bolighub.dk##+js(set, google_tag_manager, undefined)
-@@||stats.g.doubleclick.net/g/$xhr,domain=androidacy.com
-||stats.g.doubleclick.net/g/$removeparam,domain=androidacy.com
+||bolighub.dk/tma/$script,1p
+dataunlocker.com,bolighub.dk##+js(set, _hjSettings, undefined)
+dataunlocker.com,bolighub.dk##+js(set, google_tag_manager, undefined)
 comicleaks.com,ping.gg,nookgaming.com,creatordrop.com,bitdomain.biz,fort-shop.kiev.ua,accuretawealth.com,tracktheta.com,adaptive.marketing,camberlion.com,segops.madisonspecs.com,stresshelden-coaching.de,controlconceptsusa.com,ryaktive.com,tip.etip-staging.etip.io##+js(rmnt, script, /join\(\'\'\)/)
 furucombo.app##+js(rmnt, script, /join\(\"\"\)/)
 intercity.technology,freelancer.taxmachine.be,adria.gg,fjlaboratories.com,abhijith.page,helpmonks.com##+js(rmnt, script, api.dataunlocker.com)
@@ -3270,6 +3268,9 @@ oklivetv.com##+js(no-fetch-if, method:POST body:tracker)
 
 ! https://github.com/uBlockOrigin/uAssets/issues/34694
 ||t.xfeed.com^
+
+! https://github.com/uBlockOrigin/uAssets/issues/22977
+||ua.xstory-fr.com^
 
 ! Merge in resource-abuse.txt
 ! >>> included /uAssets/filters/resource-abuse.txt

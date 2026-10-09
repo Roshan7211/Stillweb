@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FlatList, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -56,6 +56,26 @@ export default function TabSwitcherScreen(props: Props) {
   const cardWidth = (width - PADDING * 2 - GAP * (columns - 1)) / columns;
   // Thumbnails keep roughly the shape of the page area so snapshots aren't distorted.
   const thumbHeight = Math.min(cardWidth * (height / width) * 0.62, cardWidth * 1.45);
+
+  // Opens with the tab in use in the middle of the screen, not at the top of the list.
+  const rowHeight = 44 + thumbHeight;
+  const grid = useRef<FlatList<Tab>>(null);
+  const gridHeight = useRef(0);
+  // Once per list shown (not again when a tab is closed and the list gets shorter).
+  const gridKey = `grid-${columns}-${showPrivate}-${viewProfile ?? ''}`;
+  const placedFor = useRef('');
+  const showActive = (last: boolean) => {
+    const viewHeight = gridHeight.current;
+    if (placedFor.current === gridKey) return;
+    if (last) placedFor.current = gridKey;
+    const index = list.findIndex((t) => t.id === activeTab?.id);
+    if (index < 0 || !viewHeight) return;
+    const rows = Math.ceil(list.length / columns);
+    const top = PADDING + Math.floor(index / columns) * (rowHeight + GAP);
+    const end = PADDING * 2 + rows * rowHeight + (rows - 1) * GAP - viewHeight;
+    const offset = Math.max(0, Math.min(top - (viewHeight - rowHeight) / 2, end));
+    if (offset > 0) grid.current?.scrollToOffset({ offset, animated: false });
+  };
 
   const close = (id: string) => {
     const remainingPrivate = tabs.filter((t) => t.incognito && t.id !== id).length;
@@ -165,10 +185,20 @@ export default function TabSwitcherScreen(props: Props) {
         </Pressable>
       ) : (
         <FlatList
-          key={`grid-${columns}`}
+          key={gridKey}
           data={list}
           keyExtractor={(t) => t.id}
           numColumns={columns}
+          ref={grid}
+          getItemLayout={(_, index) => ({ length: rowHeight, offset: PADDING + (rowHeight + GAP) * index, index })}
+          onLayout={(e) => {
+            gridHeight.current = e.nativeEvent.layout.height;
+            showActive(false);
+            // And once more when the cards have been measured (while the screen still fades
+            // in): before that the list can't scroll all the way to its last row.
+            setTimeout(() => showActive(true), 90);
+          }}
+          onContentSizeChange={() => showActive(false)}
           columnWrapperStyle={{ gap: GAP }}
           contentContainerStyle={styles.list}
           renderItem={renderTab}
