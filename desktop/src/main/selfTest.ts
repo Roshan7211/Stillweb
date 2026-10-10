@@ -14,9 +14,9 @@ import { shieldEngine } from './engine/shieldEngine';
 import { rememberMediaSite } from './mediaSites';
 import { newWindow } from './menus';
 import { getSettings, updateSettings } from './settings';
-import { pageInfo } from './shields';
+import { NAMED_ON, pageInfo } from './shields';
 
-type Hit = { host: string; url: string; cookie: string };
+type Hit = { host: string; url: string; cookie: string; agent: string };
 
 const results: { name: string; ok: boolean; detail: string }[] = [];
 const hits: Hit[] = [];
@@ -97,7 +97,7 @@ function wav(seconds: number): Buffer {
 function startServer(): Promise<void> {
   const server = http.createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://x');
-    hits.push({ host: request.headers.host ?? '', url: request.url ?? '', cookie: request.headers.cookie ?? '' });
+    hits.push({ host: request.headers.host ?? '', url: request.url ?? '', cookie: request.headers.cookie ?? '', agent: request.headers['user-agent'] ?? '' });
     if (url.pathname === '/app.js') {
       response.setHeader('Content-Type', 'application/javascript');
       return response.end('window.__app = true;');
@@ -115,6 +115,14 @@ function startServer(): Promise<void> {
     if (url.pathname === '/sound.wav') {
       response.setHeader('Content-Type', 'audio/wav');
       return response.end(wav(3));
+    }
+    if (url.pathname === '/agent-worker') {
+      response.setHeader('Content-Type', 'application/javascript');
+      return response.end('postMessage(navigator.userAgent);');
+    }
+    if (url.pathname === '/agent') {
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return response.end(`<title>Agent</title><script>window.__agent = navigator.userAgent; new Worker('/agent-worker').onmessage = function (e) { window.__workerAgent = e.data; };</script>`);
     }
     if (url.pathname === '/long.wav') {
       response.setHeader('Content-Type', 'audio/wav');
@@ -396,6 +404,20 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     updateSettings({ popupSites: [] });
     await waitFor(() => win.activeTab?.contents === page, 3000);
 
+    // ---- The browser's name, on the few sites that list signed-in browsers ----
+    // (The real sites only open over https, which the test server does not speak.)
+    NAMED_ON.push('sessions.example.net');
+    hits.length = 0;
+    page = await open(win, 'http://sessions.example.net/agent');
+    await waitFor(() => inPage<boolean>(page, 'typeof window.__workerAgent === "string"'), 4000);
+    const named = [await inPage<string>(page, 'window.__agent'), await inPage<string>(page, 'String(window.__workerAgent)'), seen('/agent', 'sessions.example.net')[0]?.agent ?? '', seen('/agent-worker')[0]?.agent ?? ''];
+    check('a site that lists signed-in browsers is told the name', named.every((agent) => /Chrome\/\d+.* Stillweb\/\d/.test(agent)), named.map((agent) => agent.slice(-40)).join(' | '));
+    hits.length = 0;
+    page = await open(win, 'http://plain.example.net/agent');
+    await waitFor(() => inPage<boolean>(page, 'typeof window.__workerAgent === "string"'), 4000);
+    const plain = [await inPage<string>(page, 'window.__agent'), await inPage<string>(page, 'String(window.__workerAgent)'), seen('/agent', 'plain.example.net')[0]?.agent ?? ''];
+    check('every other site is not', plain.every((agent) => /Chrome\/\d+/.test(agent) && !/Stillweb|Electron/.test(agent)), plain.map((agent) => agent.slice(-40)).join(' | '));
+
     // ---- Tabs from last time load when first shown ----
     const asleep = win.createTab({ url: `${site}/?asleep`, activate: false, asleep: true });
     await sleep(600);
@@ -494,9 +516,26 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     await screenshot(win, `13-${other}-history`);
     await inChrome(win, 'document.querySelector(".sheet-header .icon-button").click()');
     win.createTab();
-    await sleep(600);
+    await sleep(700);
     check('shield counter adds up across pages', win.state().totalBlocked >= 5, `${win.state().totalBlocked} in total`);
-    await screenshot(win, `14-${other}-new-tab`);
+    check(
+      'the home page shows the logo, bookmarks and the sites visited most',
+      await inChrome<boolean>(win, '!!document.querySelector(".brand-logo") && document.querySelectorAll(".tile-section").length === 2 && document.querySelectorAll(".tile").length >= 2'),
+      await inChrome<string>(win, 'Array.from(document.querySelectorAll(".tile-section h2")).map(function(h){return h.textContent + " " + h.parentElement.querySelectorAll(".tile").length}).join(", ")'),
+    );
+    await screenshot(win, `14-${other}-home`);
+    for (const wallpaper of ['aurora', 'dusk', 'sand', 'none']) {
+      updateSettings({ wallpaper });
+      await sleep(350);
+      await screenshot(win, `15-home-${wallpaper}`);
+    }
+    updateSettings({ wallpaper: 'brand' });
+    await inChrome(win, 'document.querySelector(".customize-button").click()');
+    await sleep(350);
+    check('the background chooser opens', await inChrome<boolean>(win, 'document.querySelectorAll(".swatch").length >= 6'));
+    await screenshot(win, '16-home-chooser');
+    await inChrome(win, 'document.querySelector(".fakebox").click()');
+    check('the search field on the home page puts the cursor in the address bar', await waitFor(() => inChrome<boolean>(win, 'document.activeElement === document.querySelector(".address-input")'), 2000));
   } catch (error) {
     check('self-test ran to the end', false, error instanceof Error ? (error.stack ?? error.message) : String(error));
   }

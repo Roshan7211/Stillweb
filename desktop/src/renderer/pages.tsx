@@ -1,22 +1,59 @@
 // What the interface draws in place of a page: a new tab, and a page that failed to load.
-import { Clock, Cpu, EyeOff, Globe, Link, Lock, Repeat, Search, Shield, Slash, Smartphone, TriangleAlert, WifiOff, type LucideIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Clock, Cpu, EyeOff, Globe, Image as ImageIcon, Link, Lock, Repeat, Search, Shield, Slash, Smartphone, TriangleAlert, WifiOff, X, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { describeLoadError, type LoadErrorInfo } from '../../../src/browser/loadErrors';
 import { displayHost, searchUrl } from '../../../src/browser/url';
-import type { EngineStatus, LoadError, Panel, Settings } from '../shared/types';
+import logoSvg from '../../../assets/source/stillweb-icon.svg';
+import type { EngineStatus, HomeTile, HomeTiles, LoadError, Panel, Settings } from '../shared/types';
 import { api } from './api';
+import { WALLPAPERS, wallpaperStyle } from './wallpapers';
 
-type NewTabProps = { isPrivate: boolean; totalBlocked: number; engine: EngineStatus | null; onOpenPanel: (panel: Panel) => void };
+type NewTabProps = {
+  isPrivate: boolean;
+  totalBlocked: number;
+  engine: EngineStatus | null;
+  settings: Settings;
+  /** The user's own picture (a data: URL), when that is the chosen background. */
+  customWallpaper: string | null;
+  onOpenPanel: (panel: Panel) => void;
+  onFocusAddress: () => void;
+};
 
-export function NewTabPage({ isPrivate, totalBlocked, engine, onOpenPanel }: NewTabProps) {
-  const [sites, setSites] = useState<{ url: string; title: string }[]>([]);
+const LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(logoSvg)}`;
+
+/** `named`: show the saved title (bookmarks); otherwise the site's address, which is what tells sites apart. */
+function Tile({ tile, named, onRemove }: { tile: HomeTile; named?: boolean; onRemove?: () => void }) {
+  const host = displayHost(tile.url);
+  return (
+    <div className="tile-wrap">
+      <button className="tile" title={tile.url} onClick={() => void api.navigate(tile.url)}>
+        <span className="tile-icon">{tile.icon ? <img src={tile.icon} alt="" draggable={false} /> : (host[0] ?? '?').toUpperCase()}</span>
+        <span className="tile-title">{named && tile.title && tile.title !== tile.url ? tile.title : host}</span>
+      </button>
+      {onRemove ? (
+        <button className="tile-remove" aria-label={`Remove ${host} from bookmarks`} title="Remove bookmark" onClick={onRemove}>
+          <X size={12} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function NewTabPage({ isPrivate, totalBlocked, engine, settings, customWallpaper, onOpenPanel, onFocusAddress }: NewTabProps) {
+  const [tiles, setTiles] = useState<HomeTiles>({ bookmarks: [], visited: [] });
+  const [choosing, setChoosing] = useState(false);
+  const load = useCallback(() => void api.getHomeTiles().then(setTiles), []);
   useEffect(() => {
-    void api.getTopSites().then(setSites);
-  }, []);
+    load();
+    return api.on('bookmarks', load);
+  }, [load]);
+
+  const wallpaper = isPrivate ? null : wallpaperStyle(settings.wallpaper, customWallpaper);
+  const pick = (id: string) => void api.setSettings({ wallpaper: id });
 
   return (
-    <div className="page newtab">
+    <div className={`page newtab${wallpaper ? ` on-wallpaper ink-${wallpaper.ink}` : ''}`} style={wallpaper ? { background: wallpaper.background } : undefined}>
       <div className="newtab-inner">
         {isPrivate ? (
           <div className="card notice">
@@ -28,27 +65,80 @@ export function NewTabPage({ isPrivate, totalBlocked, engine, onOpenPanel }: New
             </p>
           </div>
         ) : (
-          <h1 className="wordmark">Stillweb</h1>
+          <div className="brand">
+            <img className="brand-logo" src={LOGO} alt="" draggable={false} />
+            <h1 className="wordmark">Stillweb</h1>
+          </div>
         )}
 
-        <button className="card stat-card" onClick={() => onOpenPanel('privacy')}>
-          <Shield size={22} />
+        {/* Looks like a search field; typing happens in the address bar, where the suggestions are. */}
+        <button className="fakebox" onClick={onFocusAddress}>
+          <Search size={17} />
+          <span>Search or enter address</span>
+        </button>
+
+        <button className="stat-card" onClick={() => onOpenPanel('privacy')}>
+          <Shield size={18} />
           <span className="stat-number">{totalBlocked.toLocaleString()}</span>
-          <span className="muted">ads and trackers blocked</span>
+          <span className="stat-label">ads and trackers blocked</span>
         </button>
         {engine?.lastError ? <p className="warn-text">Filters could not be loaded, so nothing is being blocked: {engine.lastError}</p> : null}
 
-        {sites.length > 0 ? (
-          <div className="tiles">
-            {sites.map((site) => (
-              <button key={site.url} className="tile" title={site.url} onClick={() => void api.navigate(site.url)}>
-                <span className="tile-letter">{(displayHost(site.url)[0] ?? '?').toUpperCase()}</span>
-                <span className="tile-title">{displayHost(site.url)}</span>
-              </button>
-            ))}
-          </div>
+        {tiles.bookmarks.length > 0 ? (
+          <section className="tile-section">
+            <h2>Bookmarks</h2>
+            <div className="tiles">
+              {tiles.bookmarks.map((tile) => (
+                <Tile key={tile.url} tile={tile} named onRemove={() => void api.setBookmarked(tile.url, tile.title, false)} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {tiles.visited.length > 0 ? (
+          <section className="tile-section">
+            <h2>Often visited</h2>
+            <div className="tiles">
+              {tiles.visited.map((tile) => (
+                <Tile key={tile.url} tile={tile} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {!isPrivate && tiles.bookmarks.length === 0 && tiles.visited.length === 0 ? (
+          <p className="hint">Sites you bookmark with the star, and the ones you visit most, will appear here.</p>
         ) : null}
       </div>
+
+      {isPrivate ? null : (
+        <div className="customize">
+          {choosing ? (
+            <div className="wallpaper-picker" role="dialog" aria-label="Background">
+              <div className="swatches">
+                {WALLPAPERS.map((option) => (
+                  <button
+                    key={option.id}
+                    className={`swatch${settings.wallpaper === option.id ? ' on' : ''}`}
+                    style={{ background: option.background }}
+                    aria-label={option.name}
+                    aria-pressed={settings.wallpaper === option.id}
+                    title={option.name}
+                    onClick={() => pick(option.id)}
+                  />
+                ))}
+                <button className={`swatch plain${settings.wallpaper === 'none' ? ' on' : ''}`} aria-pressed={settings.wallpaper === 'none'} title="No background" onClick={() => pick('none')}>
+                  None
+                </button>
+              </div>
+              <button className="button" onClick={() => void api.chooseWallpaper()}>
+                <ImageIcon size={14} /> Choose a picture…
+              </button>
+            </div>
+          ) : null}
+          <button className="customize-button" aria-expanded={choosing} onClick={() => setChoosing((open) => !open)}>
+            <ImageIcon size={14} /> Background
+          </button>
+        </div>
+      )}
     </div>
   );
 }

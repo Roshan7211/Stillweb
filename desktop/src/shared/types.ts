@@ -25,6 +25,8 @@ export type Settings = {
   disabledLists: string[];
   /** Sites (host, without www.) that may open windows even while a video is playing. */
   popupSites: string[];
+  /** The home page's background: the id of a built-in one, 'none', or 'custom:<time>' for the user's picture. */
+  wallpaper: string;
   /** Ask the search engine for suggestions while typing (never in private windows). */
   searchSuggestions: boolean;
   /** Open the tabs from last time when the app starts. */
@@ -94,6 +96,10 @@ export type DownloadState = {
   state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
   started: number;
 };
+
+/** A site on the home page. `icon` is a stored copy of its icon (a data: URL), when there is one. */
+export type HomeTile = { url: string; title: string; icon: string | null };
+export type HomeTiles = { bookmarks: HomeTile[]; visited: HomeTile[] };
 
 export type Suggestion =
   | { kind: 'search'; text: string }
@@ -167,7 +173,12 @@ export type ChromeApi = {
   getHistory(query: string): Promise<HistoryEntry[]>;
   removeHistory(url: string, time: number): Promise<void>;
   clearBrowsingData(): Promise<void>;
-  getTopSites(): Promise<{ url: string; title: string }[]>;
+  /** Bookmarks and the sites visited most, for the home page. */
+  getHomeTiles(): Promise<HomeTiles>;
+  /** Asks for a picture and makes it the home page's background. False if none was chosen. */
+  chooseWallpaper(): Promise<boolean>;
+  /** The user's picture as a data: URL, or null. */
+  getWallpaperImage(): Promise<string | null>;
 
   getDownloads(): Promise<DownloadState[]>;
   openDownload(id: number): Promise<void>;
@@ -204,7 +215,7 @@ export const CHROME_METHODS: (keyof ChromeApi)[] = [
   'interfaceReady', 'getWindowState', 'getSettings', 'setSettings', 'getEngineStatus', 'setLayout', 'dragWindow', 'toggleMaximize',
   'newTab', 'closeTab', 'activateTab', 'moveTab', 'toggleMute', 'navigate', 'goBack', 'goForward', 'reload', 'stop', 'focusPage',
   'setSiteShields', 'setSitePopups', 'openBlockedPopup', 'suggest', 'findInPage', 'stopFind', 'showAppMenu', 'showTabMenu',
-  'getBookmarks', 'setBookmarked', 'getHistory', 'removeHistory', 'clearBrowsingData', 'getTopSites',
+  'getBookmarks', 'setBookmarked', 'getHistory', 'removeHistory', 'clearBrowsingData', 'getHomeTiles', 'chooseWallpaper', 'getWallpaperImage',
   'getDownloads', 'openDownload', 'showDownload', 'cancelDownload', 'clearDownloads',
   'getFilterLists', 'setFilterListEnabled', 'checkFilterUpdate', 'getPrivacyReport', 'resetPrivacyReport',
   'getAbout', 'getLicenses', 'openChromiumLicenses',

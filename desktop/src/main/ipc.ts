@@ -21,11 +21,13 @@ import {
 } from './data';
 import { cancelDownload, clearDownloads, getDownloads, openDownload, showDownload } from './downloads';
 import { FIXES_LIST_ID, shieldEngine } from './engine/shieldEngine';
+import { clearFavicons, iconFor } from './favicons';
 import { clearMediaSites } from './mediaSites';
 import { showAppMenu, showTabMenu } from './menus';
 import { getSettings, updateSettings } from './settings';
 import { pageInfo } from './shields';
 import { checkForFilterUpdate } from './updater';
+import { chooseWallpaper, wallpaperImage } from './wallpaper';
 
 const COOKIE_LIST_ID = 'easylist-cookie';
 /** Public privacy policy (site/privacy/, published by the Filters workflow). Optional. */
@@ -126,9 +128,22 @@ const handlers: Handlers = {
   clearBrowsingData: async () => {
     clearHistory();
     clearMediaSites();
+    clearFavicons();
     await normalSession().clearData();
   },
-  getTopSites: (win) => (win.isPrivate ? [] : topSites()),
+  getHomeTiles: (win) => {
+    if (win.isPrivate) return { bookmarks: [], visited: [] };
+    const tile = (entry: { url: string; title: string }) => ({ url: entry.url, title: entry.title, icon: iconFor(entry.url) });
+    const bookmarks = [...getBookmarks()].reverse().slice(0, 12);
+    const saved = new Set(bookmarks.map((b) => b.url));
+    return { bookmarks: bookmarks.map(tile), visited: topSites(12).filter((site) => !saved.has(site.url)).slice(0, 8).map(tile) };
+  },
+  chooseWallpaper: async (win) => {
+    if (!(await chooseWallpaper(win.window))) return false;
+    updateSettings({ wallpaper: `custom:${Date.now()}` });
+    return true;
+  },
+  getWallpaperImage: () => wallpaperImage(),
 
   getDownloads: () => getDownloads(),
   openDownload: (_win, id) => openDownload(id),

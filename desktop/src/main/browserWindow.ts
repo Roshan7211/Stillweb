@@ -8,6 +8,7 @@ import { themeFor } from '../shared/theme';
 import type { ChromeEvents, LoadError, TabState, WindowState } from '../shared/types';
 import { recordVisit, totalBlocked, updateVisitTitle } from './data';
 import { shieldEngine } from './engine/shieldEngine';
+import { rememberFavicon } from './favicons';
 import { allowsAutoplay, rememberMediaSite } from './mediaSites';
 import { showPageMenu } from './menus';
 import { attachPermissions } from './permissions';
@@ -26,6 +27,7 @@ import {
   rememberOpener,
   shieldEvents,
   upgradeSettled,
+  userAgentFor,
   type PopupGuard,
 } from './shields';
 import { jsonFile, type JsonFile } from './store';
@@ -469,6 +471,10 @@ export class BrowserWin {
         this.closeTab(tab.id, false);
         return;
       }
+      // A few sites get the browser's own name (see userAgentFor); the page, its workers and
+      // its requests all follow the tab's setting.
+      const agent = userAgentFor(details.url);
+      if (contents.getUserAgent() !== agent) contents.setUserAgent(agent);
       if (process.argv.includes('--log-shields')) console.log('[shields] navigation', details.url, 'from', details.initiator?.url ?? '-');
       // The address appears as soon as the page is asked for, as in any browser.
       if (/^https?:/i.test(details.url)) tab.url = details.url;
@@ -503,6 +509,7 @@ export class BrowserWin {
     });
     contents.on('page-favicon-updated', (_event, favicons) => {
       tab.favicon = favicons.find((icon) => /^https?:|^data:image\//i.test(icon)) ?? null;
+      if (tab.favicon && !this.isPrivate) rememberFavicon(this.session, tab.url, tab.favicon);
       this.pushState();
     });
     contents.on('audio-state-changed', (event) => {

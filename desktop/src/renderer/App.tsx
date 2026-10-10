@@ -22,6 +22,13 @@ export function App() {
   /** Counts requests to put the cursor in the address bar. */
   const [focusAddress, setFocusAddress] = useState(0);
   const bars = useRef<HTMLDivElement>(null);
+  /** The user's own home page picture; fetched once, and again when they choose another. */
+  const [customWallpaper, setCustomWallpaper] = useState<string | null>(null);
+  const wallpaperSetting = settings?.wallpaper ?? '';
+  useEffect(() => {
+    if (!wallpaperSetting.startsWith('custom')) return setCustomWallpaper(null);
+    void api.getWallpaperImage().then(setCustomWallpaper);
+  }, [wallpaperSetting]);
 
   useEffect(() => {
     void api.getWindowState().then(setWin);
@@ -117,7 +124,15 @@ export function App() {
       {expanded ? (
         <div className="below">
           {blank ? (
-            <NewTabPage isPrivate={win.private} totalBlocked={win.totalBlocked} engine={engine} onOpenPanel={setPanel} />
+            <NewTabPage
+              isPrivate={win.private}
+              totalBlocked={win.totalBlocked}
+              engine={engine}
+              settings={settings}
+              customWallpaper={customWallpaper}
+              onOpenPanel={setPanel}
+              onFocusAddress={() => setFocusAddress((n) => n + 1)}
+            />
           ) : failed && active?.error ? (
             <ErrorPage error={active.error} settings={settings} />
           ) : null}

@@ -53,6 +53,8 @@ type PageState = {
   watching: boolean;
   /** Windows stopped on this page, and the address of the last one. */
   popups: { count: number; last: string };
+  /** The user agent for this page when it is not the usual one (see userAgentFor). */
+  agent: string | null;
 };
 
 const pages = new Map<number, PageState>();
@@ -79,7 +81,7 @@ function hostOf(url: string): string | null {
 function pageState(contents: WebContents): PageState {
   let state = pages.get(contents.id);
   if (!state) {
-    state = { url: 'about:blank', shieldsActive: true, blocked: 0, pendingUpgrade: null, lastGesture: 0, lastPress: null, watching: false, popups: { count: 0, last: '' } };
+    state = { url: 'about:blank', shieldsActive: true, blocked: 0, pendingUpgrade: null, lastGesture: 0, lastPress: null, watching: false, popups: { count: 0, last: '' }, agent: null };
     pages.set(contents.id, state);
     const id = contents.id;
     contents.once('destroyed', () => pages.delete(id));
@@ -104,6 +106,8 @@ function beginMainFrame(contents: WebContents, url: string): void {
   // Recompute every time: per-site settings may have changed since the last load.
   state.shieldsActive = shieldEngine.shieldsEnabledFor(hostOf(url));
   state.url = url;
+  const agent = userAgentFor(url);
+  state.agent = agent === browserUserAgent() ? null : agent;
   state.watching = false;
   state.lastPress = null;
   if (state.popups.count !== 0) state.popups = { count: 0, last: '' };
@@ -355,7 +359,11 @@ export function attachShields(session: Session): void {
     const headers = details.requestHeaders;
     // Global Privacy Control: an opt-out of the sale and sharing of personal data.
     headers['Sec-GPC'] = '1';
+    // The request for a page itself is on its way before the tab's own setting can change
+    // (see userAgentFor and the tab's did-start-navigation), so it is set here.
     const state = details.webContents ? pages.get(details.webContents.id) : null;
+    if (details.resourceType === 'mainFrame') headers['User-Agent'] = userAgentFor(details.url);
+    else if (state?.agent) headers['User-Agent'] = state.agent;
     if (state?.shieldsActive && shieldEngine.options.blockThirdPartyCookies && details.resourceType !== 'mainFrame') {
       const cookie = hasHeader(headers, 'cookie');
       if (cookie && shieldEngine.isThirdParty(details.url, state.url)) delete headers[cookie];
@@ -450,5 +458,24 @@ export function registerFrameHandlers(): void {
 
 /** A browser's user agent, without the words that tell sites this is an embedded one. */
 export function browserUserAgent(): string {
-  return app.userAgentFallback.replace(/\s(Electron|stillweb-desktop|Stillweb)\/\S+/gi, '');
+  baseAgent ??= app.userAgentFallback.replace(/\s(Electron|stillweb-desktop|Stillweb)\/\S+/gi, '');
+  return baseAgent;
+}
+
+let baseAgent: string | null = null;
+
+/**
+ * Sites that show the user a list of the browsers they are signed in from. Everywhere else
+ * the app says it is Chrome, like other Chromium browsers do: sites refuse browsers they do
+ * not know, and a name only a few people's browser sends makes those people easy to follow
+ * around the web. On these sites the user is signed in anyway, and would rather see
+ * "Stillweb" than "Chrome" in that list, so the name is added the way browsers add theirs.
+ */
+export const NAMED_ON = ['web.telegram.org'];
+
+/** The user agent for a page at `url`. */
+export function userAgentFor(url: string): string {
+  const host = hostOf(url);
+  const base = browserUserAgent();
+  return host && NAMED_ON.some((site) => host === site || host.endsWith(`.${site}`)) ? `${base} Stillweb/${app.getVersion()}` : base;
 }

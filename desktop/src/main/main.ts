@@ -5,6 +5,7 @@ import { clearHistory, getBookmarks, loadData, onBookmarksChanged } from './data
 import { attachDownloads } from './downloads';
 import { shieldEngine } from './engine/shieldEngine';
 import { registerIpc } from './ipc';
+import { loadFavicons } from './favicons';
 import { loadMediaSites } from './mediaSites';
 import { buildAppMenu, newWindow } from './menus';
 import { SELF_TEST_PORT, runLiveCheck, runSelfTest } from './selfTest';
@@ -83,6 +84,7 @@ if (!testing && !app.requestSingleInstanceLock()) {
     loadSettings();
     loadData();
     loadMediaSites();
+    loadFavicons();
     configureEngine();
     registerFrameHandlers();
     registerIpc();
