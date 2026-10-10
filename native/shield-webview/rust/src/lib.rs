@@ -2,7 +2,8 @@
 //!
 //! The core functions here are platform-neutral so they can be unit tested on the
 //! host and reused by the `filter-compiler` tool. The `android` module exposes
-//! them to Kotlin over JNI (`expo.modules.shieldwebview.AdblockNative`).
+//! them to Kotlin over JNI (`expo.modules.shieldwebview.AdblockNative`); the `wasm`
+//! module exposes them to the desktop app (`desktop/src/main/engine/wasm.ts`).
 
 use adblock::lists::ParseOptions;
 use adblock::request::Request;
@@ -294,6 +295,156 @@ mod android {
         // SAFETY: see `engine()`; Kotlin never uses a handle after destroying it.
         drop(unsafe { Box::from_raw(handle as *mut Engine) });
         JNI_TRUE
+    }
+}
+
+/// The same functions for the desktop app, which runs this crate as WebAssembly
+/// (`npm run build:engine` in desktop/). Text and bytes cross as a pointer and a length in
+/// this module's memory: the caller gets room with `sw_alloc`, and reads answers from the
+/// buffer at `sw_out_ptr` / `sw_out_len`, which stays valid until the next call.
+#[cfg(target_arch = "wasm32")]
+mod wasm {
+    use super::*;
+    use std::cell::RefCell;
+
+    // Status codes returned by sw_check; keep in sync with desktop/src/main/engine/wasm.ts.
+    const ALLOW: i32 = 0;
+    const BLOCK: i32 = 1;
+    const REDIRECT: i32 = 2;
+
+    thread_local! {
+        static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    }
+
+    fn set_out(bytes: Vec<u8>) {
+        OUT.with(|out| *out.borrow_mut() = bytes);
+    }
+
+    /// SAFETY: `ptr`/`len` describe bytes the caller wrote into a `sw_alloc` buffer.
+    unsafe fn text<'a>(ptr: *const u8, len: usize) -> std::borrow::Cow<'a, str> {
+        String::from_utf8_lossy(std::slice::from_raw_parts(ptr, len))
+    }
+
+    #[no_mangle]
+    pub extern "C" fn sw_alloc(len: usize) -> *mut u8 {
+        let mut buffer = Vec::<u8>::with_capacity(len.max(1));
+        let ptr = buffer.as_mut_ptr();
+        std::mem::forget(buffer);
+        ptr
+    }
+
+    /// Frees a `sw_alloc` buffer; `len` is the length it was asked for.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_free(ptr: *mut u8, len: usize) {
+        if !ptr.is_null() {
+            drop(Vec::from_raw_parts(ptr, 0, len.max(1)));
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn sw_out_ptr() -> *const u8 {
+        OUT.with(|out| out.borrow().as_ptr())
+    }
+
+    #[no_mangle]
+    pub extern "C" fn sw_out_len() -> usize {
+        OUT.with(|out| out.borrow().len())
+    }
+
+    /// Filter lists are added one at a time, so only one of them is in memory twice.
+    #[no_mangle]
+    pub extern "C" fn sw_lists_new() -> *mut FilterSet {
+        Box::into_raw(Box::new(FilterSet::new(false)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_lists_add(lists: *mut FilterSet, ptr: *const u8, len: usize, trusted: i32) {
+        let Some(lists) = lists.as_mut() else { return };
+        lists.add_filter_list(text(ptr, len).into_owned(), parse_options(trusted != 0));
+    }
+
+    /// Consumes the lists and returns the engine built from them.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_lists_build(lists: *mut FilterSet) -> *mut Engine {
+        if lists.is_null() {
+            return std::ptr::null_mut();
+        }
+        Box::into_raw(Box::new(Engine::new_with_filter_set(*Box::from_raw(lists))))
+    }
+
+    /// Returns null when the bytes are not an engine this version can read.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_deserialize(ptr: *const u8, len: usize) -> *mut Engine {
+        match deserialize_engine(std::slice::from_raw_parts(ptr, len)) {
+            Some(engine) => Box::into_raw(Box::new(engine)),
+            None => std::ptr::null_mut(),
+        }
+    }
+
+    /// Leaves the serialized engine in the out buffer.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_serialize(engine: *const Engine) {
+        set_out(engine.as_ref().map(|e| e.serialize()).unwrap_or_default());
+    }
+
+    /// Returns the number of resources loaded, or -1 on failure.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_use_resources(engine: *mut Engine, ptr: *const u8, len: usize) -> i32 {
+        let Some(engine) = engine.as_mut() else { return -1 };
+        use_resources_json(engine, &text(ptr, len)).map(|n| n as i32).unwrap_or(-1)
+    }
+
+    /// Returns ALLOW, BLOCK or REDIRECT. For REDIRECT the out buffer holds the data URL.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_check(
+        engine: *const Engine,
+        url: *const u8,
+        url_len: usize,
+        source: *const u8,
+        source_len: usize,
+        kind: *const u8,
+        kind_len: usize,
+    ) -> i32 {
+        let Some(engine) = engine.as_ref() else { return ALLOW };
+        match check(engine, &text(url, url_len), &text(source, source_len), &text(kind, kind_len)) {
+            Verdict::Allow => ALLOW,
+            Verdict::Block => BLOCK,
+            Verdict::Redirect(data_url) => {
+                set_out(data_url.into_bytes());
+                REDIRECT
+            }
+        }
+    }
+
+    /// Leaves adblock-rust's UrlSpecificResources for the URL, as JSON, in the out buffer.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_cosmetic(engine: *const Engine, url: *const u8, url_len: usize) {
+        let json = engine.as_ref().map(|e| cosmetic_json(e, &text(url, url_len)));
+        set_out(json.unwrap_or_else(|| "{}".into()).into_bytes());
+    }
+
+    /// Takes {"classes","ids","exceptions"} JSON; leaves a JSON array of selectors in the out buffer.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_hidden_selectors(engine: *const Engine, query: *const u8, query_len: usize) {
+        let json = engine.as_ref().map(|e| hidden_selectors_json(e, &text(query, query_len)));
+        set_out(json.unwrap_or_else(|| "[]".into()).into_bytes());
+    }
+
+    /// 1 when a request for `url` from a page at `source` goes to another site (by the public
+    /// suffix list), 0 when it stays on the same site, -1 when either is not a web address.
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_third_party(url: *const u8, url_len: usize, source: *const u8, source_len: usize) -> i32 {
+        match Request::new(&text(url, url_len), &text(source, source_len), "other", "GET") {
+            Ok(request) => request.is_third_party as i32,
+            Err(_) => -1,
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn sw_engine_free(engine: *mut Engine) {
+        if !engine.is_null() {
+            drop(Box::from_raw(engine));
+        }
     }
 }
 

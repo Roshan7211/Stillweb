@@ -9,8 +9,11 @@
 //   resources.json          uBO scriptlets + redirect resources in adblock-rust's format
 //   ios/rules-*.json        WKContentRuleList JSON (built by the Rust filter-compiler)
 //   ios/scriptlets.json     per-host scriptlet injections for WKUserScript
+//   desktop/delta.json      the lines that differ on a computer (the desktop app uses the
+//                           android lists and resources.json, with these lines swapped)
 //
-// --bundle copies the result into the native module so the app works offline on first launch.
+// --bundle copies the result into the native module (and the desktop app) so the apps work
+// offline on first launch. --bundle-desktop copies only the desktop app's part.
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -37,6 +40,7 @@ const MODULE = path.join(ROOT, 'native/shield-webview');
 const PLATFORM_ENV = {
   android: new Set(['env_chromium', 'env_mobile', 'cap_user_stylesheet']),
   ios: new Set(['env_safari', 'env_mobile', 'cap_user_stylesheet']),
+  desktop: new Set(['env_chromium', 'cap_user_stylesheet']),
 };
 
 const log = (...m) => console.log('[filters]', ...m);
@@ -352,15 +356,27 @@ async function main() {
     version: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
     android: { lists: [], resources: null },
     ios: null,
+    desktop: null,
   };
 
   const forPlatform = (platform) => catalog.lists.filter((l) => !l.platforms || l.platforms.includes(platform));
 
+  // The desktop app reads the android lists; only the few lines inside `!#if env_mobile`
+  // blocks differ, so it gets those as lines to drop and lines to add, per list.
+  const delta = {};
   for (const list of forPlatform('android')) {
-    const entry = writeFile(`android/${list.id}.txt`, preprocess(raw[list.id], PLATFORM_ENV.android));
+    const text = preprocess(raw[list.id], PLATFORM_ENV.android);
+    const entry = writeFile(`android/${list.id}.txt`, text);
     // Optional groups (Calm Mode) are only used when the app turns them on.
     manifest.android.lists.push({ id: list.id, trusted: list.trusted, ...(list.group ? { group: list.group } : {}), ...entry });
+    const mobile = new Set(text.split('\n'));
+    const desktop = new Set(preprocess(raw[list.id], PLATFORM_ENV.desktop).split('\n'));
+    const remove = [...mobile].filter((line) => line && !desktop.has(line));
+    const add = [...desktop].filter((line) => line && !mobile.has(line));
+    if (remove.length || add.length) delta[list.id] = { remove, add };
   }
+  manifest.desktop = { delta: writeFile('desktop/delta.json', JSON.stringify(delta)) };
+  log(`desktop: ${Object.entries(delta).map(([id, d]) => `${id} -${d.remove.length} +${d.add.length}`).join(', ') || 'no differences'}`);
   const resources = await buildResources();
   manifest.android.resources = writeFile('resources.json', JSON.stringify(resources));
 
@@ -397,6 +413,7 @@ async function main() {
   log(`wrote ${OUT}/manifest.json (version ${manifest.version})`);
 
   if (flag('--bundle')) bundleIntoApp(manifest);
+  if (flag('--bundle') || flag('--bundle-desktop')) bundleIntoDesktop(manifest);
 }
 
 function hashOf(rel) {
@@ -418,7 +435,7 @@ function bundleIntoApp(manifest) {
   copy('resources.json', androidAssets);
   fs.writeFileSync(
     path.join(androidAssets, 'manifest.json'),
-    JSON.stringify({ ...manifest, ios: null }, null, 2),
+    JSON.stringify({ ...manifest, ios: null, desktop: null }, null, 2),
   );
 
   if (manifest.ios) {
@@ -428,10 +445,22 @@ function bundleIntoApp(manifest) {
     copy(manifest.ios.scriptlets.file, iosAssets);
     fs.writeFileSync(
       path.join(iosAssets, 'manifest.json'),
-      JSON.stringify({ ...manifest, android: null }, null, 2),
+      JSON.stringify({ ...manifest, android: null, desktop: null }, null, 2),
     );
   }
   log('bundled default filters into native/shield-webview');
+}
+
+/**
+ * The desktop app ships the android lists as they are bundled in the native module, plus
+ * this file. A delta from a newer build than those lists is still correct: lines to drop
+ * that are not there are skipped, and lines to add are ordinary filters.
+ */
+function bundleIntoDesktop(manifest) {
+  const dest = path.join(ROOT, 'desktop/resources/shield-delta.json');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(path.join(OUT, manifest.desktop.delta.file), dest);
+  log('bundled the desktop differences into desktop/resources');
 }
 
 main().catch((err) => {

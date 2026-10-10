@@ -1,0 +1,116 @@
+{
+  "name": "stillweb-desktop",
+  "productName": "Stillweb",
+  "version": "1.0.0",
+  "description": "Stillweb for Windows and Mac",
+  "private": true,
+  "main": "build/main.js",
+  "scripts": {
+    "build:engine": "node scripts/build-engine.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && node scripts/run.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/build.mjs && node scripts/run.mjs --self-test",
+    "test:live": "node scripts/build.mjs && node scripts/run.mjs --live-check=https://example.com",
+    "dist:mac": "node scripts/build.mjs --production && electron-builder --mac",
+    "dist:win": "node scripts/build.mjs --production && electron-builder --win"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "lucide-react": "^1.55.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  },
+  "author": "Stillweb",
+  "build": {
+    "appId": "app.stillweb.desktop",
+    "productName": "Stillweb",
+    "copyright": "Stillweb",
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources/build"
+    },
+    "files": [
+      "build/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/engine.wasm",
+        "to": "engine.wasm"
+      },
+      {
+        "from": "resources/shield-delta.json",
+        "to": "shield-delta.json"
+      },
+      {
+        "from": "../native/shield-webview/android/src/main/assets/shield",
+        "to": "shield",
+        "filter": [
+          "manifest.json",
+          "resources.json",
+          "android/*.txt",
+          "!android/fanboy-annoyance.txt",
+          "!android/ubo-annoyances.txt"
+        ]
+      },
+      {
+        "from": "node_modules/electron/dist/LICENSES.chromium.html",
+        "to": "LICENSES.chromium.html"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "resources/build/icon-mac.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Websites you visit can ask to use the camera, for example for a video call.",
+        "NSMicrophoneUsageDescription": "Websites you visit can ask to use the microphone, for example for voice search or a call.",
+        "NSLocationUsageDescription": "Websites you visit can ask for your location, for example to show nearby results or maps."
+      },
+      "entitlements": "resources/build/entitlements.mac.plist",
+      "entitlementsInherit": "resources/build/entitlements.mac.plist"
+    },
+    "win": {
+      "icon": "resources/build/icon-win.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

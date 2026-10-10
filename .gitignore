@@ -61,3 +61,7 @@ local.properties
 
 # Python bytecode
 __pycache__/
+
+# Desktop app: bundled code and installers (desktop/resources is kept)
+desktop/build/
+desktop/dist/
