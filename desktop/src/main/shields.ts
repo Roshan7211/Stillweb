@@ -9,7 +9,7 @@ import path from 'node:path';
 import privacyScript from '../../../native/shield-webview/web/shieldjs/privacy.js?text';
 import chromeObjectScript from './chromeObject.js?text';
 import type { FrameStart } from '../shared/types';
-import { recordBlocked } from './data';
+import { recordBlocked, recordUpgrade } from './data';
 import { shieldEngine } from './engine/shieldEngine';
 
 /** Serves `$redirect` resources. A scheme of the app's own, so a page's CSP cannot refuse them. */
@@ -170,8 +170,11 @@ export function httpFallback(contents: WebContents, failedUrl: string, errorCode
   return failedUrl.replace(/^https:/i, 'http:');
 }
 
+/** The page has arrived: an upgrade that was waiting for it worked. */
 export function upgradeSettled(contents: WebContents): void {
-  pageState(contents).pendingUpgrade = null;
+  const state = pageState(contents);
+  if (state.pendingUpgrade) recordUpgrade();
+  state.pendingUpgrade = null;
 }
 
 /** Whether the user clicked or typed in the page a moment ago (so what happens now is theirs). */

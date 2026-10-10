@@ -1,5 +1,6 @@
-// The home page's built-in backgrounds. They are drawn with gradients, so there are no
-// picture files to ship or credit, and they are sharp at any window size.
+// The home page's backgrounds: photos that ship with the app (see main/wallpaper.ts), and
+// these, which are drawn with gradients and are sharp at any window size.
+import type { PhotoWallpaper } from '../shared/types';
 
 export type Wallpaper = {
   id: string;
@@ -57,12 +58,23 @@ export const WALLPAPERS: Wallpaper[] = [
   },
 ];
 
-/** The background and text color for a wallpaper setting; null for a plain page. */
-export function wallpaperStyle(setting: string, customImage: string | null): { background: string; ink: 'light' | 'dark' } | null {
+export type ChosenWallpaper =
+  | { kind: 'photo'; photo: PhotoWallpaper }
+  /** `background` is a CSS `background` value. */
+  | { kind: 'drawn'; background: string; ink: 'light' | 'dark' };
+
+/**
+ * What to draw for a wallpaper setting; null for a plain page. `turn` is the photo to use
+ * when the setting is 'photos' (the main process picks one each time the app is opened).
+ */
+export function chooseWallpaper(setting: string, photos: PhotoWallpaper[], turn: number, customImage: string | null): ChosenWallpaper | null {
+  if (setting === 'photos') return photos.length ? { kind: 'photo', photo: photos[turn % photos.length] } : null;
+  const photo = photos.find((candidate) => candidate.id === setting);
+  if (photo) return { kind: 'photo', photo };
   if (setting.startsWith('custom')) {
     // A veil over the picture keeps the text readable whatever the picture is.
-    return customImage ? { background: `linear-gradient(rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.38)), url("${customImage}") center / cover no-repeat`, ink: 'light' } : null;
+    return customImage ? { kind: 'drawn', background: `linear-gradient(rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.38)), url("${customImage}") center / cover no-repeat`, ink: 'light' } : null;
   }
-  const found = WALLPAPERS.find((wallpaper) => wallpaper.id === setting);
-  return found ? { background: found.background, ink: found.ink } : null;
+  const drawn = WALLPAPERS.find((wallpaper) => wallpaper.id === setting);
+  return drawn ? { kind: 'drawn', background: drawn.background, ink: drawn.ink } : null;
 }

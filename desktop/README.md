@@ -38,6 +38,13 @@ help:
   What was stopped shows in the address bar, and can be opened or allowed per site from the
   shield button.
 
+## Home page photos
+
+`resources/wallpapers/` holds the photos the home page shows, a small preview of each in
+`thumbs/`, and `credits.json`: who took each one, its page, and the licence. A photo may
+only be added with its entry there, after checking on its page that the licence allows
+shipping it; the credit is shown on the home page and in About › Open-source licenses.
+
 ## How it is put together
 
 - `src/main/` — the main process. `browserWindow.ts` is a window: one web view for the bars

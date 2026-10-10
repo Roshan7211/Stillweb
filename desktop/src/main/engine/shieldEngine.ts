@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { EngineStatus, ShieldSettings } from '../../shared/types';
-import { dataPath, writeFileAtomic } from '../store';
+import { dataPath, resourcePath, writeFileAtomic } from '../store';
 import { AdblockWasm, type CosmeticResources, type Engine, type Verdict } from './wasm';
 
 type ManifestFile = { file: string; sha256: string; bytes: number };
@@ -22,11 +22,6 @@ const COOKIE_LIST_ID = 'easylist-cookie';
 /** The id the app's own list goes by in Settings › Filter lists. */
 export const FIXES_LIST_ID = 'stillweb-fixes';
 const ALLOW: Verdict = { action: 'allow' };
-
-/** Files that ship with the app: next to the sources in development, in Resources when packaged. */
-function resource(packaged: string, development: string): string {
-  return app.isPackaged ? path.join(process.resourcesPath, packaged) : path.join(app.getAppPath(), development);
-}
 
 function readOptional(file: string): Uint8Array | null {
   try {
@@ -179,7 +174,7 @@ class ShieldEngine {
   /** Loads the engine and the best filter bundle. Call once, after the first window is up. */
   initialize(): void {
     try {
-      this.wasm = new AdblockWasm(fs.readFileSync(resource('engine.wasm', 'resources/engine.wasm')));
+      this.wasm = new AdblockWasm(fs.readFileSync(resourcePath('engine.wasm', 'resources/engine.wasm')));
       fs.mkdirSync(this.root, { recursive: true });
     } catch (error) {
       this.fail(error);
@@ -204,7 +199,7 @@ class ShieldEngine {
 
   /** The filter bundle that ships with the app. */
   bundledDir(): string {
-    return resource('shield', '../native/shield-webview/android/src/main/assets/shield');
+    return resourcePath('shield', '../native/shield-webview/android/src/main/assets/shield');
   }
 
   private readManifest(dir: string): Manifest {
@@ -237,7 +232,7 @@ class ShieldEngine {
   private readDelta(dir: string, manifest: Manifest, sourceName: string): string | null {
     try {
       if (manifest.desktop?.delta) return fs.readFileSync(path.join(dir, manifest.desktop.delta.file), 'utf8');
-      if (sourceName === 'bundled') return fs.readFileSync(resource('shield-delta.json', 'resources/shield-delta.json'), 'utf8');
+      if (sourceName === 'bundled') return fs.readFileSync(resourcePath('shield-delta.json', 'resources/shield-delta.json'), 'utf8');
     } catch {
       // Without them the lists are used as prepared for phones.
     }
@@ -259,7 +254,7 @@ class ShieldEngine {
     });
     const ids = lists.map((l) => l.id).sort().join(',');
     // The app's own rules for sites the shared lists do not cover (resources/stillweb-fixes.txt).
-    const fixes = this.disabledLists.has(FIXES_LIST_ID) ? null : readOptional(resource('stillweb-fixes.txt', 'resources/stillweb-fixes.txt'));
+    const fixes = this.disabledLists.has(FIXES_LIST_ID) ? null : readOptional(resourcePath('stillweb-fixes.txt', 'resources/stillweb-fixes.txt'));
     const key = sha256(`${manifest.version}|${sourceName}|${ids}|${deltaText ? sha256(deltaText) : ''}|${fixes ? sha256(fixes) : ''}`).slice(0, 16);
     const cache = path.join(this.root, `engine-${key}.dat`);
 

@@ -6,7 +6,7 @@ const HISTORY_LIMIT = 5000;
 const HOST_LIMIT = 400;
 const REPORT_DAYS = 14;
 
-type Stats = { total: number; hosts: Record<string, number>; days: Record<string, number> };
+type Stats = { total: number; hosts: Record<string, number>; days: Record<string, number>; upgrades?: number };
 
 let historyFile: JsonFile<HistoryEntry[]>;
 let bookmarkFile: JsonFile<Bookmark[]>;
@@ -160,6 +160,16 @@ export function localSuggestions(query: string, limit = 5): { kind: 'history' | 
 
 // ---------------------------------------------------------------------------
 // Privacy report
+
+/** A page was opened over a secure connection because the app asked for it. */
+export function recordUpgrade(): void {
+  statsFile.value.upgrades = (statsFile.value.upgrades ?? 0) + 1;
+  statsFile.changed();
+}
+
+export function totalUpgrades(): number {
+  return statsFile.value.upgrades ?? 0;
+}
 
 export function totalBlocked(): number {
   return statsFile.value.total;

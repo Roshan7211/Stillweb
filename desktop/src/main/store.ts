@@ -7,6 +7,11 @@ export function dataPath(...parts: string[]): string {
   return path.join(app.getPath('userData'), ...parts);
 }
 
+/** Files that ship with the app: next to the sources in development, in Resources when packaged. */
+export function resourcePath(packaged: string, development: string): string {
+  return app.isPackaged ? path.join(process.resourcesPath, packaged) : path.join(app.getAppPath(), development);
+}
+
 /** Writes through a temporary file, so a crash never leaves half a file behind. */
 export function writeFileAtomic(file: string, data: string | Uint8Array): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });

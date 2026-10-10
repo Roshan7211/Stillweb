@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { themeFor } from '../shared/theme';
-import type { EngineStatus, Panel, Settings, WindowState } from '../shared/types';
+import type { EngineStatus, Panel, PhotoWallpaper, Settings, WindowState } from '../shared/types';
 import { api } from './api';
 import { FindBar } from './FindBar';
 import { ErrorPage, NewTabPage } from './pages';
@@ -21,6 +21,9 @@ export function App() {
   const [findOpen, setFindOpen] = useState(false);
   /** Counts requests to put the cursor in the address bar. */
   const [focusAddress, setFocusAddress] = useState(0);
+  /** The same for the home page's search field. */
+  const [focusHome, setFocusHome] = useState(0);
+  const [photos, setPhotos] = useState<{ photos: PhotoWallpaper[]; turn: number }>({ photos: [], turn: 0 });
   const bars = useRef<HTMLDivElement>(null);
   /** The user's own home page picture; fetched once, and again when they choose another. */
   const [customWallpaper, setCustomWallpaper] = useState<string | null>(null);
@@ -34,11 +37,13 @@ export function App() {
     void api.getWindowState().then(setWin);
     void api.getSettings().then(setSettings);
     void api.getEngineStatus().then(setEngine);
+    void api.getPhotos().then(setPhotos);
     const stop = [
       api.on('window-state', setWin),
       api.on('settings', setSettings),
       api.on('engine-status', setEngine),
-      api.on('focus-address', () => setFocusAddress((n) => n + 1)),
+      // A new tab puts the cursor in its own search field; the shortcut means the address bar.
+      api.on('focus-address', (reason) => (reason === 'new-tab' ? setFocusHome((n) => n + 1) : setFocusAddress((n) => n + 1))),
       api.on('open-find', () => setFindOpen(true)),
       api.on('open-panel', (name) => {
         setShieldOpen(false);
@@ -125,13 +130,17 @@ export function App() {
         <div className="below">
           {blank ? (
             <NewTabPage
+              key={active?.id ?? 0}
               isPrivate={win.private}
               totalBlocked={win.totalBlocked}
+              totalUpgrades={win.totalUpgrades}
               engine={engine}
               settings={settings}
+              photos={photos.photos}
+              photoTurn={photos.turn}
               customWallpaper={customWallpaper}
+              focusRequest={focusHome}
               onOpenPanel={setPanel}
-              onFocusAddress={() => setFocusAddress((n) => n + 1)}
             />
           ) : failed && active?.error ? (
             <ErrorPage error={active.error} settings={settings} />

@@ -65,10 +65,39 @@ export function rememberFavicon(session: Session, pageUrl: string, iconUrl: stri
     .finally(() => fetching.delete(host));
 }
 
+const listeners = new Set<() => void>();
+/** Called when an icon that was missing has arrived (the home page then draws it). */
+export function onIconStored(listener: () => void): void {
+  listeners.add(listener);
+}
+
+/** Sites that were asked for an icon and had none: not asked again until the app restarts. */
+const without = new Set<string>();
+
+/**
+ * Makes sure there is an icon for a page's site: for bookmarks and often-visited sites
+ * whose icon was never seen (they were saved before icons were kept). Asks the site for its
+ * standard icon file, once.
+ */
+export function wantIcon(session: Session, pageUrl: string): void {
+  const host = hostOf(pageUrl);
+  if (!host || !file || file.value[host] || without.has(host) || fetching.has(host)) return;
+  without.add(host);
+  let origin: string;
+  try {
+    origin = new URL(pageUrl).origin;
+  } catch {
+    return;
+  }
+  rememberFavicon(session, pageUrl, `${origin}/favicon.ico`);
+}
+
 function store(host: string, icon: string): void {
   if (!file) return;
   const all = file.value;
+  const isNew = !all[host];
   all[host] = { icon, time: Date.now() };
+  if (isNew) setTimeout(() => listeners.forEach((listener) => listener()), 50);
   const hosts = Object.keys(all);
   if (hosts.length > LIMIT) {
     hosts.sort((a, b) => all[a].time - all[b].time);

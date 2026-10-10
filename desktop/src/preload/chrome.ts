@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import { CHROME_METHODS } from '../shared/types';
 
-const EVENTS = new Set(['window-state', 'settings', 'engine-status', 'focus-address', 'open-find', 'find-result', 'open-panel', 'downloads', 'bookmarks']);
+const EVENTS = new Set(['window-state', 'settings', 'engine-status', 'focus-address', 'open-find', 'find-result', 'open-panel', 'downloads', 'bookmarks', 'home-changed']);
 
 const api: Record<string, unknown> = {};
 for (const method of CHROME_METHODS) {

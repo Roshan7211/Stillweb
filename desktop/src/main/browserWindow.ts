@@ -3,15 +3,16 @@
 import { BaseWindow, WebContentsView, dialog, nativeTheme, screen, session as electronSession, shell, type Session, type WebContents } from 'electron';
 import path from 'node:path';
 
-import { resolveInput, searchUrl } from '../../../src/browser/url';
+import { resolveInput, searchUrl, siteKey } from '../../../src/browser/url';
 import { themeFor } from '../shared/theme';
 import type { ChromeEvents, LoadError, TabState, WindowState } from '../shared/types';
-import { recordVisit, totalBlocked, updateVisitTitle } from './data';
+import { recordVisit, totalBlocked, totalUpgrades, updateVisitTitle } from './data';
 import { shieldEngine } from './engine/shieldEngine';
 import { rememberFavicon } from './favicons';
 import { allowsAutoplay, rememberMediaSite } from './mediaSites';
 import { showPageMenu } from './menus';
 import { attachPermissions } from './permissions';
+import { captureThumbnail, wantsThumbnail } from './thumbnails';
 import { getSettings } from './settings';
 import {
   attachShields,
@@ -88,6 +89,7 @@ class Tab {
   /** A tab from last time that has not been opened yet: its page loads when it is first shown. */
   asleep = false;
   listeningTimer: NodeJS.Timeout | null = null;
+  pictureTimer: NodeJS.Timeout | null = null;
   /** Set on a window a page opened: its first addresses are still checked (see shields.ts). */
   popupGuard: PopupGuard | null = null;
 
@@ -137,6 +139,8 @@ function onScreen(saved: SavedWindow): SavedWindow {
 
 export class BrowserWin {
   static readonly all = new Set<BrowserWin>();
+  /** Set by the tests, which play sound that nobody should have to hear. */
+  static muteNewTabs = false;
   private static lastFocused: BrowserWin | null = null;
 
   /** The window in front, for menu commands. */
@@ -300,6 +304,7 @@ export class BrowserWin {
       windowButtons: this.window.isFullScreen() ? 'none' : isMac ? 'left' : 'right',
       systemDark: nativeTheme.shouldUseDarkColors,
       totalBlocked: totalBlocked(),
+      totalUpgrades: totalUpgrades(),
     };
   }
 
@@ -402,6 +407,7 @@ export class BrowserWin {
     );
     const tab = new Tab(view);
     view.setBackgroundColor('#FFFFFF');
+    if (BrowserWin.muteNewTabs) view.webContents.setAudioMuted(true);
     // Below the interface, which is always the last (topmost) child.
     this.window.contentView.addChildView(view, 0);
     const after = this.tabs.findIndex((t) => t.id === options.afterId);
@@ -461,6 +467,7 @@ export class BrowserWin {
           tab.url = shown;
           pageCommitted(contents, shown);
         }
+        this.pictureLater(tab);
       }
       this.pushState();
     });
@@ -575,6 +582,30 @@ export class BrowserWin {
     contents.on('destroyed', () => this.forget(tab));
   }
 
+  /**
+   * A moment after a page has loaded in the tab in front, its picture is taken for the home
+   * page (once per site every few hours; never in private windows).
+   */
+  private pictureLater(tab: Tab, attempt = 1): void {
+    if (tab.pictureTimer) clearTimeout(tab.pictureTimer);
+    tab.pictureTimer = null;
+    const url = tab.url;
+    if (this.isPrivate || tab !== this.activeTab || !wantsThumbnail(url)) return;
+    tab.pictureTimer = setTimeout(() => {
+      tab.pictureTimer = null;
+      // Still the same site in front? (Pages change their own address; the site is what counts.)
+      const sameSite = siteKey(tab.url) === siteKey(url);
+      if (tab !== this.activeTab || !sameSite || tab.error || tab.contents.isDestroyed() || !this.window.isVisible() || this.fullscreenTab) return;
+      // Some pages go on loading for a while: wait for them a little, then take what is there.
+      if (tab.loading && attempt < 3) return this.pictureLater(tab, attempt + 1);
+      void captureThumbnail(tab.contents, tab.url)
+        .then(() => {
+          for (const win of BrowserWin.all) win.send('home-changed', null);
+        })
+        .catch(() => {});
+    }, attempt === 1 ? 1800 : 1200);
+  }
+
   /** Loads an address once the filters are ready, so the first page is not left unfiltered. */
   private load(tab: Tab, url: string): void {
     tab.asleep = false;
@@ -615,7 +646,7 @@ export class BrowserWin {
     this.layout();
     this.pushState();
     if (tab && tab.url) tab.contents.focus();
-    else this.focusAddress();
+    else this.focusAddress('new-tab');
   }
 
   activateRelative(step: number): void {
@@ -658,6 +689,7 @@ export class BrowserWin {
     const index = this.tabs.indexOf(tab);
     if (index < 0) return;
     if (tab.listeningTimer) clearTimeout(tab.listeningTimer);
+    if (tab.pictureTimer) clearTimeout(tab.pictureTimer);
     if (this.fullscreenTab === tab) this.fullscreenTab = null;
     this.tabs.splice(index, 1);
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(tab.view);
@@ -734,9 +766,9 @@ export class BrowserWin {
     this.pushState();
   }
 
-  focusAddress(): void {
+  focusAddress(reason: 'new-tab' | 'shortcut' = 'shortcut'): void {
     this.chrome.webContents.focus();
-    this.send('focus-address', null);
+    this.send('focus-address', reason);
   }
 
   openFind(): void {
@@ -781,6 +813,7 @@ export class BrowserWin {
     if (this.dragTimer) clearInterval(this.dragTimer);
     for (const tab of this.tabs.splice(0)) {
       if (tab.listeningTimer) clearTimeout(tab.listeningTimer);
+      if (tab.pictureTimer) clearTimeout(tab.pictureTimer);
       if (!tab.contents.isDestroyed()) tab.contents.close({ waitForBeforeUnload: false });
     }
     if (!this.chrome.webContents.isDestroyed()) this.chrome.webContents.close();

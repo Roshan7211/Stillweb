@@ -1,10 +1,11 @@
-import { AppWindow, ArrowLeft, ArrowRight, Clock, Download, EllipsisVertical, EyeOff, Globe, Lock, RotateCw, Search, Shield, ShieldOff, Star, TriangleAlert, X } from 'lucide-react';
+import { AppWindow, ArrowLeft, ArrowRight, Download, EllipsisVertical, EyeOff, Lock, RotateCw, Search, Shield, ShieldOff, Star, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
 import { displayUrl } from '../../../src/browser/url';
-import type { Bookmark, DownloadState, Panel, Settings, Suggestion, TabState } from '../shared/types';
+import type { Bookmark, DownloadState, Panel, Settings, TabState } from '../shared/types';
 import { api } from './api';
+import { SuggestionList, useSuggestions, valueOf } from './suggestions';
 
 type Props = {
   tab: TabState | null;
@@ -18,22 +19,15 @@ type Props = {
   onOpenPanel: (panel: Panel) => void;
 };
 
-function SuggestionIcon({ suggestion }: { suggestion: Suggestion }) {
-  if (suggestion.kind === 'search') return <Search size={15} />;
-  if (suggestion.kind === 'history') return <Clock size={15} />;
-  if (suggestion.kind === 'bookmark') return <Star size={15} />;
-  return <Globe size={15} />;
-}
-
 function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedPopups }: Pick<Props, 'tab' | 'isPrivate' | 'focusRequest' | 'onSuggesting'> & { onShowBlockedPopups: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const [text, setText] = useState('');
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [selected, setSelected] = useState(-1);
+  /** What the user typed themselves (the field can show a suggestion picked with the arrow keys). */
+  const typed = useRef('');
+  const { items: suggestions, selected, ask, clear, move } = useSuggestions();
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const url = tab?.url ?? '';
-  const request = useRef(0);
 
   useEffect(() => {
     void api.getBookmarks().then(setBookmarks);
@@ -55,39 +49,20 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
     shownTab.current = tabId;
     if (sameTab && document.activeElement === input.current) return;
     setText(url);
-    setSuggestions([]);
-    setSelected(-1);
-  }, [url, tabId]);
+    clear();
+  }, [url, tabId, clear]);
 
   const open = focused && suggestions.length > 0;
   useEffect(() => {
     onSuggesting(open);
   }, [open, onSuggesting]);
 
-  const ask = (value: string) => {
-    const id = ++request.current;
-    if (!value.trim()) {
-      setSuggestions([]);
-      return;
-    }
-    window.setTimeout(() => {
-      // Only the answer to what is in the field now is shown.
-      if (id !== request.current) return;
-      void api.suggest(value).then((items) => {
-        if (id === request.current) setSuggestions(items);
-      });
-    }, 90);
-  };
-
   const go = (value: string) => {
-    request.current++;
-    setSuggestions([]);
-    setSelected(-1);
+    clear();
     input.current?.blur();
     if (value.trim()) void api.navigate(value);
   };
 
-  const valueOf = (s: Suggestion) => (s.kind === 'search' ? s.text : s.url);
   const bookmarked = !!url && bookmarks.some((b) => b.url === url);
   const isPage = /^https?:/i.test(url);
 
@@ -116,13 +91,11 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
         }}
         onBlur={() => {
           setFocused(false);
-          setSuggestions([]);
-          setSelected(-1);
-          request.current++;
+          clear();
         }}
         onChange={(event) => {
           setText(event.target.value);
-          setSelected(-1);
+          typed.current = event.target.value;
           ask(event.target.value);
         }}
         onKeyDown={(event) => {
@@ -130,8 +103,7 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
             go(selected >= 0 ? valueOf(suggestions[selected]) : text);
           } else if (event.key === 'Escape') {
             if (suggestions.length) {
-              setSuggestions([]);
-              setSelected(-1);
+              clear();
             } else {
               setText(url);
               input.current?.blur();
@@ -139,11 +111,7 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
             }
           } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) {
             event.preventDefault();
-            const step = event.key === 'ArrowDown' ? 1 : -1;
-            // One step past either end is "nothing selected": what was typed.
-            const next = ((selected + 1 + step + suggestions.length + 1) % (suggestions.length + 1)) - 1;
-            setSelected(next);
-            setText(next >= 0 ? valueOf(suggestions[next]) : text);
+            setText(move(event.key === 'ArrowDown' ? 1 : -1, typed.current));
           }
         }}
       />
@@ -163,28 +131,7 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
           <Star size={15} fill={bookmarked ? 'currentColor' : 'none'} />
         </button>
       ) : null}
-      {open ? (
-        <ul className="suggestions" role="listbox">
-          {suggestions.map((s, index) => (
-            <li
-              key={`${s.kind}:${valueOf(s)}`}
-              role="option"
-              aria-selected={index === selected}
-              className={index === selected ? 'selected' : undefined}
-              // Before the field's blur, which would close the list.
-              onMouseDown={(event) => {
-                event.preventDefault();
-                go(valueOf(s));
-              }}>
-              <span className="suggestion-icon">
-                <SuggestionIcon suggestion={s} />
-              </span>
-              <span className="suggestion-text">{s.kind === 'search' ? s.text : s.title || displayUrl(s.url)}</span>
-              {s.kind !== 'search' ? <span className="suggestion-url">{displayUrl(s.url)}</span> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {open ? <SuggestionList items={suggestions} selected={selected} typed={typed.current} onPick={go} /> : null}
     </div>
   );
 }

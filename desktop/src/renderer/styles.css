@@ -413,6 +413,18 @@ p {
   text-overflow: ellipsis;
 }
 
+.suggestion-text b {
+  font-weight: 650;
+}
+
+.suggestion-hint {
+  flex: none;
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
 .suggestion-url {
   flex: 1;
   min-width: 60px;
@@ -834,7 +846,75 @@ select {
 }
 
 .newtab-inner {
-  padding: 9vh 0 72px;
+  padding: 8vh 0 76px;
+}
+
+/* The home page does not scroll as a whole: the photo stays put and the content moves over it. */
+.page.newtab {
+  overflow: hidden;
+}
+
+.newtab-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+.newtab.on-photo {
+  background: #0d1016;
+  /* A photo can be bright anywhere: panes on it are dark glass, so white text always reads. */
+  --pane: rgba(8, 10, 14, 0.42);
+  --pane-hover: rgba(8, 10, 14, 0.58);
+}
+
+.wallpaper-photo {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  opacity: 0;
+  transition: opacity 320ms ease-out;
+}
+
+.wallpaper-photo.ready {
+  opacity: 1;
+}
+
+/* Darker at the top and bottom, where the text is, lighter in the middle of the picture. */
+.wallpaper-photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.3) 45%, rgba(0, 0, 0, 0.5));
+}
+
+.newtab.on-photo .wordmark,
+.newtab.on-photo .stat-value,
+.newtab.on-photo .tile-title,
+.newtab.on-photo .tile-section h2,
+.newtab.on-photo .stat-name {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+}
+
+.photo-credit {
+  position: absolute;
+  left: 18px;
+  bottom: 16px;
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.photo-credit:hover {
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
 }
 
 /* On a wallpaper the page's own colors give way to the picture's: light or dark "ink", and
@@ -885,26 +965,64 @@ select {
   font-size: 22px;
 }
 
-.fakebox {
-  width: min(560px, 100%);
-  height: 46px;
+.home-search {
+  width: min(580px, 100%);
+  height: 48px;
   display: flex;
   align-items: center;
   gap: 12px;
+  position: relative;
+  z-index: 3;
   margin-top: 6px;
   padding: 0 18px;
-  border: 0;
-  border-radius: 23px;
+  border-radius: 24px;
   background: var(--pane);
   color: var(--ink-muted);
-  font-size: 14.5px;
-  text-align: left;
-  cursor: text;
-  transition: background-color 120ms ease-out;
+  transition:
+    background-color 120ms ease-out,
+    box-shadow 120ms ease-out;
 }
 
-.fakebox:hover {
+.home-search:hover {
   background: var(--pane-hover);
+}
+
+/* With the cursor in it, the field is a solid surface: what is typed has to be easy to read. */
+.home-search.focused {
+  background: var(--background);
+  color: var(--muted);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.home-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+  user-select: text;
+}
+
+.home-search.focused input {
+  color: var(--text);
+}
+
+.home-search input::placeholder {
+  color: var(--ink-muted);
+}
+
+.home-search.focused input::placeholder {
+  color: var(--muted);
+}
+
+.home-search .suggestions {
+  color: var(--text);
+  text-align: left;
 }
 
 .notice {
@@ -920,31 +1038,51 @@ select {
   font-size: 17px;
 }
 
-.stat-card {
+/* Three numbers side by side. The whole row opens the privacy report. */
+.stats {
   display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 15px;
+  align-items: stretch;
+  margin-top: 4px;
+  padding: 12px 6px;
   border: 0;
   border-radius: 18px;
   background: var(--pane);
   color: var(--ink);
+  transition: background-color 120ms ease-out;
 }
 
-.stat-card .stat-number {
-  font-size: 15px;
-}
-
-.stat-label {
-  color: var(--ink-muted);
-}
-
-.newtab:not(.on-wallpaper) .stat-card svg {
-  color: var(--accent);
-}
-
-.stat-card:hover {
+.stats:hover {
   background: var(--pane-hover);
+}
+
+.stat-item {
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 0 20px;
+}
+
+.stat-item + .stat-item {
+  border-left: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value small {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stat-name {
+  font-size: 11.5px;
+  color: var(--ink-muted);
 }
 
 .hint {
@@ -994,32 +1132,45 @@ select {
   background: var(--pane);
 }
 
-.tile-icon {
-  width: 46px;
-  height: 46px;
+/* A site's logo always sits on a solid tile, so it reads as a logo on any background. */
+.logo {
+  flex: none;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 13px;
-  background: var(--pane);
-  font-size: 19px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: #fff;
+  font-size: 20px;
   font-weight: 700;
   transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.newtab:not(.on-wallpaper) .tile-icon {
-  background: var(--accentSoft);
-  color: var(--accent);
-}
-
-.tile:hover .tile-icon {
-  transform: translateY(-2px);
-}
-
-.tile-icon img {
-  width: 26px;
-  height: 26px;
+.logo img {
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
+}
+
+.logo.small {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+.logo.small img {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.tile:hover .logo {
+  transform: translateY(-2px);
 }
 
 .tile-title {
@@ -1050,6 +1201,83 @@ select {
 .tile-wrap:hover .tile-remove,
 .tile-remove:focus-visible {
   opacity: 1;
+}
+
+/* Often-visited sites: a small picture of the page, five to a row. */
+.visits {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.visit-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.visit-picture {
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--pane);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  transition:
+    transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 140ms ease-out;
+}
+
+.newtab:not(.on-wallpaper) .visit-picture {
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.visit-picture > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.visit-card:hover .visit-picture {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.visit-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+.visit-name > span:last-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.newtab.on-photo .visit-name {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 760px) {
+  .visits {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* The background chooser, in the corner of the page. */
@@ -1084,8 +1312,14 @@ select {
   color: var(--ink);
 }
 
+.wallpaper-picker h3 {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
 .wallpaper-picker {
-  width: 252px;
+  width: 268px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1114,6 +1348,11 @@ select {
 
 .swatch {
   height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-position: center;
+  background-size: cover;
   border: 0;
   border-radius: 8px;
   outline: 2px solid transparent;
@@ -1168,7 +1407,6 @@ select {
 .list-item,
 .tile,
 .chip,
-.stat-card,
 .suggestions li,
 .address {
   transition:

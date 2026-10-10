@@ -17,7 +17,8 @@ export const DEFAULT_SETTINGS: Settings = {
   disabledSites: [],
   disabledLists: [],
   popupSites: [],
-  wallpaper: 'brand',
+  wallpaper: 'photos',
+  version: 2,
   searchSuggestions: true,
   restoreTabs: true,
   clearDataOnExit: false,
@@ -33,7 +34,9 @@ const listeners = new Set<Listener>();
 export function loadSettings(): Settings {
   file = jsonFile<Partial<Settings>>('settings.json', {});
   const saved = file.value;
-  current = { ...DEFAULT_SETTINGS, ...saved, shields: { ...DEFAULT_SETTINGS.shields, ...saved.shields } };
+  current = { ...DEFAULT_SETTINGS, ...saved, shields: { ...DEFAULT_SETTINGS.shields, ...saved.shields }, version: DEFAULT_SETTINGS.version };
+  // Version 2 brought photos; until then 'brand' was simply the default, not a choice.
+  if ((saved.version ?? 1) < 2 && saved.wallpaper === 'brand') current.wallpaper = 'photos';
   return current;
 }
 

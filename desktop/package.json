@@ -33,7 +33,7 @@
   "build": {
     "appId": "app.stillweb.desktop",
     "productName": "Stillweb",
-    "copyright": "Stillweb",
+    "copyright": "Copyright © 2026 Stillweb",
     "directories": {
       "output": "dist",
       "buildResources": "resources/build"
@@ -54,6 +54,10 @@
       {
         "from": "resources/stillweb-fixes.txt",
         "to": "stillweb-fixes.txt"
+      },
+      {
+        "from": "resources/wallpapers",
+        "to": "wallpapers"
       },
       {
         "from": "../native/shield-webview/android/src/main/assets/shield",

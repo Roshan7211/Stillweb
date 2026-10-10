@@ -125,6 +125,14 @@ components.push({
   license: adblock.license,
   text: `Licensed under the Mozilla Public License 2.0; see MPL-2.0 below.\nSource: ${adblock.homepage}`,
 });
+const photoCredits = JSON.parse(fs.readFileSync(path.join(DESKTOP, 'resources/wallpapers/credits.json'), 'utf8'));
+components.push({
+  name: 'Home page photos',
+  license: photoCredits.license,
+  text:
+    `Photos from ${photoCredits.source}, used under the ${photoCredits.license} (${photoCredits.licenseUrl}); resized for the home page.\n\n` +
+    photoCredits.photos.map((photo) => `${photo.title}: photo by ${photo.author}\n${photo.page}`).join('\n\n'),
+});
 const electron = JSON.parse(fs.readFileSync(path.join(DESKTOP, 'node_modules/electron/package.json'), 'utf8'));
 components.push({
   name: `Electron ${electron.version}`,

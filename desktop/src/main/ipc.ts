@@ -21,13 +21,14 @@ import {
 } from './data';
 import { cancelDownload, clearDownloads, getDownloads, openDownload, showDownload } from './downloads';
 import { FIXES_LIST_ID, shieldEngine } from './engine/shieldEngine';
-import { clearFavicons, iconFor } from './favicons';
+import { clearFavicons, iconFor, wantIcon } from './favicons';
 import { clearMediaSites } from './mediaSites';
 import { showAppMenu, showTabMenu } from './menus';
 import { getSettings, updateSettings } from './settings';
 import { pageInfo } from './shields';
+import { clearThumbnails, thumbnailFor } from './thumbnails';
 import { checkForFilterUpdate } from './updater';
-import { chooseWallpaper, wallpaperImage } from './wallpaper';
+import { chooseWallpaper, photoWallpapers, shuffledPhoto, wallpaperImage } from './wallpaper';
 
 const COOKIE_LIST_ID = 'easylist-cookie';
 /** Public privacy policy (site/privacy/, published by the Filters workflow). Optional. */
@@ -102,14 +103,12 @@ const handlers: Handlers = {
     if (tab && /^https?:/i.test(last)) win.createTab({ url: last, afterId: tab.id });
   },
 
-  suggest: async (win, query) => {
+  suggestLocal: (_win, query) => localSuggestions(String(query).trim(), 5),
+  suggestRemote: (win, query) => {
     const text = String(query).trim();
-    if (!text) return [];
     const settings = getSettings();
-    const local: Suggestion[] = localSuggestions(text, 4);
-    const remote = settings.searchSuggestions && !win.isPrivate && hasRemoteSuggestions(settings.searchEngine) ? await remoteSuggestions(text) : [];
-    const seen = new Set(local.map((s) => ('url' in s ? s.url : '')));
-    return [...local, ...remote.filter((s) => s.kind === 'search' || !seen.has(s.url))].slice(0, 9);
+    if (!text || !settings.searchSuggestions || win.isPrivate || !hasRemoteSuggestions(settings.searchEngine)) return [];
+    return remoteSuggestions(text);
   },
 
   findInPage: (win, text, forward, next) => {
@@ -129,14 +128,19 @@ const handlers: Handlers = {
     clearHistory();
     clearMediaSites();
     clearFavicons();
+    clearThumbnails();
     await normalSession().clearData();
   },
   getHomeTiles: (win) => {
     if (win.isPrivate) return { bookmarks: [], visited: [] };
-    const tile = (entry: { url: string; title: string }) => ({ url: entry.url, title: entry.title, icon: iconFor(entry.url) });
+    const tile = (entry: { url: string; title: string }) => {
+      // An icon that was never seen is asked for now; the page is told when it arrives.
+      const icon = iconFor(entry.url);
+      if (!icon) wantIcon(win.session, entry.url);
+      return { url: entry.url, title: entry.title, icon, thumb: thumbnailFor(entry.url) };
+    };
     const bookmarks = [...getBookmarks()].reverse().slice(0, 12);
-    const saved = new Set(bookmarks.map((b) => b.url));
-    return { bookmarks: bookmarks.map(tile), visited: topSites(12).filter((site) => !saved.has(site.url)).slice(0, 8).map(tile) };
+    return { bookmarks: bookmarks.map(tile), visited: topSites(10).map(tile) };
   },
   chooseWallpaper: async (win) => {
     if (!(await chooseWallpaper(win.window))) return false;
@@ -144,6 +148,7 @@ const handlers: Handlers = {
     return true;
   },
   getWallpaperImage: () => wallpaperImage(),
+  getPhotos: () => ({ photos: photoWallpapers(), turn: shuffledPhoto() }),
 
   getDownloads: () => getDownloads(),
   openDownload: (_win, id) => openDownload(id),

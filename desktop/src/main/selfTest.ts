@@ -232,7 +232,7 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
 
     await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".tabstrip")'), 8000);
     check('new tab page shows in a new window', await inChrome<boolean>(win, '!!document.querySelector(".newtab")'));
-    check('address bar has the cursor in a new tab', await inChrome<boolean>(win, 'document.activeElement === document.querySelector(".address-input")'));
+    check('a new tab has the cursor in its search field', await waitFor(() => inChrome<boolean>(win, 'document.activeElement === document.querySelector(".home-search input")'), 3000));
     await screenshot(win, '01-new-tab');
 
     // ---- Blocking ----
@@ -518,11 +518,14 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     win.createTab();
     await sleep(700);
     check('shield counter adds up across pages', win.state().totalBlocked >= 5, `${win.state().totalBlocked} in total`);
+    updateSettings({ wallpaper: 'brand' });
+    await sleep(200);
     check(
-      'the home page shows the logo, bookmarks and the sites visited most',
-      await inChrome<boolean>(win, '!!document.querySelector(".brand-logo") && document.querySelectorAll(".tile-section").length === 2 && document.querySelectorAll(".tile").length >= 2'),
-      await inChrome<string>(win, 'Array.from(document.querySelectorAll(".tile-section h2")).map(function(h){return h.textContent + " " + h.parentElement.querySelectorAll(".tile").length}).join(", ")'),
+      'the home page shows the logo, bookmarks with their logos, and up to ten often-visited sites',
+      await inChrome<boolean>(win, '!!document.querySelector(".brand-logo") && document.querySelectorAll(".tile .logo").length >= 1 && document.querySelectorAll(".visit-card").length >= 2 && document.querySelectorAll(".visit-card").length <= 10'),
+      await inChrome<string>(win, '[document.querySelectorAll(".tile").length + " bookmarks", document.querySelectorAll(".visit-card").length + " visited"].join(", ")'),
     );
+    check('often-visited sites show a picture of the page', await waitFor(() => inChrome<boolean>(win, 'Array.from(document.querySelectorAll(".visit-picture > img")).some(function(i){return i.naturalWidth > 100})'), 6000), await inChrome<string>(win, 'document.querySelectorAll(".visit-picture > img").length + " pictures"'));
     await screenshot(win, `14-${other}-home`);
     for (const wallpaper of ['aurora', 'dusk', 'sand', 'none']) {
       updateSettings({ wallpaper });
@@ -534,8 +537,38 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     await sleep(350);
     check('the background chooser opens', await inChrome<boolean>(win, 'document.querySelectorAll(".swatch").length >= 6'));
     await screenshot(win, '16-home-chooser');
-    await inChrome(win, 'document.querySelector(".fakebox").click()');
-    check('the search field on the home page puts the cursor in the address bar', await waitFor(() => inChrome<boolean>(win, 'document.activeElement === document.querySelector(".address-input")'), 2000));
+    await inChrome(win, 'document.querySelector(".customize-button").click()');
+    check('the home page shows three figures', (await inChrome<number>(win, 'document.querySelectorAll(".stats .stat-value").length')) === 3, await inChrome<string>(win, 'Array.from(document.querySelectorAll(".stats .stat-item")).map(function(e){return e.innerText.replace(/\\n/g," ")}).join(" | ")'));
+
+    // ---- Photos, with their credit ----
+    updateSettings({ wallpaper: 'photos' });
+    const credited = await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".wallpaper-photo.ready") && /^Photo by .+ on .+/.test((document.querySelector(".photo-credit") || {}).textContent || "")'), 5000);
+    check('a photo background names who took it', credited, await inChrome<string>(win, '(document.querySelector(".photo-credit") || {}).textContent || "no credit"'));
+    await screenshot(win, '17-home-photo');
+    const firstCredit = await inChrome<string>(win, 'document.querySelector(".photo-credit").textContent');
+    win.createTab();
+    await sleep(700);
+    await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".wallpaper-photo.ready")'), 5000);
+    check('the photo stays the same until the app is opened again', (await inChrome<string>(win, '(document.querySelector(".photo-credit") || {}).textContent')) === firstCredit);
+
+    // ---- Searching from the home page ----
+    hits.length = 0;
+    await inChrome(win, 'document.querySelector(".home-search input").focus()');
+    win.chrome.webContents.focus();
+    for (const ch of 'plain.example') {
+      win.chrome.webContents.sendInputEvent({ type: 'char', keyCode: ch });
+      await sleep(15);
+    }
+    const suggested = await waitFor(() => inChrome<boolean>(win, 'Array.from(document.querySelectorAll(".home-search .suggestions li")).some(function(li){return /plain\\.example\\.net/.test(li.textContent)})'), 3000);
+    check('typing in the home page shows suggestions from history', suggested, await inChrome<string>(win, 'Array.from(document.querySelectorAll(".home-search .suggestions li")).map(function(li){return li.textContent.slice(0,30)}).join(" | ")'));
+    await screenshot(win, '18-home-suggestions');
+    await inChrome(win, 'var i = document.querySelector(".home-search input"); var set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(i, "quiet lakes"); i.dispatchEvent(new Event("input", { bubbles: true }))');
+    await sleep(150);
+    win.chrome.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
+    win.chrome.webContents.sendInputEvent({ type: 'char', keyCode: 'Enter' });
+    win.chrome.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
+    const searched = await waitFor(() => /[?&]q=quiet(\+|%20)lakes/.test(win.activeTab?.url ?? ''), 4000);
+    check('Enter in the home page search goes straight to the search engine', searched, (win.activeTab?.url ?? '').slice(0, 70));
   } catch (error) {
     check('self-test ran to the end', false, error instanceof Error ? (error.stack ?? error.message) : String(error));
   }

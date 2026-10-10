@@ -25,8 +25,13 @@ export type Settings = {
   disabledLists: string[];
   /** Sites (host, without www.) that may open windows even while a video is playing. */
   popupSites: string[];
-  /** The home page's background: the id of a built-in one, 'none', or 'custom:<time>' for the user's picture. */
+  /**
+   * The home page's background: 'photos' (a different photo each time the app is opened), the id of one photo
+   * or of a drawn background, 'none', or 'custom:<time>' for the user's own picture.
+   */
   wallpaper: string;
+  /** Raised when a saved setting has to be read differently (see loadSettings). */
+  version: number;
   /** Ask the search engine for suggestions while typing (never in private windows). */
   searchSuggestions: boolean;
   /** Open the tabs from last time when the app starts. */
@@ -72,6 +77,8 @@ export type WindowState = {
   systemDark: boolean;
   /** Requests blocked since the app was first used (or the report was reset). */
   totalBlocked: number;
+  /** Pages opened over a secure connection because the app asked for it, since the same moment. */
+  totalUpgrades: number;
 };
 
 export type EngineStatus = {
@@ -97,8 +104,17 @@ export type DownloadState = {
   started: number;
 };
 
+/** A photo for the home page: its file, a small preview, and who to credit. */
+export type PhotoWallpaper = { id: string; title: string; author: string; page: string; source: string; url: string; thumb: string };
+
 /** A site on the home page. `icon` is a stored copy of its icon (a data: URL), when there is one. */
-export type HomeTile = { url: string; title: string; icon: string | null };
+export type HomeTile = {
+  url: string;
+  title: string;
+  icon: string | null;
+  /** A small picture of the page (often-visited sites), as an address the interface can show. */
+  thumb: string | null;
+};
 export type HomeTiles = { bookmarks: HomeTile[]; visited: HomeTile[] };
 
 export type Suggestion =
@@ -159,7 +175,10 @@ export type ChromeApi = {
   setSitePopups(site: string, allowed: boolean): Promise<void>;
   /** Opens the last window that was stopped on the active tab's page. */
   openBlockedPopup(): Promise<void>;
-  suggest(query: string): Promise<Suggestion[]>;
+  /** History and bookmarks that match what is being typed: answered at once. */
+  suggestLocal(query: string): Promise<Suggestion[]>;
+  /** The search engine's suggestions (slower; empty when they are off or the window is private). */
+  suggestRemote(query: string): Promise<Suggestion[]>;
 
   findInPage(text: string, forward: boolean, next: boolean): Promise<void>;
   stopFind(): Promise<void>;
@@ -179,6 +198,8 @@ export type ChromeApi = {
   chooseWallpaper(): Promise<boolean>;
   /** The user's picture as a data: URL, or null. */
   getWallpaperImage(): Promise<string | null>;
+  /** The photos that ship with the app, and which one has its turn while the app is open this time. */
+  getPhotos(): Promise<{ photos: PhotoWallpaper[]; turn: number }>;
 
   getDownloads(): Promise<DownloadState[]>;
   openDownload(id: number): Promise<void>;
@@ -202,20 +223,22 @@ export type ChromeEvents = {
   'window-state': WindowState;
   settings: Settings;
   'engine-status': EngineStatus;
-  /** Put the cursor in the address bar (Ctrl/Cmd+L, or a new tab). */
-  'focus-address': null;
+  /** Put the cursor where typing starts: a new tab's search field, or the address bar for the shortcut. */
+  'focus-address': 'new-tab' | 'shortcut';
   'open-find': null;
   'find-result': FindResult;
   'open-panel': Panel;
   downloads: DownloadState[];
   bookmarks: Bookmark[];
+  /** Something the home page shows has changed (an icon or a page's picture arrived). */
+  'home-changed': null;
 };
 
 export const CHROME_METHODS: (keyof ChromeApi)[] = [
   'interfaceReady', 'getWindowState', 'getSettings', 'setSettings', 'getEngineStatus', 'setLayout', 'dragWindow', 'toggleMaximize',
   'newTab', 'closeTab', 'activateTab', 'moveTab', 'toggleMute', 'navigate', 'goBack', 'goForward', 'reload', 'stop', 'focusPage',
-  'setSiteShields', 'setSitePopups', 'openBlockedPopup', 'suggest', 'findInPage', 'stopFind', 'showAppMenu', 'showTabMenu',
-  'getBookmarks', 'setBookmarked', 'getHistory', 'removeHistory', 'clearBrowsingData', 'getHomeTiles', 'chooseWallpaper', 'getWallpaperImage',
+  'setSiteShields', 'setSitePopups', 'openBlockedPopup', 'suggestLocal', 'suggestRemote', 'findInPage', 'stopFind', 'showAppMenu', 'showTabMenu',
+  'getBookmarks', 'setBookmarked', 'getHistory', 'removeHistory', 'clearBrowsingData', 'getHomeTiles', 'chooseWallpaper', 'getWallpaperImage', 'getPhotos',
   'getDownloads', 'openDownload', 'showDownload', 'cancelDownload', 'clearDownloads',
   'getFilterLists', 'setFilterListEnabled', 'checkFilterUpdate', 'getPrivacyReport', 'resetPrivacyReport',
   'getAbout', 'getLicenses', 'openChromiumLicenses',

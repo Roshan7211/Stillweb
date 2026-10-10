@@ -5,13 +5,14 @@ import { clearHistory, getBookmarks, loadData, onBookmarksChanged } from './data
 import { attachDownloads } from './downloads';
 import { shieldEngine } from './engine/shieldEngine';
 import { registerIpc } from './ipc';
-import { loadFavicons } from './favicons';
+import { loadFavicons, onIconStored } from './favicons';
 import { loadMediaSites } from './mediaSites';
 import { buildAppMenu, newWindow } from './menus';
 import { SELF_TEST_PORT, runLiveCheck, runSelfTest } from './selfTest';
 import { getSettings, loadSettings, onSettingsChanged } from './settings';
 import { browserUserAgent, registerFrameHandlers, registerSchemes, setPopupSites } from './shields';
 import { flushAll } from './store';
+import { loadThumbnails } from './thumbnails';
 import { scheduleFilterUpdates } from './updater';
 
 const selfTest = process.argv.includes('--self-test');
@@ -26,6 +27,9 @@ if (selfTest) {
   app.commandLine.appendSwitch('host-resolver-rules', `MAP * 127.0.0.1:${SELF_TEST_PORT}, EXCLUDE closed.invalid`);
 }
 if (testing) {
+  // Tests play sound (to check what may start by itself); nobody should have to hear it.
+  // Each tab is muted, which still lets the app see that it is playing.
+  BrowserWin.muteNewTabs = true;
   // The test clicks in pages and takes pictures of them, also while its window is behind others.
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
   app.commandLine.appendSwitch('disable-features', 'MacWebContentsOcclusion,CalculateNativeWinOcclusion');
@@ -85,6 +89,10 @@ if (!testing && !app.requestSingleInstanceLock()) {
     loadData();
     loadMediaSites();
     loadFavicons();
+    loadThumbnails();
+    onIconStored(() => {
+      for (const win of BrowserWin.all) win.send('home-changed', null);
+    });
     configureEngine();
     registerFrameHandlers();
     registerIpc();
