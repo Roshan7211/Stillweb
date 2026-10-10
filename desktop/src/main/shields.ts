@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events';
 import path from 'node:path';
 
 import privacyScript from '../../../native/shield-webview/web/shieldjs/privacy.js?text';
+import chromeObjectScript from './chromeObject.js?text';
 import type { FrameStart } from '../shared/types';
 import { recordBlocked } from './data';
 import { shieldEngine } from './engine/shieldEngine';
@@ -295,7 +296,9 @@ function wrapScriptlets(scriptlets: string): string {
   return `(function(){\nconst scriptletGlobals = {};\n${scriptlets}\n})();`;
 }
 
-const NOTHING: FrameStart = { pageScript: privacyScript, cosmetic: null, generic: false };
+/** What every page gets, whether or not Shields are on: see the two files. */
+const EVERY_PAGE = `${chromeObjectScript}\n${privacyScript}`;
+const NOTHING: FrameStart = { pageScript: EVERY_PAGE, cosmetic: null, generic: false };
 
 function frameStart(contents: WebContents, frameHost: string): FrameStart {
   const state = pages.get(contents.id);
@@ -306,7 +309,7 @@ function frameStart(contents: WebContents, frameHost: string): FrameStart {
   const cosmetic = shieldEngine.options.cosmeticFiltering;
   const hasRules = cosmetic && (found.hide_selectors.length > 0 || found.procedural_actions.length > 0);
   return {
-    pageScript: found.injected_script.trim() ? `${privacyScript}\n${wrapScriptlets(found.injected_script)}` : privacyScript,
+    pageScript: found.injected_script.trim() ? `${EVERY_PAGE}\n${wrapScriptlets(found.injected_script)}` : EVERY_PAGE,
     cosmetic: hasRules ? { hide: found.hide_selectors, procedural: found.procedural_actions } : null,
     generic: cosmetic && !found.generichide,
   };

@@ -204,7 +204,7 @@ export const CHROME_METHODS: (keyof ChromeApi)[] = [
 
 /** What a page frame's preload script gets, before the page's own scripts run. */
 export type FrameStart = {
-  /** Runs in the page's own world: Global Privacy Control and the site's scriptlets. */
+  /** Runs in the page's own world: browser objects Electron lacks, Global Privacy Control and the site's scriptlets. */
   pageScript: string;
   /** For web/shieldjs/cosmetic-host.js, or null when the site has no rules of its own. */
   cosmetic: { hide: string[]; procedural: string[] } | null;

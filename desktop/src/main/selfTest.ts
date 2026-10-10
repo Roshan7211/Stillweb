@@ -56,7 +56,7 @@ function findRules(list: string, pattern: RegExp, limit = 1): RegExpMatchArray[]
 function fixturePage(query: URLSearchParams): string {
   const prop = JSON.stringify(query.get('prop') ?? '');
   return `<!doctype html><html><head><meta charset="utf-8"><title>Fixture page</title>
-<script>window.__early = window[${prop}];</script>
+<script>window.__early = window[${prop}]; window.__chromeAtStart = !!window.chrome && typeof chrome.loadTimes === 'function';</script>
 <script src="/app.js"></script>
 <script src="http://securepubads.g.doubleclick.net/tag/js/gpt.js"></script>
 </head><body style="font-family:sans-serif">
@@ -224,6 +224,10 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     const pageUrl = `${site}/?prop=${scriptlet[2]}&generic=${generic[1]}`;
     let page = await open(win, pageUrl);
     check('first-party script loads', await inPage<boolean>(page, 'window.__app === true'));
+    check(
+      'pages get the browser objects that sign-in pages look for',
+      await inPage<boolean>(page, 'typeof chrome.loadTimes === "function" && chrome.loadTimes().requestTime > 0 && typeof chrome.csi().pageT === "number" && chrome.app.isInstalled === false && window.__chromeAtStart === true'),
+    );
     check('ad script request never reaches the server', seen('/tag/js/gpt.js').length === 0, `${seen('/tag/js/gpt.js').length} requests`);
     check('blocked ad script is replaced by a harmless stand-in', await inPage<boolean>(page, 'typeof window.googletag === "object" && window.__adScriptRan !== true'));
     check('scriptlet runs before the page’s first script', (await inPage<unknown>(page, 'window.__early')) === (scriptlet[3] === 'true'), `${scriptlet[0]}`);
