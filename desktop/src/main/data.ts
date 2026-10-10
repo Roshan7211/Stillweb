@@ -51,6 +51,7 @@ export function recordVisit(url: string, title: string): void {
     list.push({ url, title, time: Date.now() });
     if (list.length > HISTORY_LIMIT) list.splice(0, list.length - HISTORY_LIMIT);
   }
+  forgetUsage();
   historyFile.changed();
 }
 
@@ -61,6 +62,7 @@ export function updateVisitTitle(url: string, title: string): void {
     if (list[i].url === url) {
       if (list[i].title !== title) {
         list[i].title = title;
+        forgetUsage();
         historyFile.changed();
       }
       return;
@@ -86,11 +88,13 @@ export function queryHistory(query: string, limit = 300): HistoryEntry[] {
 
 export function removeHistory(url: string, time: number): void {
   historyFile.value = historyFile.value.filter((e) => !(e.url === url && e.time === time));
+  forgetUsage();
   historyFile.changed();
 }
 
 export function clearHistory(): void {
   historyFile.value = [];
+  forgetUsage();
   historyFile.changed();
 }
 
@@ -135,6 +139,7 @@ export function isBookmarked(url: string): boolean {
 export function setBookmarked(url: string, title: string, bookmarked: boolean): void {
   const without = bookmarkFile.value.filter((b) => b.url !== url);
   bookmarkFile.value = bookmarked ? [...without, { url, title: title || url, added: Date.now() }] : without;
+  forgetUsage();
   bookmarkFile.changed();
   for (const listener of bookmarkListeners) listener();
 }
@@ -143,27 +148,104 @@ export function onBookmarksChanged(listener: () => void): void {
   bookmarkListeners.add(listener);
 }
 
-/** History and bookmarks that match what is being typed in the address bar, best first. */
+// ---------------------------------------------------------------------------
+// What the user goes to, and how often: for suggestions and for completing an address.
+
+type PageUse = { url: string; title: string; count: number; last: number; bookmarked: boolean };
+type SiteUse = { host: string; origin: string; count: number; last: number; bookmarked: boolean };
+
+/** Built from history and bookmarks when first needed, and again after either has changed. */
+let usage: { pages: PageUse[]; sites: SiteUse[] } | null = null;
+
+function forgetUsage(): void {
+  usage = null;
+}
+
+function buildUsage(): { pages: PageUse[]; sites: SiteUse[] } {
+  const pages = new Map<string, PageUse>();
+  const sites = new Map<string, SiteUse & { origins: Map<string, number> }>();
+  const see = (url: string, title: string, time: number, bookmarked: boolean) => {
+    const page = pages.get(url) ?? { url, title, count: 0, last: 0, bookmarked: false };
+    if (!bookmarked) page.count++;
+    if (title) page.title = title;
+    page.last = Math.max(page.last, time);
+    page.bookmarked ||= bookmarked;
+    pages.set(url, page);
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return;
+    }
+    if (!/^https?:$/.test(parsed.protocol)) return;
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const site = sites.get(host) ?? { host, origin: parsed.origin, count: 0, last: 0, bookmarked: false, origins: new Map() };
+    if (!bookmarked) site.count++;
+    site.last = Math.max(site.last, time);
+    site.bookmarked ||= bookmarked;
+    site.origins.set(parsed.origin, (site.origins.get(parsed.origin) ?? 0) + 1);
+    sites.set(host, site);
+  };
+  for (const entry of historyFile.value) see(entry.url, entry.title, entry.time, false);
+  for (const bookmark of bookmarkFile.value) see(bookmark.url, bookmark.title, bookmark.added ?? 0, true);
+  return {
+    pages: [...pages.values()],
+    sites: [...sites.values()].map(({ origins, ...site }) => ({
+      ...site,
+      // The form of the address the user really goes to (with or without www, http or https).
+      origin: [...origins.entries()].sort((x, y) => y[1] - x[1])[0][0],
+    })),
+  };
+}
+
+/** How much a page or site is "the user's": visits count most, a bookmark and a recent visit add to it. */
+function weight(use: { count: number; last: number; bookmarked: boolean }): number {
+  const days = (Date.now() - use.last) / (24 * 60 * 60 * 1000);
+  return use.count + (use.bookmarked ? 4 : 0) + (days < 1 ? 3 : days < 7 ? 2 : days < 30 ? 1 : 0);
+}
+
+/** History and bookmarks that match what is being typed in the address bar, most used first. */
 export function localSuggestions(query: string, limit = 5): { kind: 'history' | 'bookmark'; url: string; title: string }[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [];
-  const seen = new Set<string>();
-  const out: { kind: 'history' | 'bookmark'; url: string; title: string }[] = [];
-  for (const b of bookmarkFile.value) {
-    if (out.length >= limit) return out;
-    if (matches(b, words) && !seen.has(b.url)) {
-      seen.add(b.url);
-      out.push({ kind: 'bookmark', url: b.url, title: b.title });
+  usage ??= buildUsage();
+  const first = words[0];
+  return usage.pages
+    .filter((page) => matches(page, words))
+    .map((page) => {
+      // A page whose address starts with what was typed is more likely meant than one that
+      // merely mentions it.
+      const bare = page.url.toLowerCase().replace(/^https?:\/\/(www\.)?/, '');
+      return { page, score: weight(page) + (bare.startsWith(first) ? 6 : 0) };
+    })
+    .sort((x, y) => y.score - x.score)
+    .slice(0, limit)
+    .map(({ page }) => ({ kind: page.bookmarked ? ('bookmark' as const) : ('history' as const), url: page.url, title: page.title }));
+}
+
+/**
+ * The site the user most likely means by the first letters of an address: "you" becomes the
+ * site they visit most whose name starts that way. Only a site they have used more than once
+ * (or bookmarked) is offered, and only for something that could be the start of a site's name.
+ */
+export function completeSite(typed: string): { text: string; url: string } | null {
+  const start = typed.trim().toLowerCase();
+  if (!start || /[\s/?#@]/.test(start) || start.includes('://')) return null;
+  usage ??= buildUsage();
+  let best: SiteUse | null = null;
+  let bestText = '';
+  for (const site of usage.sites) {
+    if (site.count < 2 && !site.bookmarked) continue;
+    // Typed with or without "www.", as the user prefers.
+    const text = site.host.startsWith(start) ? site.host : `www.${site.host}`.startsWith(start) && start.length > 3 ? `www.${site.host}` : '';
+    if (!text) continue;
+    if (!best || weight(site) > weight(best)) {
+      best = site;
+      bestText = text;
     }
   }
-  const list = historyFile.value;
-  for (let i = list.length - 1; i >= 0 && out.length < limit; i--) {
-    if (matches(list[i], words) && !seen.has(list[i].url)) {
-      seen.add(list[i].url);
-      out.push({ kind: 'history', url: list[i].url, title: list[i].title });
-    }
-  }
-  return out;
+  return best ? { text: bestText, url: `${best.origin}/` } : null;
 }
 
 // ---------------------------------------------------------------------------

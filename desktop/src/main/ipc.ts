@@ -10,6 +10,7 @@ import { CHROME_METHODS, type ChromeApi, type LicenseData, type Suggestion } fro
 import { BrowserWin, normalSession } from './browserWindow';
 import {
   clearHistory,
+  completeSite,
   getBookmarks,
   localSuggestions,
   privacyReport,
@@ -103,7 +104,7 @@ const handlers: Handlers = {
     if (tab && /^https?:/i.test(last)) win.createTab({ url: last, afterId: tab.id });
   },
 
-  suggestLocal: (_win, query) => localSuggestions(String(query).trim(), 5),
+  suggestLocal: (_win, query) => ({ suggestions: localSuggestions(String(query).trim(), 5), completion: completeSite(String(query)) }),
   suggestRemote: (win, query) => {
     const text = String(query).trim();
     const settings = getSettings();

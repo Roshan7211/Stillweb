@@ -7,7 +7,7 @@ import { displayHost, searchUrl } from '../../../src/browser/url';
 import type { EngineStatus, HomeTile, HomeTiles, LoadError, Panel, PhotoWallpaper, Settings } from '../shared/types';
 import { api } from './api';
 import { LOGO } from './logo';
-import { SuggestionList, useSuggestions, valueOf } from './suggestions';
+import { SuggestionList, useTypeahead } from './suggestions';
 import { WALLPAPERS, chooseWallpaper } from './wallpapers';
 
 type NewTabProps = {
@@ -92,23 +92,19 @@ function VisitCard({ tile }: { tile: HomeTile }) {
 /** The home page's search field: the same suggestions as the address bar, right where the eye is. */
 function SearchBox({ focusRequest }: { focusRequest: number }) {
   const input = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
-  const typed = useRef('');
-  const { items, selected, ask, clear, move } = useSuggestions();
+  const field = useTypeahead(input, (value) => {
+    if (value.trim()) void api.navigate(value);
+  });
 
   useEffect(() => {
     input.current?.focus();
   }, [focusRequest]);
 
-  const go = (value: string) => {
-    clear();
-    if (value.trim()) void api.navigate(value);
-  };
-  const open = focused && items.length > 0;
+  const open = focused && field.items.length > 0;
 
   return (
-    <div className={`home-search${focused ? ' focused' : ''}${open ? ' open' : ''}`}>
+    <div className={`home-search${focused ? ' focused' : ''}`}>
       <Search size={17} />
       <input
         ref={input}
@@ -116,30 +112,22 @@ function SearchBox({ focusRequest }: { focusRequest: number }) {
         placeholder="Search or enter address"
         spellCheck={false}
         autoComplete="off"
-        value={text}
+        value={field.text}
         onFocus={() => setFocused(true)}
         onBlur={() => {
           setFocused(false);
-          clear();
+          field.clear();
         }}
-        onChange={(event) => {
-          setText(event.target.value);
-          typed.current = event.target.value;
-          ask(event.target.value);
-        }}
+        onChange={field.onChange}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            go(selected >= 0 ? valueOf(items[selected]) : text);
-          } else if (event.key === 'Escape') {
-            if (items.length) clear();
+          if (field.onKeyDown(event)) return;
+          if (event.key === 'Escape') {
+            if (field.items.length) field.clear();
             else input.current?.blur();
-          } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && items.length) {
-            event.preventDefault();
-            setText(move(event.key === 'ArrowDown' ? 1 : -1, typed.current));
           }
         }}
       />
-      {open ? <SuggestionList items={items} selected={selected} typed={typed.current} onPick={go} /> : null}
+      {open ? <SuggestionList items={field.items} selected={field.selected} typed={field.typed.current} onPick={field.submit} /> : null}
     </div>
   );
 }

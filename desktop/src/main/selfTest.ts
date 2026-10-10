@@ -8,7 +8,7 @@ import path from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 
 import { BrowserWin } from './browserWindow';
-import { getBookmarks, localSuggestions, queryHistory } from './data';
+import { completeSite, getBookmarks, localSuggestions, queryHistory } from './data';
 import { getDownloads } from './downloads';
 import { shieldEngine } from './engine/shieldEngine';
 import { rememberMediaSite } from './mediaSites';
@@ -451,6 +451,35 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     // ---- History, suggestions, bookmarks ----
     check('visited pages are in history', queryHistory('plain.example.net').length > 0);
     check('history is suggested in the address bar', localSuggestions('plain.example').some((s) => s.url.includes('plain.example.net')));
+
+    // ---- The first letters of a site used often complete to it ----
+    const completed = completeSite('pla');
+    check('the first letters of a site used often complete to it', completed?.text === 'plain.example.net' && completed.url === 'http://plain.example.net/', JSON.stringify(completed));
+    check('other text is left as typed', completeSite('plain example') === null && completeSite('zzz') === null && completeSite('lain.example') === null);
+    const addressField = () =>
+      inChrome<string>(win, '(function(){var i = document.querySelector(".address-input"); return i.value + " [" + i.selectionStart + "-" + i.selectionEnd + "]"})()');
+    const typeInChrome = async (text: string) => {
+      for (const ch of text) {
+        win.chrome.webContents.sendInputEvent({ type: 'char', keyCode: ch });
+        await sleep(40);
+      }
+    };
+    await inChrome(win, 'document.querySelector(".address-input").focus()');
+    win.chrome.webContents.focus();
+    await typeInChrome('pla');
+    check('typing them in the address bar fills in the rest, selected', await waitFor(async () => (await addressField()) === 'plain.example.net [3-17]', 2000), await addressField());
+    check('the completed site is the first suggestion', (await inChrome<string>(win, '(document.querySelector(".address .suggestions li") || {}).textContent || ""')).includes('plain.example.net'));
+    win.chrome.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+    win.chrome.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+    await sleep(250);
+    check('deleting removes the completion and it does not come back', (await addressField()) === 'pla [3-3]', await addressField());
+    await typeInChrome('i');
+    await waitFor(async () => (await addressField()) === 'plain.example.net [4-17]', 2000);
+    win.chrome.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
+    win.chrome.webContents.sendInputEvent({ type: 'char', keyCode: 'Enter' });
+    win.chrome.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
+    check('Enter opens the completed site, not a search', await waitFor(() => /^http:\/\/plain\.example\.net\/$/.test(win.activeTab?.url ?? ''), 8000), (win.activeTab?.url ?? '').slice(0, 70));
+    page = await open(win, `${site}/?after-search`);
     await inChrome(win, `window.stillweb.setBookmarked(${JSON.stringify(page.getURL())}, "Fixture", true)`);
     check('bookmark is saved', getBookmarks().some((b) => b.url === page.getURL()));
     check('bookmark star is filled', await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".address .icon-button.on")'), 2000));

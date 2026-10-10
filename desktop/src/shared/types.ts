@@ -122,6 +122,9 @@ export type Suggestion =
   | { kind: 'site'; url: string; title: string }
   | { kind: 'history' | 'bookmark'; url: string; title: string };
 
+/** A site the user goes to often whose name starts with what was typed: `text` completes the field, Enter opens `url`. */
+export type SiteCompletion = { text: string; url: string };
+
 export type FilterListInfo = { id: string; title: string; purpose: string; license: string; homepage: string; enabled: boolean };
 
 export type PrivacyReport = {
@@ -175,8 +178,11 @@ export type ChromeApi = {
   setSitePopups(site: string, allowed: boolean): Promise<void>;
   /** Opens the last window that was stopped on the active tab's page. */
   openBlockedPopup(): Promise<void>;
-  /** History and bookmarks that match what is being typed: answered at once. */
-  suggestLocal(query: string): Promise<Suggestion[]>;
+  /**
+   * History and bookmarks that match what is being typed, answered at once, and the site the
+   * typed letters most likely start (see SiteCompletion).
+   */
+  suggestLocal(query: string): Promise<{ suggestions: Suggestion[]; completion: SiteCompletion | null }>;
   /** The search engine's suggestions (slower; empty when they are off or the window is private). */
   suggestRemote(query: string): Promise<Suggestion[]>;
 

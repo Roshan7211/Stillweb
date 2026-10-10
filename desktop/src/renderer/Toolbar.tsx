@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { displayUrl } from '../../../src/browser/url';
 import type { Bookmark, DownloadState, Panel, Settings, TabState } from '../shared/types';
 import { api } from './api';
-import { SuggestionList, useSuggestions, valueOf } from './suggestions';
+import { SuggestionList, useTypeahead } from './suggestions';
 
 type Props = {
   tab: TabState | null;
@@ -22,12 +22,13 @@ type Props = {
 function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedPopups }: Pick<Props, 'tab' | 'isPrivate' | 'focusRequest' | 'onSuggesting'> & { onShowBlockedPopups: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  const [text, setText] = useState('');
-  /** What the user typed themselves (the field can show a suggestion picked with the arrow keys). */
-  const typed = useRef('');
-  const { items: suggestions, selected, ask, clear, move } = useSuggestions();
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const url = tab?.url ?? '';
+  const field = useTypeahead(input, (value) => {
+    input.current?.blur();
+    if (value.trim()) void api.navigate(value);
+  });
+  const { text, items: suggestions, selected, reset } = field;
 
   useEffect(() => {
     void api.getBookmarks().then(setBookmarks);
@@ -48,20 +49,13 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
     const sameTab = shownTab.current === tabId;
     shownTab.current = tabId;
     if (sameTab && document.activeElement === input.current) return;
-    setText(url);
-    clear();
-  }, [url, tabId, clear]);
+    reset(url);
+  }, [url, tabId, reset]);
 
   const open = focused && suggestions.length > 0;
   useEffect(() => {
     onSuggesting(open);
   }, [open, onSuggesting]);
-
-  const go = (value: string) => {
-    clear();
-    input.current?.blur();
-    if (value.trim()) void api.navigate(value);
-  };
 
   const bookmarked = !!url && bookmarks.some((b) => b.url === url);
   const isPage = /^https?:/i.test(url);
@@ -85,33 +79,25 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
           // happen, so a key pressed right after the shortcut replaces it and is not lost.
           flushSync(() => {
             setFocused(true);
-            setText(url);
+            reset(url);
           });
           element.select();
         }}
         onBlur={() => {
           setFocused(false);
-          clear();
+          field.clear();
         }}
-        onChange={(event) => {
-          setText(event.target.value);
-          typed.current = event.target.value;
-          ask(event.target.value);
-        }}
+        onChange={field.onChange}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            go(selected >= 0 ? valueOf(suggestions[selected]) : text);
-          } else if (event.key === 'Escape') {
+          if (field.onKeyDown(event)) return;
+          if (event.key === 'Escape') {
             if (suggestions.length) {
-              clear();
+              field.clear();
             } else {
-              setText(url);
+              reset(url);
               input.current?.blur();
               void api.focusPage();
             }
-          } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && suggestions.length) {
-            event.preventDefault();
-            setText(move(event.key === 'ArrowDown' ? 1 : -1, typed.current));
           }
         }}
       />
@@ -131,7 +117,7 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedP
           <Star size={15} fill={bookmarked ? 'currentColor' : 'none'} />
         </button>
       ) : null}
-      {open ? <SuggestionList items={suggestions} selected={selected} typed={typed.current} onPick={go} /> : null}
+      {open ? <SuggestionList items={suggestions} selected={selected} typed={field.typed.current} onPick={field.submit} /> : null}
     </div>
   );
 }
