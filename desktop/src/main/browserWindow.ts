@@ -12,7 +12,7 @@ import { rememberFavicon } from './favicons';
 import { allowsAutoplay, rememberMediaSite } from './mediaSites';
 import { showPageMenu } from './menus';
 import { attachPermissions } from './permissions';
-import { captureThumbnail, wantsThumbnail } from './thumbnails';
+import { captureThumbnail, stopThumbnails, wantsThumbnail } from './thumbnails';
 import { getSettings } from './settings';
 import {
   attachShields,
@@ -132,9 +132,12 @@ let sessionFile: JsonFile<SavedSession> | null = null;
 /** Drops a saved position that no screen shows any more (a monitor that was unplugged). */
 function onScreen(saved: SavedWindow): SavedWindow {
   const b = saved.bounds;
-  if (!b) return saved;
+  if (!b) return { maximized: saved.maximized === true };
+  // A damaged file: four whole numbers of a sensible size, or nothing.
+  const sound = [b.x, b.y, b.width, b.height].every((n) => Number.isFinite(n)) && b.width >= 300 && b.height >= 200 && b.width < 20000 && b.height < 20000;
+  if (!sound) return { maximized: saved.maximized === true };
   const visible = screen.getAllDisplays().some(({ workArea: a }) => b.x < a.x + a.width - 80 && b.x + b.width > a.x + 80 && b.y >= a.y - 10 && b.y < a.y + a.height - 80);
-  return visible ? saved : { maximized: saved.maximized };
+  return visible ? { bounds: { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) }, maximized: saved.maximized === true } : { maximized: saved.maximized === true };
 }
 
 export class BrowserWin {
@@ -165,7 +168,10 @@ export class BrowserWin {
   /** The tabs to open at startup, from last time. */
   static savedSession(): SavedSession {
     sessionFile ??= jsonFile<SavedSession>('session.json', { urls: [], active: 0 });
-    return sessionFile.value;
+    // Only what a tab can really open again, whatever the file holds.
+    const saved = sessionFile.value;
+    const urls = Array.isArray(saved.urls) ? saved.urls.filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url)).slice(0, 200) : [];
+    return { urls, active: Number.isInteger(saved.active) ? saved.active : 0 };
   }
 
   readonly window: BaseWindow;
@@ -239,6 +245,10 @@ export class BrowserWin {
     });
     this.window.on('enter-full-screen', () => this.pushState());
     this.window.on('leave-full-screen', () => this.pushState());
+    // Saved as it changes too: the app can be ended without its windows being closed.
+    for (const event of ['resized', 'moved', 'maximize', 'unmaximize'] as const) {
+      this.window.on(event as 'resized', () => this.saveBounds());
+    }
     this.window.on('close', () => this.saveBounds());
     this.window.on('closed', () => this.destroyed());
 
@@ -402,6 +412,8 @@ export class BrowserWin {
               nodeIntegrationInSubFrames: true,
               // As in other browsers: sound does not start until the user has used the page.
               autoplayPolicy: 'document-user-activation-required',
+              // A page that keeps opening alert boxes can be told to stop.
+              safeDialogs: true,
             },
           },
     );
@@ -481,7 +493,10 @@ export class BrowserWin {
       // A few sites get the browser's own name (see userAgentFor); the page, its workers and
       // its requests all follow the tab's setting.
       const agent = userAgentFor(details.url);
-      if (contents.getUserAgent() !== agent) contents.setUserAgent(agent);
+      if (contents.getUserAgent() !== agent) {
+        if (process.argv.includes('--log-shields')) console.log('[shields] user agent for', details.url, '->', agent.slice(-40), '(was', contents.getUserAgent().slice(-40), ')');
+        contents.setUserAgent(agent);
+      }
       if (process.argv.includes('--log-shields')) console.log('[shields] navigation', details.url, 'from', details.initiator?.url ?? '-');
       // The address appears as soon as the page is asked for, as in any browser.
       if (/^https?:/i.test(details.url)) tab.url = details.url;
@@ -809,6 +824,7 @@ export class BrowserWin {
 
   private destroyed(): void {
     BrowserWin.all.delete(this);
+    if (![...BrowserWin.all].some((win) => !win.isPrivate)) stopThumbnails();
     if (this.blockedTimer) clearTimeout(this.blockedTimer);
     if (this.dragTimer) clearInterval(this.dragTimer);
     for (const tab of this.tabs.splice(0)) {

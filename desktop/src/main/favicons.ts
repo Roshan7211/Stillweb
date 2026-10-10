@@ -16,6 +16,9 @@ const fetching = new Set<string>();
 
 export function loadFavicons(): void {
   file = jsonFile<Record<string, Entry>>('favicons.json', {}, 8000);
+  for (const [host, entry] of Object.entries(file.value)) {
+    if (!entry || typeof entry.icon !== 'string' || !entry.icon.startsWith('data:image/') || typeof entry.time !== 'number') delete file.value[host];
+  }
 }
 
 function hostOf(url: string): string | null {

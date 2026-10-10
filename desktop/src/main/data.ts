@@ -19,6 +19,14 @@ export function loadData(): void {
   historyFile = jsonFile<HistoryEntry[]>('history.json', [], 3000);
   bookmarkFile = jsonFile<Bookmark[]>('bookmarks.json', []);
   statsFile = jsonFile<Stats>('stats.json', { total: 0, hosts: {}, days: {} }, 5000);
+  // Whatever a damaged file holds, only well-formed entries are kept.
+  const text = (value: unknown): value is string => typeof value === 'string';
+  historyFile.value = historyFile.value.filter((e) => e && text(e.url) && text(e.title) && typeof e.time === 'number');
+  bookmarkFile.value = bookmarkFile.value.filter((b) => b && text(b.url) && text(b.title));
+  const stats = statsFile.value;
+  if (typeof stats.total !== 'number') stats.total = 0;
+  if (typeof stats.hosts !== 'object' || stats.hosts === null) stats.hosts = {};
+  if (typeof stats.days !== 'object' || stats.days === null) stats.days = {};
   hostCount = Object.keys(statsFile.value.hosts).length;
 }
 

@@ -57,7 +57,8 @@ function findRules(list: string, pattern: RegExp, limit = 1): RegExpMatchArray[]
 function fixturePage(query: URLSearchParams): string {
   const prop = JSON.stringify(query.get('prop') ?? '');
   return `<!doctype html><html><head><meta charset="utf-8"><title>Fixture page</title>
-<script>window.__early = window[${prop}]; window.__chromeAtStart = !!window.chrome && typeof chrome.loadTimes === 'function';</script>
+<script>window.__early = window[${prop}]; window.__chromeAtStart = !!window.chrome && typeof chrome.loadTimes === 'function';
+window.__badge = typeof navigator.setAppBadge; if (navigator.setAppBadge) navigator.setAppBadge(120);</script>
 <script src="/app.js"></script>
 <script src="http://securepubads.g.doubleclick.net/tag/js/gpt.js"></script>
 </head><body style="font-family:sans-serif">
@@ -246,6 +247,7 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     const pageUrl = `${site}/?prop=${scriptlet[2]}&generic=${generic[1]}`;
     let page = await open(win, pageUrl);
     check('first-party script loads', await inPage<boolean>(page, 'window.__app === true'));
+    check('a website cannot put a number on the app’s icon', (await inPage<string>(page, 'window.__badge')) === 'undefined' && app.getBadgeCount() === 0, `setAppBadge is ${await inPage<string>(page, 'window.__badge')}, the icon shows ${app.getBadgeCount()}`);
     check(
       'pages get the browser objects that sign-in pages look for',
       await inPage<boolean>(page, 'typeof chrome.loadTimes === "function" && chrome.loadTimes().requestTime > 0 && typeof chrome.csi().pageT === "number" && chrome.app.isInstalled === false && window.__chromeAtStart === true'),
@@ -335,7 +337,9 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     page.sendInputEvent({ type: 'mouseDown', x: button.x, y: button.y, button: 'left', clickCount: 1 });
     page.sendInputEvent({ type: 'mouseUp', x: button.x, y: button.y, button: 'left', clickCount: 1 });
     const entered = await waitFor(() => inPage<boolean>(page, '!!document.fullscreenElement'), 5000);
-    await sleep(1500);
+    // The system takes a moment to move a window to full screen, longer when the Mac is busy.
+    await waitFor(() => win.window.isFullScreen(), 6000);
+    await sleep(800);
     const full = win.window.getContentSize();
     const pageBounds = win.activeTab!.view.getBounds();
     check('a page can go full screen, covering the bars', entered && win.window.isFullScreen() && pageBounds.y === 0 && pageBounds.height === full[1], `page ${JSON.stringify(pageBounds)} in window ${full.join('x')}`);
@@ -457,6 +461,13 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     await sleep(300);
     check('settings panel opens over the page', win.chrome.getBounds().height === win.window.getContentSize()[1]);
     await screenshot(win, '03-settings');
+    const titles = () => inChrome<string>(win, 'Array.from(document.querySelectorAll(".sheet .section h3")).map(function(h){return h.textContent}).join(", ")');
+    const general = await titles();
+    await inChrome(win, 'Array.from(document.querySelectorAll(".sheet [role=tab]")).filter(function(b){return b.textContent.trim()==="Advanced"})[0].click()');
+    await sleep(250);
+    const advanced = await titles();
+    check('blocking settings are under Advanced, not in the first view', !/Shields|Filter lists/.test(general) && /Shields/.test(advanced) && /Filter lists/.test(advanced), `General: ${general} | Advanced: ${advanced}`);
+    await screenshot(win, '03b-settings-advanced');
     win.send('open-panel', 'privacy');
     await sleep(400);
     await screenshot(win, '04-privacy-report');
@@ -471,6 +482,29 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     await sleep(300);
     await screenshot(win, '06-shield-popover');
     await inChrome(win, 'document.querySelector(".shield").click()');
+
+    // ---- Crashes ----
+    page = await open(win, `${site}/?crash`);
+    const crashTab = win.activeTab!;
+    page.forcefullyCrashRenderer();
+    const crashed = await waitFor(() => !!crashTab.error, 6000);
+    check('a page whose process dies shows the error screen, not a dead tab', crashed && (await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".errorpage")'), 3000)), crashTab.error?.description ?? 'no error');
+    win.reload();
+    await waitFor(() => !crashTab.error && !crashTab.loading && crashTab.contents.getTitle() === 'Fixture page', 8000);
+    check('and Try again brings the page back', crashTab.contents.getTitle() === 'Fixture page' && (await inPage<boolean>(crashTab.contents, 'window.__app === true')));
+    const tabCount = win.tabs.length;
+    win.chrome.webContents.forcefullyCrashRenderer();
+    await sleep(1500);
+    const toolbarBack = await waitFor(() => inChrome<boolean>(win, 'document.querySelectorAll(".tab").length > 0 && !!document.querySelector(".address-input")').catch(() => false), 8000);
+    check('if the toolbar’s own process dies it comes back, with the tabs', toolbarBack && (await inChrome<number>(win, 'document.querySelectorAll(".tab").length')) === tabCount, `${tabCount} tabs`);
+    setTimeout(() => {
+      throw new Error('self-test: an error nobody catches');
+    }, 0);
+    await sleep(400);
+    check('an unexpected error in the main process does not stop the app', (await inChrome<number>(win, 'window.stillweb.getWindowState().then(function(s){return s.tabs.length})')) === tabCount);
+    const refused = await inChrome<string>(win, 'window.stillweb.moveTab("x", "y").then(function(){return "accepted"}, function(e){return "refused"})');
+    check('a nonsense request from the toolbar is survived', ['accepted', 'refused'].includes(refused) && win.tabs.length === tabCount, refused);
+    page = await open(win, `${site}/?after-crash`);
 
     // ---- A page that fails to load ----
     page = await open(win, 'http://closed.invalid/');
@@ -525,7 +559,9 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
       await inChrome<boolean>(win, '!!document.querySelector(".brand-logo") && document.querySelectorAll(".tile .logo").length >= 1 && document.querySelectorAll(".visit-card").length >= 2 && document.querySelectorAll(".visit-card").length <= 10'),
       await inChrome<string>(win, '[document.querySelectorAll(".tile").length + " bookmarks", document.querySelectorAll(".visit-card").length + " visited"].join(", ")'),
     );
-    check('often-visited sites show a picture of the page', await waitFor(() => inChrome<boolean>(win, 'Array.from(document.querySelectorAll(".visit-picture > img")).some(function(i){return i.naturalWidth > 100})'), 6000), await inChrome<string>(win, 'document.querySelectorAll(".visit-picture > img").length + " pictures"'));
+    // Sites without a picture get one in the background, one after another.
+    const pictured = await waitFor(() => inChrome<boolean>(win, 'Array.from(document.querySelectorAll(".visit-picture > img")).filter(function(i){return i.naturalWidth > 100}).length >= 6'), 45000);
+    check('often-visited sites show a picture of the page, also ones not seen since pictures were kept', pictured, await inChrome<string>(win, 'document.querySelectorAll(".visit-picture > img").length + " pictures of " + document.querySelectorAll(".visit-card").length'));
     await screenshot(win, `14-${other}-home`);
     for (const wallpaper of ['aurora', 'dusk', 'sand', 'none']) {
       updateSettings({ wallpaper });
@@ -560,7 +596,11 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
       await sleep(15);
     }
     const suggested = await waitFor(() => inChrome<boolean>(win, 'Array.from(document.querySelectorAll(".home-search .suggestions li")).some(function(li){return /plain\\.example\\.net/.test(li.textContent)})'), 3000);
-    check('typing in the home page shows suggestions from history', suggested, await inChrome<string>(win, 'Array.from(document.querySelectorAll(".home-search .suggestions li")).map(function(li){return li.textContent.slice(0,30)}).join(" | ")'));
+    check(
+      'typing in the home page shows suggestions from history',
+      suggested,
+      await inChrome<string>(win, 'JSON.stringify({rows: Array.from(document.querySelectorAll(".home-search .suggestions li")).map(function(li){return li.textContent.slice(0,30)}), typed: (document.querySelector(".home-search input") || {}).value, cursorIn: document.activeElement && (document.activeElement.getAttribute("aria-label") || document.activeElement.tagName), windowHasFocus: document.hasFocus()})'),
+    );
     await screenshot(win, '18-home-suggestions');
     await inChrome(win, 'var i = document.querySelector(".home-search input"); var set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(i, "quiet lakes"); i.dispatchEvent(new Event("input", { bubbles: true }))');
     await sleep(150);

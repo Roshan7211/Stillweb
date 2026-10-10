@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import type { DownloadState } from '../shared/types';
 import { BrowserWin } from './browserWindow';
+import { isHiddenPage } from './thumbnails';
 
 type Entry = { state: DownloadState; item: DownloadItem | null };
 
@@ -37,6 +38,8 @@ export function getDownloads(): DownloadState[] {
 
 export function attachDownloads(session: Session): void {
   session.on('will-download', (_event, item, contents) => {
+    // Pages opened out of sight (for home page pictures) never download anything.
+    if (isHiddenPage(contents)) return item.cancel();
     const file = freePath(app.getPath('downloads'), item.getFilename());
     item.setSavePath(file);
     const state: DownloadState = {

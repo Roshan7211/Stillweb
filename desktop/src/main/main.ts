@@ -43,6 +43,15 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 process.on('uncaughtException', (error) => console.error('[stillweb] unexpected error:', error));
 process.on('unhandledRejection', (reason) => console.error('[stillweb] unexpected rejection:', reason));
 
+// Websites can ask for a number on the app's icon (an unread count). That is meant for a site
+// installed as its own app; in a browser it puts one site's number on the whole browser. Off,
+// for pages and their workers alike.
+app.commandLine.appendSwitch('disable-blink-features', 'Badging');
+
+/** `--log-startup`: prints how long each step of starting up took. */
+const started = Date.now();
+const logStartup = process.argv.includes('--log-startup') ? (step: string) => console.log(`[startup] ${String(Date.now() - started).padStart(5)} ms  ${step}`) : () => {};
+
 registerSchemes();
 
 /** An address given on the command line (the app was asked to open a link). */
@@ -84,6 +93,9 @@ if (!testing && !app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(() => {
+    logStartup('app ready');
+    // A number left on the icon by an earlier version goes away.
+    app.setBadgeCount(0);
     app.userAgentFallback = browserUserAgent();
     loadSettings();
     loadData();
@@ -133,7 +145,10 @@ if (!testing && !app.requestSingleInstanceLock()) {
       first.createTab({ url: startUrl });
     }
     // Loading the filters keeps this process busy for a moment: the window is drawn first.
+    logStartup('window created');
+    shieldEngine.whenReady(() => logStartup(shieldEngine.isReady ? `filters ready (${shieldEngine.buildMillis} ms of work)` : 'filters failed'));
     first.whenInterfaceReady(() => {
+      logStartup('window on screen');
       shieldEngine.initialize();
       if (selfTest) void runSelfTest(first);
       else if (liveCheck !== undefined) void runLiveCheck(first, liveCheck.split(',').filter(Boolean));

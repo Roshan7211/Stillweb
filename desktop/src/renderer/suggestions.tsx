@@ -56,7 +56,7 @@ export function useSuggestions() {
       const before = last.current;
       const lower = query.toLowerCase();
       const fitting = lower.startsWith(before.query.toLowerCase()) ? before.remote.filter((s) => s.kind !== 'search' || s.text.toLowerCase().startsWith(lower)) : [];
-      const state = { query, local: before.local, remote: fitting };
+      const state = { query, local: [] as Suggestion[], remote: fitting };
       last.current = state;
       setItems(merge(query, [], fitting));
 

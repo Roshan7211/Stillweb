@@ -1,11 +1,12 @@
 // The side panels: Settings, History, Bookmarks, Downloads, Privacy report and About.
-import { FolderOpen, Trash2, X } from 'lucide-react';
+import { FolderOpen, HardDrive, Search, ShieldCheck, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { SEARCH_ENGINES, displayUrl, type SearchEngineId } from '../../../src/browser/url';
 import type { AboutInfo, Bookmark, DownloadState, EngineStatus, FilterListInfo, HistoryEntry, LicenseData, Panel, PrivacyReport, Settings } from '../shared/types';
 import { api } from './api';
 import { Row, Section, Toggle } from './controls';
+import { LOGO } from './logo';
 
 const TITLES: Record<Panel, string> = {
   settings: 'Settings',
@@ -33,7 +34,7 @@ export function PanelSheet({ panel, leaving, settings, engine, isPrivate, onClos
         {panel === 'bookmarks' ? <BookmarksPanel onClose={onClose} /> : null}
         {panel === 'downloads' ? <DownloadsPanel /> : null}
         {panel === 'privacy' ? <PrivacyPanel /> : null}
-        {panel === 'about' ? <AboutPanel /> : null}
+        {panel === 'about' ? <AboutPanel engine={engine} /> : null}
       </div>
     </aside>
   );
@@ -48,6 +49,7 @@ function Empty({ children }: { children: ReactNode }) {
 function SettingsPanel({ settings, engine }: { settings: Settings; engine: EngineStatus | null }) {
   const [lists, setLists] = useState<FilterListInfo[]>([]);
   const [updateNote, setUpdateNote] = useState('');
+  const [view, setView] = useState<'general' | 'advanced'>('general');
   /** Clearing takes two presses: 'ask' is after the first. */
   const [clearing, setClearing] = useState<'idle' | 'ask' | 'done'>('idle');
   const shields = settings.shields;
@@ -59,136 +61,153 @@ function SettingsPanel({ settings, engine }: { settings: Settings; engine: Engin
 
   return (
     <>
-      <Section title="Search">
-        <Row title="Search engine">
-          <select
-            aria-label="Search engine"
-            value={settings.searchEngine}
-            onChange={(event) => void api.setSettings({ searchEngine: event.target.value as SearchEngineId })}>
-            {SEARCH_ENGINES.map((engineOption) => (
-              <option key={engineOption.id} value={engineOption.id}>
-                {engineOption.label}
-              </option>
-            ))}
-            <option value="custom">Custom</option>
-          </select>
-        </Row>
-        {settings.searchEngine === 'custom' ? (
-          <Row title="Search address" detail="Use %s where the search words go.">
-            <input
-              className="text-input"
-              aria-label="Custom search address"
-              placeholder="https://example.com/search?q=%s"
-              defaultValue={settings.customSearchTemplate}
-              onBlur={(event) => void api.setSettings({ customSearchTemplate: event.target.value.trim() })}
-            />
-          </Row>
-        ) : null}
-        <Row title="Search suggestions" detail="Sends what you type to the search engine, without cookies. Never in private windows.">
-          <Toggle label="Search suggestions" checked={settings.searchSuggestions} onChange={(next) => void api.setSettings({ searchSuggestions: next })} />
-        </Row>
-      </Section>
+      {/* Everyday settings first; blocking has its own tab, for those who want to tune it. */}
+      <div className="segmented wide" role="tablist" aria-label="Settings">
+        <button role="tab" aria-selected={view === 'general'} className={view === 'general' ? 'on' : undefined} onClick={() => setView('general')}>
+          General
+        </button>
+        <button role="tab" aria-selected={view === 'advanced'} className={view === 'advanced' ? 'on' : undefined} onClick={() => setView('advanced')}>
+          Advanced
+        </button>
+      </div>
 
-      <Section title="Appearance">
-        <Row title="Theme">
-          <div className="segmented" role="radiogroup" aria-label="Theme">
-            {(['system', 'light', 'dark'] as const).map((theme) => (
-              <button key={theme} role="radio" aria-checked={settings.theme === theme} className={settings.theme === theme ? 'on' : undefined} onClick={() => void api.setSettings({ theme })}>
-                {theme === 'system' ? 'System' : theme === 'light' ? 'Light' : 'Dark'}
-              </button>
-            ))}
-          </div>
-        </Row>
-      </Section>
+      {view === 'general' ? (
+        <>
+          <Section title="Search">
+            <Row title="Search engine">
+              <select
+                aria-label="Search engine"
+                value={settings.searchEngine}
+                onChange={(event) => void api.setSettings({ searchEngine: event.target.value as SearchEngineId })}>
+                {SEARCH_ENGINES.map((engineOption) => (
+                  <option key={engineOption.id} value={engineOption.id}>
+                    {engineOption.label}
+                  </option>
+                ))}
+                <option value="custom">Custom</option>
+              </select>
+            </Row>
+            {settings.searchEngine === 'custom' ? (
+              <Row title="Search address" detail="Use %s where the search words go.">
+                <input
+                  className="text-input"
+                  aria-label="Custom search address"
+                  placeholder="https://example.com/search?q=%s"
+                  defaultValue={settings.customSearchTemplate}
+                  onBlur={(event) => void api.setSettings({ customSearchTemplate: event.target.value.trim() })}
+                />
+              </Row>
+            ) : null}
+            <Row title="Search suggestions" detail="Sends what you type to the search engine, without cookies. Never in private windows.">
+              <Toggle label="Search suggestions" checked={settings.searchSuggestions} onChange={(next) => void api.setSettings({ searchSuggestions: next })} />
+            </Row>
+          </Section>
 
-      <Section title="Shields">
-        <Row title="Block ads and trackers" detail="Turn off for one site from the shield button in the toolbar.">
-          <Toggle label="Block ads and trackers" checked={shields.enabled} onChange={(next) => setShield({ enabled: next })} />
-        </Row>
-        <Row title="Hide leftover ad spaces" detail="Removes the empty boxes and banners that blocked ads leave behind.">
-          <Toggle label="Hide leftover ad spaces" checked={shields.cosmeticFiltering} disabled={!shields.enabled} onChange={(next) => setShield({ cosmeticFiltering: next })} />
-        </Row>
-        <Row title="Block pop-ups" detail="Stops windows a page opens by itself, and windows to other sites opened by clicking on a video.">
-          <Toggle label="Block pop-ups" checked={shields.blockPopups} disabled={!shields.enabled} onChange={(next) => setShield({ blockPopups: next })} />
-        </Row>
-        <Row title="Block third-party cookies" detail="Other sites embedded in a page can’t use cookies to follow you.">
-          <Toggle label="Block third-party cookies" checked={shields.blockThirdPartyCookies} disabled={!shields.enabled} onChange={(next) => setShield({ blockThirdPartyCookies: next })} />
-        </Row>
-        <Row title="Use secure connections" detail="Opens sites over HTTPS when they support it.">
-          <Toggle label="Use secure connections" checked={shields.httpsUpgrade} onChange={(next) => setShield({ httpsUpgrade: next })} />
-        </Row>
-      </Section>
+          <Section title="Appearance">
+            <Row title="Theme">
+              <div className="segmented" role="radiogroup" aria-label="Theme">
+                {(['system', 'light', 'dark'] as const).map((theme) => (
+                  <button key={theme} role="radio" aria-checked={settings.theme === theme} className={settings.theme === theme ? 'on' : undefined} onClick={() => void api.setSettings({ theme })}>
+                    {theme === 'system' ? 'System' : theme === 'light' ? 'Light' : 'Dark'}
+                  </button>
+                ))}
+              </div>
+            </Row>
+          </Section>
 
-      <Section title="Filter lists">
-        {lists.map((list) => (
-          <Row key={list.id} title={list.title} detail={list.purpose}>
-            <Toggle label={list.title} checked={list.enabled} disabled={!shields.enabled} onChange={(next) => void api.setFilterListEnabled(list.id, next)} />
-          </Row>
-        ))}
-        <Row
-          title="Filter version"
-          detail={
-            engine?.lastError
-              ? `Could not be loaded: ${engine.lastError}`
-              : engine?.version
-                ? `${new Date(engine.version).toLocaleString()} (${engine.source === 'downloaded' ? 'downloaded' : 'built in'})${updateNote ? ` · ${updateNote}` : ''}`
-                : 'Loading…'
-          }>
-          <button
-            className="button"
-            onClick={() => {
-              setUpdateNote('Checking…');
-              api.checkFilterUpdate().then(setUpdateNote, (error: Error) => setUpdateNote(error.message));
-            }}>
-            Check for updates
-          </button>
-        </Row>
-      </Section>
-
-      {settings.disabledSites.length > 0 ? (
-        <Section title="Sites with Shields off">
-          {settings.disabledSites.map((site) => (
-            <Row key={site} title={site}>
-              <button className="button" onClick={() => void api.setSiteShields(site, true)}>
-                Turn on
+          <Section title="Startup and privacy">
+            <Row title="Reopen tabs from last time">
+              <Toggle label="Reopen tabs from last time" checked={settings.restoreTabs} onChange={(next) => void api.setSettings({ restoreTabs: next })} />
+            </Row>
+            <Row title="Clear browsing data when quitting" detail="History, cookies and site data are deleted every time you quit.">
+              <Toggle label="Clear browsing data when quitting" checked={settings.clearDataOnExit} onChange={(next) => void api.setSettings({ clearDataOnExit: next })} />
+            </Row>
+            <Row title="Clear browsing data now" detail="Deletes history, cookies, cache and site data. Bookmarks are kept.">
+              <button
+                className="button danger"
+                disabled={clearing === 'done'}
+                onBlur={() => setClearing((state) => (state === 'ask' ? 'idle' : state))}
+                onClick={() => {
+                  if (clearing === 'idle') setClearing('ask');
+                  else if (clearing === 'ask') void api.clearBrowsingData().then(() => setClearing('done'));
+                }}>
+                {clearing === 'ask' ? 'Press again to clear' : clearing === 'done' ? 'Cleared' : 'Clear'}
               </button>
             </Row>
-          ))}
-        </Section>
-      ) : null}
+          </Section>
+        </>
+      ) : (
+        <>
+          <Section title="Shields">
+            <Row title="Block ads and trackers" detail="Turn off for one site from the shield button in the toolbar.">
+              <Toggle label="Block ads and trackers" checked={shields.enabled} onChange={(next) => setShield({ enabled: next })} />
+            </Row>
+            <Row title="Hide leftover ad spaces" detail="Removes the empty boxes and banners that blocked ads leave behind.">
+              <Toggle label="Hide leftover ad spaces" checked={shields.cosmeticFiltering} disabled={!shields.enabled} onChange={(next) => setShield({ cosmeticFiltering: next })} />
+            </Row>
+            <Row title="Block pop-ups" detail="Stops windows a page opens by itself, and windows to other sites opened by clicking on a video.">
+              <Toggle label="Block pop-ups" checked={shields.blockPopups} disabled={!shields.enabled} onChange={(next) => setShield({ blockPopups: next })} />
+            </Row>
+            <Row title="Block third-party cookies" detail="Other sites embedded in a page can’t use cookies to follow you.">
+              <Toggle label="Block third-party cookies" checked={shields.blockThirdPartyCookies} disabled={!shields.enabled} onChange={(next) => setShield({ blockThirdPartyCookies: next })} />
+            </Row>
+            <Row title="Use secure connections" detail="Opens sites over HTTPS when they support it.">
+              <Toggle label="Use secure connections" checked={shields.httpsUpgrade} onChange={(next) => setShield({ httpsUpgrade: next })} />
+            </Row>
+          </Section>
 
-      {settings.popupSites.length > 0 ? (
-        <Section title="Sites that may open pop-ups">
-          {settings.popupSites.map((site) => (
-            <Row key={site} title={site}>
-              <button className="button" onClick={() => void api.setSitePopups(site, false)}>
-                Remove
+          <Section title="Filter lists">
+            {lists.map((list) => (
+              <Row key={list.id} title={list.title} detail={list.purpose}>
+                <Toggle label={list.title} checked={list.enabled} disabled={!shields.enabled} onChange={(next) => void api.setFilterListEnabled(list.id, next)} />
+              </Row>
+            ))}
+            <Row
+              title="Filter version"
+              detail={
+                engine?.lastError
+                  ? `Could not be loaded: ${engine.lastError}`
+                  : engine?.version
+                    ? `${new Date(engine.version).toLocaleString()} (${engine.source === 'downloaded' ? 'downloaded' : 'built in'})${updateNote ? ` · ${updateNote}` : ''}`
+                    : 'Loading…'
+              }>
+              <button
+                className="button"
+                onClick={() => {
+                  setUpdateNote('Checking…');
+                  api.checkFilterUpdate().then(setUpdateNote, (error: Error) => setUpdateNote(error.message));
+                }}>
+                Check for updates
               </button>
             </Row>
-          ))}
-        </Section>
-      ) : null}
+          </Section>
 
-      <Section title="Startup and privacy">
-        <Row title="Reopen tabs from last time">
-          <Toggle label="Reopen tabs from last time" checked={settings.restoreTabs} onChange={(next) => void api.setSettings({ restoreTabs: next })} />
-        </Row>
-        <Row title="Clear browsing data when quitting" detail="History, cookies and site data are deleted every time you quit.">
-          <Toggle label="Clear browsing data when quitting" checked={settings.clearDataOnExit} onChange={(next) => void api.setSettings({ clearDataOnExit: next })} />
-        </Row>
-        <Row title="Clear browsing data now" detail="Deletes history, cookies, cache and site data. Bookmarks are kept.">
-          <button
-            className="button danger"
-            disabled={clearing === 'done'}
-            onBlur={() => setClearing((state) => (state === 'ask' ? 'idle' : state))}
-            onClick={() => {
-              if (clearing === 'idle') setClearing('ask');
-              else if (clearing === 'ask') void api.clearBrowsingData().then(() => setClearing('done'));
-            }}>
-            {clearing === 'ask' ? 'Press again to clear' : clearing === 'done' ? 'Cleared' : 'Clear'}
-          </button>
-        </Row>
-      </Section>
+          {settings.disabledSites.length > 0 ? (
+            <Section title="Sites with Shields off">
+              {settings.disabledSites.map((site) => (
+                <Row key={site} title={site}>
+                  <button className="button" onClick={() => void api.setSiteShields(site, true)}>
+                    Turn on
+                  </button>
+                </Row>
+              ))}
+            </Section>
+          ) : null}
+
+          {settings.popupSites.length > 0 ? (
+            <Section title="Sites that may open pop-ups">
+              {settings.popupSites.map((site) => (
+                <Row key={site} title={site}>
+                  <button className="button" onClick={() => void api.setSitePopups(site, false)}>
+                    Remove
+                  </button>
+                </Row>
+              ))}
+            </Section>
+          ) : null}
+
+        </>
+      )}
     </>
   );
 }
@@ -393,55 +412,102 @@ function PrivacyPanel() {
   );
 }
 
-function AboutPanel() {
+function AboutPanel({ engine }: { engine: EngineStatus | null }) {
   const [about, setAbout] = useState<AboutInfo | null>(null);
   const [licenses, setLicenses] = useState<LicenseData | null>(null);
   const [lists, setLists] = useState<FilterListInfo[]>([]);
   useEffect(() => {
     void api.getAbout().then(setAbout);
     void api.getFilterLists().then(setLists);
+    // Loaded up front, so opening "Open-source licenses" shows them at once.
+    void api.getLicenses().then(setLicenses);
   }, []);
+  const filtersDate = engine?.version ? new Date(engine.version).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+
   return (
     <>
-      <div className="card stat-block">
-        <span className="wordmark small">Stillweb</span>
-        <span className="muted">
-          Version {about?.version ?? ''} · Chromium {about?.chromium ?? ''}
-        </span>
+      <div className="about-head">
+        <img className="about-logo" src={LOGO} alt="" draggable={false} />
+        <h3 className="about-name">Stillweb</h3>
+        <p className="muted">A quieter web. Ads, trackers and pop-ups are stopped before they load.</p>
+        <span className="about-version">Version {about?.version ?? '…'}</span>
       </div>
 
-      <Section title="Filter lists">
-        {lists.map((list) => (
-          <Row key={list.id} title={list.title} detail={list.homepage ? `${list.license} · ${displayUrl(list.homepage)}` : list.license} />
-        ))}
-        <p className="muted note">The lists are the work of their authors and volunteers, and are used under the licenses shown.</p>
+      <div className="card about-facts">
+        <div className="fact">
+          <span className="muted">Browser engine</span>
+          <span>Chromium {about?.chromium.split('.')[0] ?? '…'}</span>
+        </div>
+        <div className="fact">
+          <span className="muted">Filters</span>
+          <span>{engine?.lastError ? 'Not loaded' : (filtersDate ?? 'Loading…')}</span>
+        </div>
+        <div className="fact">
+          <span className="muted">Filter lists in use</span>
+          <span>{lists.filter((list) => list.enabled).length}</span>
+        </div>
+      </div>
+
+      <Section title="Your privacy">
+        <ul className="about-points">
+          <li>
+            <ShieldCheck size={16} />
+            <span>Stillweb has no account and collects nothing about you or the pages you visit.</span>
+          </li>
+          <li>
+            <Search size={16} />
+            <span>Search suggestions, when they are on, send what you type to your search engine, without cookies.</span>
+          </li>
+          <li>
+            <HardDrive size={16} />
+            <span>History, bookmarks and settings stay on this computer.</span>
+          </li>
+        </ul>
+        {about?.privacyUrl ? (
+          <Row title="Privacy policy">
+            <button className="button" onClick={() => void api.newTab(about.privacyUrl!)}>
+              Open
+            </button>
+          </Row>
+        ) : null}
       </Section>
 
-      <Section title="Open-source licenses">
-        {licenses ? (
-          <>
-            {licenses.components.map((component) => (
-              <details key={component.name} className="license">
+      <Section title="Credits">
+        <details className="license">
+          <summary>
+            Filter lists <span className="muted">{lists.length} lists</span>
+          </summary>
+          <div className="credit-list">
+            {lists.map((list) => (
+              <div key={list.id} className="credit">
+                <span>{list.title}</span>
+                <span className="muted">{list.homepage ? `${list.license} · ${displayUrl(list.homepage)}` : list.license}</span>
+              </div>
+            ))}
+            <p className="muted note">The lists are the work of their authors and volunteers, and are used under the licenses shown.</p>
+          </div>
+        </details>
+        <details className="license">
+          <summary>
+            Open-source licenses <span className="muted">{licenses ? `${licenses.components.length} components` : ''}</span>
+          </summary>
+          <div className="credit-list">
+            {(licenses?.components ?? []).map((component) => (
+              <details key={component.name} className="license inner">
                 <summary>
                   {component.name} <span className="muted">{component.license}</span>
                 </summary>
                 <pre>{component.text}</pre>
               </details>
             ))}
-            {Object.entries(licenses.texts).map(([id, text]) => (
-              <details key={id} className="license">
+            {Object.entries(licenses?.texts ?? {}).map(([id, text]) => (
+              <details key={id} className="license inner">
                 <summary>{id} license text</summary>
                 <pre>{text}</pre>
               </details>
             ))}
-          </>
-        ) : (
-          <Row title="Software and data Stillweb is built with">
-            <button className="button" onClick={() => void api.getLicenses().then(setLicenses)}>
-              Show
-            </button>
-          </Row>
-        )}
+          </div>
+        </details>
         <Row title="Chromium and its libraries" detail="Opens the notices file that ships with the app.">
           <button className="button" onClick={() => void api.openChromiumLicenses()}>
             Open
@@ -449,11 +515,7 @@ function AboutPanel() {
         </Row>
       </Section>
 
-      {about?.privacyUrl ? (
-        <button className="link" onClick={() => void api.newTab(about.privacyUrl!)}>
-          Privacy policy
-        </button>
-      ) : null}
+      <p className="about-foot muted">© {new Date().getFullYear()} Stillweb</p>
     </>
   );
 }

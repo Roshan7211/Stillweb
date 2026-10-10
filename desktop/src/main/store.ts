@@ -31,7 +31,11 @@ export class JsonFile<T> {
     this.file = dataPath(name);
     let value = fallback;
     try {
-      value = JSON.parse(fs.readFileSync(this.file, 'utf8')) as T;
+      const read: unknown = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+      // A damaged file can still be valid JSON of the wrong kind (a list where settings should
+      // be): that must not stop the app from starting.
+      const sameKind = Array.isArray(fallback) ? Array.isArray(read) : typeof read === 'object' && read !== null && !Array.isArray(read);
+      if (sameKind) value = read as T;
     } catch {
       // Missing or unreadable: start from the default.
     }

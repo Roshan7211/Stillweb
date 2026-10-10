@@ -26,7 +26,7 @@ import { clearMediaSites } from './mediaSites';
 import { showAppMenu, showTabMenu } from './menus';
 import { getSettings, updateSettings } from './settings';
 import { pageInfo } from './shields';
-import { clearThumbnails, thumbnailFor } from './thumbnails';
+import { clearThumbnails, thumbnailFor, wantThumbnails } from './thumbnails';
 import { checkForFilterUpdate } from './updater';
 import { chooseWallpaper, photoWallpapers, shuffledPhoto, wallpaperImage } from './wallpaper';
 
@@ -140,7 +140,16 @@ const handlers: Handlers = {
       return { url: entry.url, title: entry.title, icon, thumb: thumbnailFor(entry.url) };
     };
     const bookmarks = [...getBookmarks()].reverse().slice(0, 12);
-    return { bookmarks: bookmarks.map(tile), visited: topSites(10).map(tile) };
+    const visited = topSites(10).map(tile);
+    // Sites visited before pictures were kept get theirs now, out of sight.
+    wantThumbnails(
+      win.session,
+      visited.filter((site) => !site.thumb).map((site) => site.url),
+      () => {
+        for (const open of BrowserWin.all) open.send('home-changed', null);
+      },
+    );
+    return { bookmarks: bookmarks.map(tile), visited };
   },
   chooseWallpaper: async (win) => {
     if (!(await chooseWallpaper(win.window))) return false;

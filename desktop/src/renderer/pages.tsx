@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { describeLoadError, type LoadErrorInfo } from '../../../src/browser/loadErrors';
 import { displayHost, searchUrl } from '../../../src/browser/url';
-import logoSvg from '../../../assets/source/stillweb-icon.svg';
 import type { EngineStatus, HomeTile, HomeTiles, LoadError, Panel, PhotoWallpaper, Settings } from '../shared/types';
 import { api } from './api';
+import { LOGO } from './logo';
 import { SuggestionList, useSuggestions, valueOf } from './suggestions';
 import { WALLPAPERS, chooseWallpaper } from './wallpapers';
 
@@ -27,13 +27,11 @@ type NewTabProps = {
   onOpenPanel: (panel: Panel) => void;
 };
 
-const LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(logoSvg)}`;
-
 /** A steady color for a site that has no icon, so its tile is still its own. */
-function tint(host: string): string {
+function tint(host: string, lightness = 42): string {
   let hash = 0;
   for (let i = 0; i < host.length; i++) hash = (hash * 31 + host.charCodeAt(i)) % 360;
-  return `hsl(${hash} 52% 42%)`;
+  return `hsl(${hash} 52% ${lightness}%)`;
 }
 
 /** A site's logo on a solid tile; its first letter on its own color when the site has no icon. */
@@ -73,11 +71,18 @@ function VisitCard({ tile }: { tile: HomeTile }) {
   const [failed, setFailed] = useState(false);
   return (
     <button className="visit-card" title={tile.url} onClick={() => void api.navigate(tile.url)}>
-      <span className="visit-picture">
-        {tile.thumb && !failed ? <img src={tile.thumb} alt="" draggable={false} onError={() => setFailed(true)} /> : <Logo tile={tile} />}
-      </span>
+      {tile.thumb && !failed ? (
+        <span className="visit-picture">
+          <img src={tile.thumb} alt="" draggable={false} onError={() => setFailed(true)} />
+        </span>
+      ) : (
+        // Until the page's picture has arrived: a solid card in the site's own color.
+        <span className="visit-picture waiting" style={{ background: `linear-gradient(140deg, ${tint(host)}, ${tint(host, 26)})` }}>
+          <Logo tile={tile} />
+        </span>
+      )}
       <span className="visit-name">
-        {tile.thumb && !failed ? <Logo tile={tile} small /> : null}
+        <Logo tile={tile} small />
         <span>{host}</span>
       </span>
     </button>
@@ -175,6 +180,15 @@ export function NewTabPage({ isPrivate, totalBlocked, totalUpgrades, engine, set
   }, [photo]);
 
   const pick = (id: string) => void api.setSettings({ wallpaper: id });
+  // The background chooser closes with Escape, like every other pop-up here.
+  useEffect(() => {
+    if (!choosing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setChoosing(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [choosing]);
   const saved = timeSaved(totalBlocked);
   const ink = wallpaper ? (wallpaper.kind === 'photo' ? 'light' : wallpaper.ink) : null;
 
@@ -184,7 +198,7 @@ export function NewTabPage({ isPrivate, totalBlocked, totalUpgrades, engine, set
       style={wallpaper?.kind === 'drawn' ? { background: wallpaper.background } : undefined}>
       {photo ? <div className={`wallpaper-photo${photoReady === photo.id ? ' ready' : ''}`} style={{ backgroundImage: `url("${photo.url}")` }} /> : null}
 
-      <div className="newtab-scroll">
+      <div className="newtab-scroll" onMouseDown={() => setChoosing(false)}>
         <div className="newtab-inner">
           {isPrivate ? (
             <div className="card notice">

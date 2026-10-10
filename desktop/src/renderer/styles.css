@@ -57,6 +57,23 @@ p {
   position: relative;
 }
 
+/* Shown only if the interface itself failed (see index.tsx). */
+.recover {
+  height: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding-left: 90px;
+  background: var(--surface, #1e2024);
+  color: var(--text, #ecedef);
+  -webkit-app-region: drag;
+}
+
+.recover .button {
+  -webkit-app-region: no-drag;
+}
+
 /* ---- Buttons ---- */
 
 .icon-button {
@@ -659,6 +676,15 @@ select {
   background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
+.segmented.wide {
+  display: flex;
+}
+
+.segmented.wide button {
+  flex: 1;
+  height: 28px;
+}
+
 .segmented button {
   height: 26px;
   padding: 0 11px;
@@ -826,6 +852,126 @@ select {
   user-select: text;
 }
 
+/* ---- About ---- */
+
+.about-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 2px;
+  text-align: center;
+}
+
+.about-logo {
+  width: 68px;
+  height: 68px;
+  margin-bottom: 6px;
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+.about-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.about-version {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: var(--accentSoft);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.about-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 12px 6px;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 0 8px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.fact + .fact {
+  border-left: 1px solid var(--border);
+}
+
+.fact .muted {
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.about-points {
+  margin: 0;
+  padding: 10px 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.about-points li {
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+}
+
+.about-points svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.license summary {
+  cursor: default;
+  font-weight: 500;
+}
+
+.license summary .muted {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.credit-list {
+  padding: 8px 0 2px 14px;
+}
+
+.credit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 0;
+}
+
+.credit .muted {
+  font-size: 12px;
+}
+
+.license.inner {
+  padding: 6px 0;
+}
+
+.license.inner + .license.inner {
+  border-top: 1px solid var(--border);
+}
+
+.about-foot {
+  align-self: center;
+  font-size: 11.5px;
+}
+
 /* ---- New tab and error pages ---- */
 
 .page {
@@ -863,8 +1009,9 @@ select {
 .newtab.on-photo {
   background: #0d1016;
   /* A photo can be bright anywhere: panes on it are dark glass, so white text always reads. */
-  --pane: rgba(8, 10, 14, 0.42);
-  --pane-hover: rgba(8, 10, 14, 0.58);
+  --pane: rgba(10, 12, 17, 0.72);
+  --pane-hover: rgba(10, 12, 17, 0.84);
+  --pane-border: rgba(255, 255, 255, 0.24);
 }
 
 .wallpaper-photo {
@@ -902,9 +1049,9 @@ select {
   bottom: 16px;
   height: 28px;
   padding: 0 11px;
-  border: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.28);
+  background: rgba(10, 12, 17, 0.6);
   color: rgba(255, 255, 255, 0.82);
   font-size: 12px;
   transition:
@@ -913,7 +1060,7 @@ select {
 }
 
 .photo-credit:hover {
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(10, 12, 17, 0.8);
   color: #fff;
 }
 
@@ -924,21 +1071,24 @@ select {
   --ink-muted: var(--muted);
   --pane: var(--surface);
   --pane-hover: color-mix(in srgb, var(--surface) 80%, var(--text));
+  --pane-border: var(--border);
   color: var(--ink);
 }
 
 .newtab.ink-light {
   --ink: #ffffff;
-  --ink-muted: rgba(255, 255, 255, 0.74);
-  --pane: rgba(255, 255, 255, 0.13);
-  --pane-hover: rgba(255, 255, 255, 0.22);
+  --ink-muted: rgba(255, 255, 255, 0.82);
+  --pane: rgba(14, 17, 24, 0.5);
+  --pane-hover: rgba(14, 17, 24, 0.66);
+  --pane-border: rgba(255, 255, 255, 0.22);
 }
 
 .newtab.ink-dark {
   --ink: #1c1d21;
-  --ink-muted: rgba(28, 29, 33, 0.68);
-  --pane: rgba(255, 255, 255, 0.6);
-  --pane-hover: rgba(255, 255, 255, 0.85);
+  --ink-muted: rgba(28, 29, 33, 0.72);
+  --pane: rgba(255, 255, 255, 0.8);
+  --pane-hover: rgba(255, 255, 255, 0.95);
+  --pane-border: rgba(28, 29, 33, 0.14);
 }
 
 .brand {
@@ -975,6 +1125,7 @@ select {
   z-index: 3;
   margin-top: 6px;
   padding: 0 18px;
+  border: 1px solid var(--pane-border);
   border-radius: 24px;
   background: var(--pane);
   color: var(--ink-muted);
@@ -1044,7 +1195,7 @@ select {
   align-items: stretch;
   margin-top: 4px;
   padding: 12px 6px;
-  border: 0;
+  border: 1px solid var(--pane-border);
   border-radius: 18px;
   background: var(--pane);
   color: var(--ink);
@@ -1065,7 +1216,7 @@ select {
 }
 
 .stat-item + .stat-item {
-  border-left: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+  border-left: 1px solid var(--pane-border);
 }
 
 .stat-value {
@@ -1128,7 +1279,12 @@ select {
   color: var(--ink);
 }
 
+.tile {
+  border: 1px solid transparent;
+}
+
 .tile:hover {
+  border-color: var(--pane-border);
   background: var(--pane);
 }
 
@@ -1230,8 +1386,9 @@ select {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  border: 1px solid var(--pane-border);
   border-radius: 10px;
-  background: var(--pane);
+  background: #fff;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   transition:
     transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -1239,7 +1396,6 @@ select {
 }
 
 .newtab:not(.on-wallpaper) .visit-picture {
-  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
@@ -1297,10 +1453,10 @@ select {
   align-items: center;
   gap: 6px;
   padding: 0 11px;
-  border: 0;
+  border: 1px solid var(--pane-border);
   border-radius: 14px;
   background: var(--pane);
-  color: var(--ink-muted);
+  color: var(--ink);
   font-size: 12px;
   transition:
     background-color 120ms ease-out,

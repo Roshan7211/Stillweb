@@ -14,6 +14,7 @@ let file: JsonFile<string[]> | null = null;
 
 export function loadMediaSites(): void {
   file = jsonFile<string[]>('media-sites.json', []);
+  file.value = file.value.filter((site) => typeof site === 'string');
 }
 
 function hostOf(url: string): string | null {

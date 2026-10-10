@@ -49,6 +49,8 @@ export function attachPermissions(session: Session): void {
     if (earlier !== undefined) return callback(earlier);
 
     const found = BrowserWin.forTab(contents);
+    // Only a page in a tab can ask: anything else has nobody in front of it to answer.
+    if (!found) return callback(false);
     const options = {
       type: 'question' as const,
       buttons: ['Allow', 'Block'],
@@ -57,7 +59,7 @@ export function attachPermissions(session: Session): void {
       message: `${new URL(site).host} wants to ${what}`,
       detail: 'Your answer is remembered for this site until you quit Stillweb.',
     };
-    const asked = found ? dialog.showMessageBox(found.win.window, options) : dialog.showMessageBox(options);
+    const asked = dialog.showMessageBox(found.win.window, options);
     void asked.then(({ response }) => {
       decided.set(key, response === 0);
       callback(response === 0);
