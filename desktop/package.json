@@ -52,6 +52,10 @@
         "to": "shield-delta.json"
       },
       {
+        "from": "resources/stillweb-fixes.txt",
+        "to": "stillweb-fixes.txt"
+      },
+      {
         "from": "../native/shield-webview/android/src/main/assets/shield",
         "to": "shield",
         "filter": [

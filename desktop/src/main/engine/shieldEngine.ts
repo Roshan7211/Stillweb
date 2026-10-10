@@ -19,11 +19,21 @@ type Manifest = {
 type Delta = Record<string, { remove: string[]; add: string[] }>;
 
 const COOKIE_LIST_ID = 'easylist-cookie';
+/** The id the app's own list goes by in Settings › Filter lists. */
+export const FIXES_LIST_ID = 'stillweb-fixes';
 const ALLOW: Verdict = { action: 'allow' };
 
 /** Files that ship with the app: next to the sources in development, in Resources when packaged. */
 function resource(packaged: string, development: string): string {
   return app.isPackaged ? path.join(process.resourcesPath, packaged) : path.join(app.getAppPath(), development);
+}
+
+function readOptional(file: string): Uint8Array | null {
+  try {
+    return fs.readFileSync(file);
+  } catch {
+    return null;
+  }
 }
 
 function sha256(data: string | Uint8Array): string {
@@ -248,7 +258,9 @@ class ShieldEngine {
       return !this.disabledLists.has(entry.id);
     });
     const ids = lists.map((l) => l.id).sort().join(',');
-    const key = sha256(`${manifest.version}|${sourceName}|${ids}|${deltaText ? sha256(deltaText) : ''}`).slice(0, 16);
+    // The app's own rules for sites the shared lists do not cover (resources/stillweb-fixes.txt).
+    const fixes = this.disabledLists.has(FIXES_LIST_ID) ? null : readOptional(resource('stillweb-fixes.txt', 'resources/stillweb-fixes.txt'));
+    const key = sha256(`${manifest.version}|${sourceName}|${ids}|${deltaText ? sha256(deltaText) : ''}|${fixes ? sha256(fixes) : ''}`).slice(0, 16);
     const cache = path.join(this.root, `engine-${key}.dat`);
 
     let engine: Engine | null = null;
@@ -258,12 +270,12 @@ class ShieldEngine {
     }
     if (!engine) {
       const delta = deltaText ? (JSON.parse(deltaText) as Delta) : {};
-      engine = wasm.build(
-        lists.map((entry) => ({
-          text: applyDelta(fs.readFileSync(path.join(dir, entry.file)), delta[entry.id]),
-          trusted: entry.trusted,
-        })),
-      );
+      const sources = lists.map((entry) => ({
+        text: applyDelta(fs.readFileSync(path.join(dir, entry.file)), delta[entry.id]),
+        trusted: entry.trusted,
+      }));
+      if (fixes) sources.push({ text: fixes, trusted: true });
+      engine = wasm.build(sources);
       for (const name of fs.readdirSync(this.root)) {
         if (name.startsWith('engine-') && name.endsWith('.dat')) fs.rmSync(path.join(this.root, name), { force: true });
       }
@@ -271,6 +283,12 @@ class ShieldEngine {
     }
     const resourceCount = wasm.useResources(engine, fs.readFileSync(path.join(dir, manifest.android.resources.file)));
     if (resourceCount < 0) console.warn('[shield] could not load scriptlets and redirect resources');
+
+    // The first check of each kind is slow (the engine prepares itself on first use): do
+    // those now, so the first page does not pay for them.
+    for (const kind of ['script', 'image', 'stylesheet', 'xmlhttprequest', 'sub_frame', 'document', 'other']) {
+      wasm.check(engine, `https://warm-up.invalid/a/b.js?c=${kind}`, 'https://www.example.com/', kind);
+    }
 
     const old = this.engine;
     this.engine = engine;

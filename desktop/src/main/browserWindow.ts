@@ -15,14 +15,18 @@ import { getSettings } from './settings';
 import {
   attachShields,
   browserUserAgent,
+  guardedNavigationBlocked,
   hadRecentGesture,
   httpFallback,
+  markWatching,
   pageCommitted,
   pageInfo,
+  popupDecision,
   refreshShieldsState,
+  rememberOpener,
   shieldEvents,
-  shouldBlockPopup,
   upgradeSettled,
+  type PopupGuard,
 } from './shields';
 import { jsonFile, type JsonFile } from './store';
 
@@ -82,6 +86,8 @@ class Tab {
   /** A tab from last time that has not been opened yet: its page loads when it is first shown. */
   asleep = false;
   listeningTimer: NodeJS.Timeout | null = null;
+  /** Set on a window a page opened: its first addresses are still checked (see shields.ts). */
+  popupGuard: PopupGuard | null = null;
 
   constructor(readonly view: WebContentsView) {}
 
@@ -103,6 +109,8 @@ class Tab {
       secure: this.url.startsWith('https://'),
       shieldsActive: this.url ? info.shieldsActive : shieldEngine.options.enabled,
       blocked: info.blocked,
+      popupsBlocked: info.popups.count,
+      lastPopup: info.popups.last,
       audible: this.audible,
       muted: contents.isAudioMuted(),
       error: this.error,
@@ -213,6 +221,10 @@ export class BrowserWin {
     // Normally the interface reports in (see interfaceReady); if it never does, the window
     // still appears.
     chromeContents.once('did-finish-load', () => setTimeout(() => this.interfaceReady(), 2000));
+    // If the interface's own process dies, it is started again; the tabs are not affected.
+    chromeContents.on('render-process-gone', () => {
+      if (!this.window.isDestroyed()) setTimeout(() => !chromeContents.isDestroyed() && chromeContents.reload(), 200);
+    });
     void chromeContents.loadFile(path.join(__dirname, 'renderer/index.html'));
 
     this.window.on('resize', () => this.layout());
@@ -238,6 +250,18 @@ export class BrowserWin {
     this.chromeReady = true;
     for (const action of this.queued.splice(0)) action();
     this.window.show();
+    // Whatever was waiting for the first picture (loading the filters) starts after it.
+    setTimeout(() => {
+      for (const action of this.afterReady.splice(0)) action();
+    }, 30);
+  }
+
+  private readonly afterReady: (() => void)[] = [];
+
+  /** Runs `action` once the window is on screen (right away if it already is). */
+  whenInterfaceReady(action: () => void): void {
+    if (this.chromeReady) action();
+    else this.afterReady.push(action);
   }
 
   theme() {
@@ -397,13 +421,16 @@ export class BrowserWin {
     const contents = tab.contents;
 
     contents.setWindowOpenHandler((details) => {
-      if (shouldBlockPopup(contents, details.url)) return { action: 'deny' };
+      const guard = popupDecision(contents, details.url);
+      if (!guard) return { action: 'deny' };
+      rememberOpener(contents);
       const background = details.disposition === 'background-tab';
       return {
         action: 'allow',
         createWindow: (created) => {
           const adopt = (created as { webContents?: WebContents }).webContents;
           const opened = this.createTab({ adopt, activate: !background, afterId: tab.id, url: adopt ? undefined : details.url });
+          opened.popupGuard = guard;
           if (!opened.url) opened.url = details.url;
           return opened.contents;
         },
@@ -437,6 +464,12 @@ export class BrowserWin {
     });
     contents.on('did-start-navigation', (details) => {
       if (!details.isMainFrame || details.isSameDocument) return;
+      // A window a page opened that turns out to be an ad is closed before it shows anything.
+      if (tab.popupGuard && guardedNavigationBlocked(tab.popupGuard, contents, details.url)) {
+        this.closeTab(tab.id, false);
+        return;
+      }
+      if (process.argv.includes('--log-shields')) console.log('[shields] navigation', details.url, 'from', details.initiator?.url ?? '-');
       // The address appears as soon as the page is asked for, as in any browser.
       if (/^https?:/i.test(details.url)) tab.url = details.url;
       tab.error = null;
@@ -474,6 +507,7 @@ export class BrowserWin {
     });
     contents.on('audio-state-changed', (event) => {
       tab.audible = event.audible;
+      if (event.audible) markWatching(contents);
       if (tab.listeningTimer) clearTimeout(tab.listeningTimer);
       tab.listeningTimer = null;
       if (event.audible && !this.isPrivate) {
@@ -596,10 +630,14 @@ export class BrowserWin {
     this.pushState();
   }
 
-  closeTab(id: number): void {
+  /** `remember`: whether "Reopen Closed Tab" can bring it back (not for windows that were ads). */
+  closeTab(id: number, remember = true): void {
     const tab = this.tabs.find((t) => t.id === id);
     if (!tab) return;
-    if (tab.url && !this.isPrivate) this.closedUrls.push(tab.url);
+    if (remember && tab.url && !this.isPrivate) {
+      this.closedUrls.push(tab.url);
+      if (this.closedUrls.length > 25) this.closedUrls.shift();
+    }
     // Removes it from the list (see forget) once its contents are gone.
     tab.contents.close({ waitForBeforeUnload: false });
     if (!tab.contents.isDestroyed()) this.forget(tab);

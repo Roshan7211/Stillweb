@@ -20,10 +20,11 @@ import {
   topSites,
 } from './data';
 import { cancelDownload, clearDownloads, getDownloads, openDownload, showDownload } from './downloads';
-import { shieldEngine } from './engine/shieldEngine';
+import { FIXES_LIST_ID, shieldEngine } from './engine/shieldEngine';
 import { clearMediaSites } from './mediaSites';
 import { showAppMenu, showTabMenu } from './menus';
 import { getSettings, updateSettings } from './settings';
+import { pageInfo } from './shields';
 import { checkForFilterUpdate } from './updater';
 
 const COOKIE_LIST_ID = 'easylist-cookie';
@@ -87,6 +88,18 @@ const handlers: Handlers = {
     updateSettings({ disabledSites: enabled ? without : [...without, host] });
   },
 
+  setSitePopups: (_win, site, allowed) => {
+    const host = String(site).toLowerCase();
+    if (!host) return;
+    const without = getSettings().popupSites.filter((s) => s !== host);
+    updateSettings({ popupSites: allowed ? [...without, host] : without });
+  },
+  openBlockedPopup: (win) => {
+    const tab = win.activeTab;
+    const last = tab ? pageInfo(tab.contents).popups.last : '';
+    if (tab && /^https?:/i.test(last)) win.createTab({ url: last, afterId: tab.id });
+  },
+
   suggest: async (win, query) => {
     const text = String(query).trim();
     if (!text) return [];
@@ -125,7 +138,7 @@ const handlers: Handlers = {
 
   getFilterLists: () => {
     const settings = getSettings();
-    return catalog.lists
+    const shared = catalog.lists
       .filter((list) => (!('platforms' in list) || list.platforms?.includes('android')) && !('group' in list && list.group === 'calm'))
       .map((list) => ({
         id: list.id,
@@ -135,6 +148,15 @@ const handlers: Handlers = {
         homepage: list.homepage,
         enabled: list.id === COOKIE_LIST_ID ? settings.shields.hideCookieBanners : !settings.disabledLists.includes(list.id),
       }));
+    const own = {
+      id: FIXES_LIST_ID,
+      title: 'Stillweb fixes',
+      purpose: 'Sites the other lists do not cover yet',
+      license: 'Part of Stillweb',
+      homepage: '',
+      enabled: !settings.disabledLists.includes(FIXES_LIST_ID),
+    };
+    return [...shared, own];
   },
   setFilterListEnabled: (_win, id, enabled) => {
     const settings = getSettings();

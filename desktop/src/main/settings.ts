@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   disabledSites: [],
   disabledLists: [],
+  popupSites: [],
   searchSuggestions: true,
   restoreTabs: true,
   clearDataOnExit: false,

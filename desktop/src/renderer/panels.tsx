@@ -16,18 +16,18 @@ const TITLES: Record<Panel, string> = {
   about: 'About Stillweb',
 };
 
-type SheetProps = { panel: Panel; settings: Settings; engine: EngineStatus | null; isPrivate: boolean; onClose: () => void };
+type SheetProps = { panel: Panel; leaving: boolean; settings: Settings; engine: EngineStatus | null; isPrivate: boolean; onClose: () => void };
 
-export function PanelSheet({ panel, settings, engine, isPrivate, onClose }: SheetProps) {
+export function PanelSheet({ panel, leaving, settings, engine, isPrivate, onClose }: SheetProps) {
   return (
-    <aside className="sheet" role="dialog" aria-label={TITLES[panel]}>
+    <aside className={`sheet${leaving ? ' leaving' : ''}`} role="dialog" aria-label={TITLES[panel]}>
       <header className="sheet-header">
         <h2>{TITLES[panel]}</h2>
         <button className="icon-button" aria-label="Close" onClick={onClose}>
           <X size={17} />
         </button>
       </header>
-      <div className="sheet-body">
+      <div className="sheet-body" key={panel}>
         {panel === 'settings' ? <SettingsPanel settings={settings} engine={engine} /> : null}
         {panel === 'history' ? <HistoryPanel onClose={onClose} isPrivate={isPrivate} /> : null}
         {panel === 'bookmarks' ? <BookmarksPanel onClose={onClose} /> : null}
@@ -108,7 +108,7 @@ function SettingsPanel({ settings, engine }: { settings: Settings; engine: Engin
         <Row title="Hide leftover ad spaces" detail="Removes the empty boxes and banners that blocked ads leave behind.">
           <Toggle label="Hide leftover ad spaces" checked={shields.cosmeticFiltering} disabled={!shields.enabled} onChange={(next) => setShield({ cosmeticFiltering: next })} />
         </Row>
-        <Row title="Block pop-ups" detail="Stops windows that a page opens by itself.">
+        <Row title="Block pop-ups" detail="Stops windows a page opens by itself, and windows to other sites opened by clicking on a video.">
           <Toggle label="Block pop-ups" checked={shields.blockPopups} disabled={!shields.enabled} onChange={(next) => setShield({ blockPopups: next })} />
         </Row>
         <Row title="Block third-party cookies" detail="Other sites embedded in a page can’t use cookies to follow you.">
@@ -151,6 +151,18 @@ function SettingsPanel({ settings, engine }: { settings: Settings; engine: Engin
             <Row key={site} title={site}>
               <button className="button" onClick={() => void api.setSiteShields(site, true)}>
                 Turn on
+              </button>
+            </Row>
+          ))}
+        </Section>
+      ) : null}
+
+      {settings.popupSites.length > 0 ? (
+        <Section title="Sites that may open pop-ups">
+          {settings.popupSites.map((site) => (
+            <Row key={site} title={site}>
+              <button className="button" onClick={() => void api.setSitePopups(site, false)}>
+                Remove
               </button>
             </Row>
           ))}
@@ -400,7 +412,7 @@ function AboutPanel() {
 
       <Section title="Filter lists">
         {lists.map((list) => (
-          <Row key={list.id} title={list.title} detail={`${list.license} · ${displayUrl(list.homepage)}`} />
+          <Row key={list.id} title={list.title} detail={list.homepage ? `${list.license} · ${displayUrl(list.homepage)}` : list.license} />
         ))}
         <p className="muted note">The lists are the work of their authors and volunteers, and are used under the licenses shown.</p>
       </Section>

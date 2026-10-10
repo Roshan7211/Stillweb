@@ -5,6 +5,7 @@ import { BrowserWindow, app, nativeTheme, type WebContents } from 'electron';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 
 import { BrowserWin } from './browserWindow';
 import { getBookmarks, localSuggestions, queryHistory } from './data';
@@ -114,6 +115,19 @@ function startServer(): Promise<void> {
     if (url.pathname === '/sound.wav') {
       response.setHeader('Content-Type', 'audio/wav');
       return response.end(wav(3));
+    }
+    if (url.pathname === '/long.wav') {
+      response.setHeader('Content-Type', 'audio/wav');
+      return response.end(wav(130));
+    }
+    if (url.pathname === '/watch') {
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      // A player page of the kind that opens an advertiser's site whenever the video is clicked.
+      return response.end(`<title>Watch</title><body style="margin:0">
+<video id="v" src="/long.wav" preload="metadata" style="display:block;width:420px;height:230px;background:#222" onclick="window.open('http://landing.popunder-example.net/offer')"></video>
+<a id="out" href="http://other.example.org/popup" target="_blank" style="display:block;width:200px;height:30px;background:#ddd">a real link</a>
+<button id="blank" style="display:block;width:200px;height:30px" onclick="var w=window.open('about:blank');setTimeout(function(){w.location='http://landing.popunder-example.net/later'},300)">opens empty first</button>
+<button id="own" style="display:block;width:200px;height:30px" onclick="window.open('/popup')">the site's own window</button></body>`);
     }
     if (url.pathname === '/player') {
       response.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -340,6 +354,48 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     check('but not in a tab that is not in front', (await inPage<string>(background.contents, 'window.__play')) === 'NotAllowedError', await inPage<string>(background.contents, 'window.__play'));
     win.closeTab(background.id);
 
+    // ---- Windows opened by clicking on a video ----
+    page = await open(win, 'http://films.example.net/watch');
+    await waitFor(() => inPage<boolean>(page, 'document.getElementById("v").duration > 120'), 6000);
+    const press = async (id: string) => {
+      const spot = await inPage<{ x: number; y: number }>(page, `(function(){var r=document.getElementById(${JSON.stringify(id)}).getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`);
+      // A real press starts with the pointer going down; the frame reports it from that event.
+      page.sendInputEvent({ type: 'mouseMove', x: spot.x, y: spot.y });
+      page.sendInputEvent({ type: 'mouseDown', x: spot.x, y: spot.y, button: 'left', clickCount: 1 });
+      page.sendInputEvent({ type: 'mouseUp', x: spot.x, y: spot.y, button: 'left', clickCount: 1 });
+      await sleep(1500);
+    };
+    tabsBefore = win.tabs.length;
+    await press('v');
+    check('a click on a video cannot open another site', win.tabs.length === tabsBefore && pageInfo(page).popups.count === 1, `${win.tabs.length - tabsBefore} tabs, ${pageInfo(page).popups.count} stopped`);
+    check('the address bar says a pop-up was stopped', await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".address .chip")'), 2000));
+    await press('blank');
+    await waitFor(() => win.tabs.length === tabsBefore, 4000);
+    check('nor by opening an empty window first', win.tabs.length === tabsBefore && pageInfo(page).popups.count === 2, `${win.tabs.length - tabsBefore} tabs, ${pageInfo(page).popups.count} stopped`);
+    win.activate(win.tabs.find((t) => t.contents === page)!.id);
+    await press('own');
+    check('the site can still open its own windows', win.tabs.length === tabsBefore + 1, `${win.tabs.length - tabsBefore} tabs`);
+    for (const extra of win.tabs.filter((t) => t.contents !== page && t.url.includes('/popup'))) win.closeTab(extra.id);
+    await waitFor(() => win.tabs.length === tabsBefore && win.activeTab?.contents === page, 3000);
+    await press('out');
+    const viaLink = win.tabs.find((t) => t.url.includes('other.example.org'));
+    check('and a real link to another site still opens', !!viaLink, win.tabs.map((t) => t.url.slice(0, 40)).join(', '));
+    if (viaLink) win.closeTab(viaLink.id);
+    await waitFor(() => win.activeTab?.contents === page, 3000);
+    await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".address .chip")'), 3000);
+    await inChrome(win, 'document.querySelector(".address .chip").click()');
+    await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".shield-popover")'), 3000);
+    await sleep(350);
+    await screenshot(win, '06b-popups-stopped');
+    await inChrome(win, 'document.querySelector(".shield").click()');
+    updateSettings({ popupSites: ['films.example.net'] });
+    await press('v');
+    const allowed = win.tabs.find((t) => t.url.includes('popunder-example.net'));
+    check('unless the user allowed pop-ups from the site', !!allowed);
+    if (allowed) win.closeTab(allowed.id);
+    updateSettings({ popupSites: [] });
+    await waitFor(() => win.activeTab?.contents === page, 3000);
+
     // ---- Tabs from last time load when first shown ----
     const asleep = win.createTab({ url: `${site}/?asleep`, activate: false, asleep: true });
     await sleep(600);
@@ -460,19 +516,28 @@ export async function runLiveCheck(win: BrowserWin, urls: string[]): Promise<voi
   win.window.setContentSize(1280, 860);
   await waitFor(() => shieldEngine.isReady || !!shieldEngine.lastError, 30000);
   console.log(shieldEngine.isReady ? `filters ${shieldEngine.version}` : `filters failed: ${shieldEngine.lastError}`);
+  // How long this process was too busy to answer, per page: what a user feels as lag in the
+  // bars and in every request the page makes.
+  const lag = monitorEventLoopDelay({ resolution: 5 });
+  lag.enable();
   let index = 0;
   for (const url of urls) {
+    lag.reset();
     const started = Date.now();
     const page = await open(win, url);
     // Ads and trackers keep arriving after the page itself has loaded.
     await sleep(4000);
     const tab = win.activeTab!;
     const name = `live-${String(++index).padStart(2, '0')}`;
+    // Read before the screenshot, which is this check's own work.
+    lag.disable();
     console.log(
       `${name} ${url}\n  -> ${tab.url}\n  title: ${tab.title}\n  blocked: ${pageInfo(page).blocked}, ${Date.now() - started - 4000} ms to load` +
-        (tab.error ? `\n  ERROR: ${tab.error.description}` : ''),
+        (tab.error ? `\n  ERROR: ${tab.error.description}` : '') +
+        `\n  main process busy: typical ${(lag.percentile(50) / 1e6 - 5).toFixed(1)} ms, 99th percentile ${(lag.percentile(99) / 1e6 - 5).toFixed(1)} ms, longest ${(lag.max / 1e6 - 5).toFixed(1)} ms`,
     );
     await screenshot(win, name);
+    lag.enable();
   }
   console.log(`Screenshots: ${outDir}`);
   app.exit(0);

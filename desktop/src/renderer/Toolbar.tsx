@@ -1,5 +1,6 @@
-import { ArrowLeft, ArrowRight, Clock, Download, EllipsisVertical, EyeOff, Globe, Lock, RotateCw, Search, Shield, ShieldOff, Star, TriangleAlert, X } from 'lucide-react';
+import { AppWindow, ArrowLeft, ArrowRight, Clock, Download, EllipsisVertical, EyeOff, Globe, Lock, RotateCw, Search, Shield, ShieldOff, Star, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 import { displayUrl } from '../../../src/browser/url';
 import type { Bookmark, DownloadState, Panel, Settings, Suggestion, TabState } from '../shared/types';
@@ -24,7 +25,7 @@ function SuggestionIcon({ suggestion }: { suggestion: Suggestion }) {
   return <Globe size={15} />;
 }
 
-function AddressBar({ tab, isPrivate, focusRequest, onSuggesting }: Pick<Props, 'tab' | 'isPrivate' | 'focusRequest' | 'onSuggesting'>) {
+function AddressBar({ tab, isPrivate, focusRequest, onSuggesting, onShowBlockedPopups }: Pick<Props, 'tab' | 'isPrivate' | 'focusRequest' | 'onSuggesting'> & { onShowBlockedPopups: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const [text, setText] = useState('');
@@ -104,11 +105,14 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting }: Pick<Props, 
         autoComplete="off"
         value={focused ? text : displayUrl(url)}
         onFocus={(event) => {
-          setFocused(true);
-          setText(url);
           const element = event.currentTarget;
-          // After React has put the full address in the field.
-          requestAnimationFrame(() => element.select());
+          // The full address goes into the field and is selected before anything else can
+          // happen, so a key pressed right after the shortcut replaces it and is not lost.
+          flushSync(() => {
+            setFocused(true);
+            setText(url);
+          });
+          element.select();
         }}
         onBlur={() => {
           setFocused(false);
@@ -143,6 +147,12 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting }: Pick<Props, 
           }
         }}
       />
+      {isPage && !focused && tab && tab.popupsBlocked > 0 ? (
+        <button className="chip" title="See what was stopped, or allow pop-ups from this site" onClick={onShowBlockedPopups}>
+          <AppWindow size={13} />
+          {tab.popupsBlocked === 1 ? 'Pop-up stopped' : `${tab.popupsBlocked} pop-ups stopped`}
+        </button>
+      ) : null}
       {isPage && !focused ? (
         <button
           className={`icon-button small${bookmarked ? ' on' : ''}`}
@@ -193,6 +203,7 @@ export function Toolbar(props: Props) {
 
   return (
     <div className="toolbar">
+      <div className={`loading-line${tab?.loading ? ' on' : ''}`} aria-hidden="true" />
       <button className="icon-button" aria-label="Back" title="Back" disabled={!tab?.canGoBack} onClick={() => void api.goBack()}>
         <ArrowLeft size={17} />
       </button>
@@ -209,7 +220,15 @@ export function Toolbar(props: Props) {
         </button>
       )}
 
-      <AddressBar tab={tab} isPrivate={props.isPrivate} focusRequest={props.focusRequest} onSuggesting={props.onSuggesting} />
+      <AddressBar
+        tab={tab}
+        isPrivate={props.isPrivate}
+        focusRequest={props.focusRequest}
+        onSuggesting={props.onSuggesting}
+        onShowBlockedPopups={() => {
+          if (!shieldOpen) onToggleShield();
+        }}
+      />
 
       <button
         className={`icon-button shield${shieldsOn ? '' : ' off'}${shieldOpen ? ' pressed' : ''}`}

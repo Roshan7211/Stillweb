@@ -9,7 +9,7 @@ import { loadMediaSites } from './mediaSites';
 import { buildAppMenu, newWindow } from './menus';
 import { SELF_TEST_PORT, runLiveCheck, runSelfTest } from './selfTest';
 import { getSettings, loadSettings, onSettingsChanged } from './settings';
-import { browserUserAgent, registerFrameHandlers, registerSchemes } from './shields';
+import { browserUserAgent, registerFrameHandlers, registerSchemes, setPopupSites } from './shields';
 import { flushAll } from './store';
 import { scheduleFilterUpdates } from './updater';
 
@@ -33,6 +33,11 @@ if (testing) {
 // Electron's development-only console warnings are about pages this app does not control.
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
+// One failed action must not take the browser (and every open tab) down with it, or stop
+// with a dialog: it is logged and the app carries on.
+process.on('uncaughtException', (error) => console.error('[stillweb] unexpected error:', error));
+process.on('unhandledRejection', (reason) => console.error('[stillweb] unexpected rejection:', reason));
+
 registerSchemes();
 
 /** An address given on the command line (the app was asked to open a link). */
@@ -54,6 +59,7 @@ function openUrl(url?: string): void {
 function configureEngine(): void {
   const settings = getSettings();
   shieldEngine.configure(settings.shields, settings.disabledSites, settings.disabledLists);
+  setPopupSites(settings.popupSites);
 }
 
 function broadcastEngineStatus(): void {
@@ -84,7 +90,7 @@ if (!testing && !app.requestSingleInstanceLock()) {
     onBrowsingSession(attachDownloads);
 
     onSettingsChanged((settings, previous) => {
-      const blocking = (s: typeof settings) => JSON.stringify([s.shields, s.disabledSites, s.disabledLists]);
+      const blocking = (s: typeof settings) => JSON.stringify([s.shields, s.disabledSites, s.disabledLists, s.popupSites]);
       const shieldsChanged = blocking(settings) !== blocking(previous);
       if (shieldsChanged) configureEngine();
       nativeTheme.themeSource = settings.theme;
@@ -116,7 +122,8 @@ if (!testing && !app.requestSingleInstanceLock()) {
     } else {
       first.createTab({ url: startUrl });
     }
-    setImmediate(() => {
+    // Loading the filters keeps this process busy for a moment: the window is drawn first.
+    first.whenInterfaceReady(() => {
       shieldEngine.initialize();
       if (selfTest) void runSelfTest(first);
       else if (liveCheck !== undefined) void runLiveCheck(first, liveCheck.split(',').filter(Boolean));

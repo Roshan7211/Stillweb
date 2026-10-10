@@ -10,7 +10,7 @@ export function dataPath(...parts: string[]): string {
 /** Writes through a temporary file, so a crash never leaves half a file behind. */
 export function writeFileAtomic(file: string, data: string | Uint8Array): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
+  const tmp = `${file}.now.tmp`;
   fs.writeFileSync(tmp, data);
   fs.renameSync(tmp, file);
 }
@@ -19,6 +19,7 @@ export function writeFileAtomic(file: string, data: string | Uint8Array): void {
 export class JsonFile<T> {
   value: T;
   private timer: NodeJS.Timeout | null = null;
+  private saving = false;
   private readonly file: string;
 
   constructor(name: string, fallback: T, private readonly delayMs = 1000) {
@@ -34,12 +35,29 @@ export class JsonFile<T> {
 
   /** Call after changing `value`. */
   changed(): void {
-    this.timer ??= setTimeout(() => this.flush(), this.delayMs);
+    this.timer ??= setTimeout(() => void this.save(), this.delayMs);
   }
 
+  /** The timed save: written in the background, so browsing never waits for the disk. */
+  private async save(): Promise<void> {
+    this.timer = null;
+    if (this.saving) return this.changed();
+    this.saving = true;
+    try {
+      await fs.promises.mkdir(path.dirname(this.file), { recursive: true });
+      await fs.promises.writeFile(`${this.file}.tmp`, JSON.stringify(this.value));
+      await fs.promises.rename(`${this.file}.tmp`, this.file);
+    } catch (error) {
+      console.error(`could not save ${this.file}`, error);
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  /** Before quitting: writes now, if anything is waiting. */
   flush(): void {
-    if (!this.timer) return;
-    clearTimeout(this.timer);
+    if (!this.timer && !this.saving) return;
+    if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     try {
       writeFileAtomic(this.file, JSON.stringify(this.value));

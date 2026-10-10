@@ -6,6 +6,7 @@ import { api } from './api';
 import { FindBar } from './FindBar';
 import { ErrorPage, NewTabPage } from './pages';
 import { PanelSheet } from './panels';
+import { usePresence } from './presence';
 import { ShieldPopover } from './ShieldPopover';
 import { TabStrip } from './TabStrip';
 import { Toolbar } from './Toolbar';
@@ -45,8 +46,11 @@ export function App() {
   const active = win?.tabs.find((tab) => tab.id === win.activeId) ?? null;
   const blank = !active || active.url === '';
   const failed = !!active?.error;
+  // Panels and the popover stay a moment after they are closed, to animate out.
+  const sheet = usePresence(panel, 160);
+  const popover = usePresence(shieldOpen ? true : null, 110);
   // The interface needs the whole window whenever it draws below the bars.
-  const expanded = blank || failed || panel !== null || shieldOpen || suggesting;
+  const expanded = blank || failed || sheet.shown !== null || popover.shown !== null || suggesting;
 
   useLayoutEffect(() => {
     const element = bars.current;
@@ -117,19 +121,29 @@ export function App() {
           ) : failed && active?.error ? (
             <ErrorPage error={active.error} settings={settings} />
           ) : null}
-          {shieldOpen || panel ? (
+          {popover.shown || sheet.shown ? (
             <div
-              className={`scrim${panel ? ' dim' : ''}`}
+              className={`scrim${sheet.shown ? ' dim' : ''}${sheet.shown && sheet.leaving ? ' leaving' : ''}`}
               onMouseDown={() => {
                 setShieldOpen(false);
                 setPanel(null);
               }}
             />
           ) : null}
-          {shieldOpen && active ? (
-            <ShieldPopover tab={active} settings={settings} totalBlocked={win.totalBlocked} engine={engine} onClose={() => setShieldOpen(false)} onOpenPanel={setPanel} />
+          {popover.shown && active ? (
+            <ShieldPopover
+              tab={active}
+              settings={settings}
+              totalBlocked={win.totalBlocked}
+              engine={engine}
+              leaving={popover.leaving}
+              onClose={() => setShieldOpen(false)}
+              onOpenPanel={setPanel}
+            />
           ) : null}
-          {panel ? <PanelSheet panel={panel} settings={settings} engine={engine} isPrivate={win.private} onClose={() => setPanel(null)} /> : null}
+          {sheet.shown ? (
+            <PanelSheet panel={sheet.shown} leaving={sheet.leaving} settings={settings} engine={engine} isPrivate={win.private} onClose={() => setPanel(null)} />
+          ) : null}
         </div>
       ) : null}
     </div>

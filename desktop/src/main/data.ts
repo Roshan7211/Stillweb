@@ -11,12 +11,15 @@ type Stats = { total: number; hosts: Record<string, number>; days: Record<string
 let historyFile: JsonFile<HistoryEntry[]>;
 let bookmarkFile: JsonFile<Bookmark[]>;
 let statsFile: JsonFile<Stats>;
+/** How many hosts the stats hold (kept here so a blocked request never has to count them). */
+let hostCount = 0;
 const bookmarkListeners = new Set<() => void>();
 
 export function loadData(): void {
   historyFile = jsonFile<HistoryEntry[]>('history.json', [], 3000);
   bookmarkFile = jsonFile<Bookmark[]>('bookmarks.json', []);
   statsFile = jsonFile<Stats>('stats.json', { total: 0, hosts: {}, days: {} }, 5000);
+  hostCount = Object.keys(statsFile.value.hosts).length;
 }
 
 function localDay(time: number): string {
@@ -173,12 +176,13 @@ export function recordBlocked(host: string | null): void {
   }
   stats.days[day] = (stats.days[day] ?? 0) + 1;
   if (host) {
+    if (!(host in stats.hosts)) hostCount++;
     stats.hosts[host] = (stats.hosts[host] ?? 0) + 1;
     // Keep the table small: when it outgrows the limit, drop the hosts seen least.
-    const names = Object.keys(stats.hosts);
-    if (names.length > HOST_LIMIT * 1.5) {
-      names.sort((a, b) => stats.hosts[b] - stats.hosts[a]);
+    if (hostCount > HOST_LIMIT * 1.5) {
+      const names = Object.keys(stats.hosts).sort((a, b) => stats.hosts[b] - stats.hosts[a]);
       for (const name of names.slice(HOST_LIMIT)) delete stats.hosts[name];
+      hostCount = HOST_LIMIT;
     }
   }
   statsFile.changed();
@@ -200,5 +204,6 @@ export function privacyReport(): PrivacyReport {
 
 export function resetPrivacyReport(): void {
   statsFile.value = { total: 0, hosts: {}, days: {} };
+  hostCount = 0;
   statsFile.changed();
 }

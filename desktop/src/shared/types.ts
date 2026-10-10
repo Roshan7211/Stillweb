@@ -23,6 +23,8 @@ export type Settings = {
   disabledSites: string[];
   /** Filter lists (ids from the catalog) the user turned off. */
   disabledLists: string[];
+  /** Sites (host, without www.) that may open windows even while a video is playing. */
+  popupSites: string[];
   /** Ask the search engine for suggestions while typing (never in private windows). */
   searchSuggestions: boolean;
   /** Open the tabs from last time when the app starts. */
@@ -47,6 +49,9 @@ export type TabState = {
   shieldsActive: boolean;
   /** Requests blocked on the current page. */
   blocked: number;
+  /** Windows the page tried to open that were stopped, and the address of the last one ('' if unknown). */
+  popupsBlocked: number;
+  lastPopup: string;
   audible: boolean;
   muted: boolean;
   error: LoadError | null;
@@ -145,6 +150,9 @@ export type ChromeApi = {
   focusPage(): Promise<void>;
 
   setSiteShields(site: string, enabled: boolean): Promise<void>;
+  setSitePopups(site: string, allowed: boolean): Promise<void>;
+  /** Opens the last window that was stopped on the active tab's page. */
+  openBlockedPopup(): Promise<void>;
   suggest(query: string): Promise<Suggestion[]>;
 
   findInPage(text: string, forward: boolean, next: boolean): Promise<void>;
@@ -195,7 +203,7 @@ export type ChromeEvents = {
 export const CHROME_METHODS: (keyof ChromeApi)[] = [
   'interfaceReady', 'getWindowState', 'getSettings', 'setSettings', 'getEngineStatus', 'setLayout', 'dragWindow', 'toggleMaximize',
   'newTab', 'closeTab', 'activateTab', 'moveTab', 'toggleMute', 'navigate', 'goBack', 'goForward', 'reload', 'stop', 'focusPage',
-  'setSiteShields', 'suggest', 'findInPage', 'stopFind', 'showAppMenu', 'showTabMenu',
+  'setSiteShields', 'setSitePopups', 'openBlockedPopup', 'suggest', 'findInPage', 'stopFind', 'showAppMenu', 'showTabMenu',
   'getBookmarks', 'setBookmarked', 'getHistory', 'removeHistory', 'clearBrowsingData', 'getTopSites',
   'getDownloads', 'openDownload', 'showDownload', 'cancelDownload', 'clearDownloads',
   'getFilterLists', 'setFilterListEnabled', 'checkFilterUpdate', 'getPrivacyReport', 'resetPrivacyReport',
