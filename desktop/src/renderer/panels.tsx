@@ -48,7 +48,8 @@ function Empty({ children }: { children: ReactNode }) {
 function SettingsPanel({ settings, engine }: { settings: Settings; engine: EngineStatus | null }) {
   const [lists, setLists] = useState<FilterListInfo[]>([]);
   const [updateNote, setUpdateNote] = useState('');
-  const [cleared, setCleared] = useState(false);
+  /** Clearing takes two presses: 'ask' is after the first. */
+  const [clearing, setClearing] = useState<'idle' | 'ask' | 'done'>('idle');
   const shields = settings.shields;
   const setShield = (patch: Partial<Settings['shields']>) => void api.setSettings({ shields: { ...shields, ...patch } });
 
@@ -166,10 +167,13 @@ function SettingsPanel({ settings, engine }: { settings: Settings; engine: Engin
         <Row title="Clear browsing data now" detail="Deletes history, cookies, cache and site data. Bookmarks are kept.">
           <button
             className="button danger"
+            disabled={clearing === 'done'}
+            onBlur={() => setClearing((state) => (state === 'ask' ? 'idle' : state))}
             onClick={() => {
-              void api.clearBrowsingData().then(() => setCleared(true));
+              if (clearing === 'idle') setClearing('ask');
+              else if (clearing === 'ask') void api.clearBrowsingData().then(() => setClearing('done'));
             }}>
-            {cleared ? 'Cleared' : 'Clear'}
+            {clearing === 'ask' ? 'Press again to clear' : clearing === 'done' ? 'Cleared' : 'Clear'}
           </button>
         </Row>
       </Section>

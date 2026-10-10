@@ -21,6 +21,7 @@ import {
 } from './data';
 import { cancelDownload, clearDownloads, getDownloads, openDownload, showDownload } from './downloads';
 import { shieldEngine } from './engine/shieldEngine';
+import { clearMediaSites } from './mediaSites';
 import { showAppMenu, showTabMenu } from './menus';
 import { getSettings, updateSettings } from './settings';
 import { checkForFilterUpdate } from './updater';
@@ -57,6 +58,7 @@ async function remoteSuggestions(query: string): Promise<Suggestion[]> {
 type Handlers = { [K in keyof ChromeApi]: (win: BrowserWin, ...args: Parameters<ChromeApi[K]>) => ReturnType<ChromeApi[K]> | Awaited<ReturnType<ChromeApi[K]>> };
 
 const handlers: Handlers = {
+  interfaceReady: (win) => win.interfaceReady(),
   getWindowState: (win) => win.state(),
   getSettings: () => getSettings(),
   setSettings: (_win, patch) => updateSettings(patch),
@@ -110,6 +112,7 @@ const handlers: Handlers = {
   removeHistory: (_win, url, time) => removeHistory(url, time),
   clearBrowsingData: async () => {
     clearHistory();
+    clearMediaSites();
     await normalSession().clearData();
   },
   getTopSites: (win) => (win.isPrivate ? [] : topSites()),

@@ -10,6 +10,7 @@ import { BrowserWin } from './browserWindow';
 import { getBookmarks, localSuggestions, queryHistory } from './data';
 import { getDownloads } from './downloads';
 import { shieldEngine } from './engine/shieldEngine';
+import { rememberMediaSite } from './mediaSites';
 import { newWindow } from './menus';
 import { getSettings, updateSettings } from './settings';
 import { pageInfo } from './shields';
@@ -62,10 +63,34 @@ function fixturePage(query: URLSearchParams): string {
 <h1>Fixture page</h1><p>Text to look for: stillwebneedle and again stillwebneedle.</p>
 <div id="specific" class="${query.get('specific') ?? ''}">specific ad</div>
 <div id="generic" class="${query.get('generic') ?? ''}">generic ad</div>
+<button id="fullscreen" onclick="document.documentElement.requestFullscreen()" style="display:block;width:200px;height:40px">full screen</button>
+<iframe id="adframe" src="http://googleads.g.doubleclick.net/pagead/ads?client=x" width="300" height="60"></iframe>
 <a id="poplink" href="#" onclick="window.open('http://popup.example.org/popup');return false" style="display:block;width:200px;height:40px;background:#ddd">open a window</a>
 <img src="http://127.0.0.1:${port}/photo.png?n=1" onload="var i=new Image();i.src='http://127.0.0.1:${port}/photo.png?n=2'">
 <script>fetch('/fp?n=1').then(function(){return fetch('/fp?n=2')});</script>
 </body></html>`;
+}
+
+/** A quiet tone as a WAV file (8-bit mono), `seconds` long. */
+function wav(seconds: number): Buffer {
+  const rate = 8000;
+  const samples = rate * seconds;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + samples, 4);
+  header.write('WAVEfmt ', 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate, 28);
+  header.writeUInt16LE(1, 32);
+  header.writeUInt16LE(8, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(samples, 40);
+  const data = Buffer.alloc(samples);
+  for (let i = 0; i < samples; i++) data[i] = 128 + Math.round(20 * Math.sin((i * 2 * Math.PI * 440) / rate));
+  return Buffer.concat([header, data]);
 }
 
 function startServer(): Promise<void> {
@@ -85,6 +110,17 @@ function startServer(): Promise<void> {
       // Browsers accept Secure cookies from http://127.0.0.1, which makes a cross-site cookie testable.
       response.setHeader('Set-Cookie', 'tp=1; SameSite=None; Secure; Path=/');
       return response.end(Buffer.from('R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==', 'base64'));
+    }
+    if (url.pathname === '/sound.wav') {
+      response.setHeader('Content-Type', 'audio/wav');
+      return response.end(wav(3));
+    }
+    if (url.pathname === '/player') {
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      // A page that starts sound by itself, as a video page does.
+      return response.end(`<title>Player</title><audio id="a" src="/sound.wav" loop></audio><script>
+window.__play = 'pending';
+document.getElementById('a').play().then(function () { window.__play = 'playing'; }, function (e) { window.__play = e.name; });</script>`);
     }
     if (url.pathname === '/fp') {
       response.setHeader('Set-Cookie', 'fp=1; Path=/');
@@ -193,6 +229,15 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     check('scriptlet runs before the page’s first script', (await inPage<unknown>(page, 'window.__early')) === (scriptlet[3] === 'true'), `${scriptlet[0]}`);
     check('generic cosmetic rule hides the element', await waitFor(() => inPage<boolean>(page, 'getComputedStyle(document.getElementById("generic")).display === "none"'), 4000), generic[0]);
     check('page counter shows blocked requests', pageInfo(page).blocked > 0, `${pageInfo(page).blocked} blocked`);
+    const firstCount = pageInfo(page).blocked;
+    page.reload();
+    await sleep(300);
+    await waitFor(() => !page.isLoading(), 8000);
+    await sleep(400);
+    check('the counter starts again when the page is reloaded', pageInfo(page).blocked === firstCount, `${firstCount} before, ${pageInfo(page).blocked} after`);
+    const adFrame = page.mainFrame.frames[0];
+    const adText = adFrame ? await adFrame.executeJavaScript('document.body ? document.body.innerText : ""').catch((e: Error) => `error: ${e.message}`) : 'no frame';
+    check('a blocked ad frame is never requested and stays empty', seen('/pagead/ads').length === 0 && adText === '', `text "${adText}"`);
     await waitFor(() => inChrome<boolean>(win, '!!document.querySelector(".shield .badge")'), 2000);
     check('toolbar badge shows the count', await inChrome<boolean>(win, '!!document.querySelector(".shield .badge")'));
     check('address bar shows the page', (await inChrome<string>(win, 'document.querySelector(".address-input").value')).startsWith(scriptlet[1]));
@@ -257,6 +302,54 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     await waitFor(() => /^http:\/\/plain\.example\.net/.test(page.getURL()), 8000);
     check('a site without https still opens after the upgrade fails', page.getURL().startsWith('http://plain.example.net') && (await inPage<boolean>(page, 'window.__app === true')), page.getURL());
     updateSettings({ shields: { ...getSettings().shields, httpsUpgrade: false } });
+
+    // ---- Full screen from a page ----
+    const size = win.window.getContentSize();
+    const button = await inPage<{ x: number; y: number }>(page, '(function(){var r=document.getElementById("fullscreen").getBoundingClientRect();return {x:Math.round(r.left+20),y:Math.round(r.top+10)}})()');
+    page.sendInputEvent({ type: 'mouseDown', x: button.x, y: button.y, button: 'left', clickCount: 1 });
+    page.sendInputEvent({ type: 'mouseUp', x: button.x, y: button.y, button: 'left', clickCount: 1 });
+    const entered = await waitFor(() => inPage<boolean>(page, '!!document.fullscreenElement'), 5000);
+    await sleep(1500);
+    const full = win.window.getContentSize();
+    const pageBounds = win.activeTab!.view.getBounds();
+    check('a page can go full screen, covering the bars', entered && win.window.isFullScreen() && pageBounds.y === 0 && pageBounds.height === full[1], `page ${JSON.stringify(pageBounds)} in window ${full.join('x')}`);
+    page.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    page.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    const left = await waitFor(() => inPage<boolean>(page, '!document.fullscreenElement'), 5000);
+    await waitFor(() => !win.window.isFullScreen(), 5000);
+    await sleep(1200);
+    const after = win.activeTab!.view.getBounds();
+    check('Escape leaves full screen and the bars come back', left && !win.window.isFullScreen() && after.y > 0 && win.window.getContentSize()[1] === size[1], `page ${JSON.stringify(after)}, window ${win.window.getContentSize().join('x')}`);
+
+    // ---- Sound that starts by itself ----
+    page = await open(win, 'http://quiet.example.net/player');
+    await waitFor(async () => (await inPage<string>(page, 'window.__play')) !== 'pending', 4000);
+    check('a page cannot start sound by itself', (await inPage<string>(page, 'window.__play')) === 'NotAllowedError', await inPage<string>(page, 'window.__play'));
+    rememberMediaSite('http://music.example.net/');
+    page = await open(win, 'http://music.example.net/player');
+    await waitFor(async () => (await inPage<string>(page, 'window.__play')) !== 'pending', 4000);
+    check('a site the user has played media on can', (await inPage<string>(page, 'window.__play')) === 'playing', await inPage<string>(page, 'window.__play'));
+    check('the tab shows that it is playing sound', await waitFor(() => win.activeTab!.audible, 4000));
+    const background = win.createTab({ url: 'http://music.example.net/player?background', activate: false });
+    await waitFor(() => !background.loading && background.committed, 6000);
+    await sleep(500);
+    check('but not in a tab that is not in front', (await inPage<string>(background.contents, 'window.__play')) === 'NotAllowedError', await inPage<string>(background.contents, 'window.__play'));
+    win.closeTab(background.id);
+
+    // ---- Tabs from last time load when first shown ----
+    const asleep = win.createTab({ url: `${site}/?asleep`, activate: false, asleep: true });
+    await sleep(600);
+    check('a restored tab waits', asleep.contents.getURL() === '' && asleep.state().url.endsWith('?asleep'), `loaded "${asleep.contents.getURL()}"`);
+    win.activate(asleep.id);
+    check('and loads when it is shown', await waitFor(() => asleep.contents.getURL().endsWith('?asleep') && !asleep.loading, 6000));
+    win.closeTab(asleep.id);
+    await waitFor(() => win.activeTab?.contents === page, 3000);
+
+    // ---- The address bar ----
+    win.navigate('javascript:document.title="ran"');
+    await sleep(1200);
+    check('script typed into the address bar is searched for, not run', page.getTitle() !== 'ran' && /search\?q=javascript/.test(win.activeTab!.url), win.activeTab!.url.slice(0, 60));
+    page = await open(win, `${site}/?after-search`);
 
     // ---- Find in page ----
     let found = { active: 0, count: 0 };

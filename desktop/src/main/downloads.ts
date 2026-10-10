@@ -65,10 +65,9 @@ export function attachDownloads(session: Session): void {
     });
     broadcast();
 
-    // A link that opened a new tab only to download a file: the empty tab is closed again.
     const found = contents ? BrowserWin.forTab(contents) : null;
     if (found) {
-      if (!found.tab.committed && found.win.tabs.length > 1) found.win.closeTab(found.tab.id);
+      found.win.downloadStarted(found.tab);
       found.win.send('open-panel', 'downloads');
     }
   });

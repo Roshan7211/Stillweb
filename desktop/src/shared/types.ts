@@ -115,6 +115,8 @@ export type FindResult = { active: number; count: number };
 
 /** What the window's interface can ask the main process to do (`window.stillweb`). */
 export type ChromeApi = {
+  /** The interface is drawn and listening for messages. */
+  interfaceReady(): Promise<void>;
   getWindowState(): Promise<WindowState>;
   getSettings(): Promise<Settings>;
   setSettings(patch: Partial<Settings>): Promise<void>;
@@ -191,7 +193,7 @@ export type ChromeEvents = {
 };
 
 export const CHROME_METHODS: (keyof ChromeApi)[] = [
-  'getWindowState', 'getSettings', 'setSettings', 'getEngineStatus', 'setLayout', 'dragWindow', 'toggleMaximize',
+  'interfaceReady', 'getWindowState', 'getSettings', 'setSettings', 'getEngineStatus', 'setLayout', 'dragWindow', 'toggleMaximize',
   'newTab', 'closeTab', 'activateTab', 'moveTab', 'toggleMute', 'navigate', 'goBack', 'goForward', 'reload', 'stop', 'focusPage',
   'setSiteShields', 'suggest', 'findInPage', 'stopFind', 'showAppMenu', 'showTabMenu',
   'getBookmarks', 'setBookmarked', 'getHistory', 'removeHistory', 'clearBrowsingData', 'getTopSites',

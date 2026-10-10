@@ -85,12 +85,11 @@ export function pageInfo(contents: WebContents): { blocked: number; shieldsActiv
   return { blocked: state.blocked, shieldsActive: state.shieldsActive };
 }
 
-/** Called for every main-frame load: resets the page's counter and its shields state. */
+/** Called for every main-frame load (a reload too): resets the page's counter and its shields state. */
 function beginMainFrame(contents: WebContents, url: string): void {
   const state = pageState(contents);
   // Recompute every time: per-site settings may have changed since the last load.
   state.shieldsActive = shieldEngine.shieldsEnabledFor(hostOf(url));
-  if (url === state.url) return;
   state.url = url;
   if (state.blocked !== 0) {
     state.blocked = 0;
@@ -98,9 +97,15 @@ function beginMainFrame(contents: WebContents, url: string): void {
   }
 }
 
-/** A reload counts as a new page: its counter starts again. */
-export function resetPage(contents: WebContents): void {
-  pageState(contents).url = 'about:blank';
+/**
+ * The page that is really showing once loading has stopped. A navigation that was asked for
+ * but never arrived (a download, a stopped load) must not leave the tab checked against it.
+ */
+export function pageCommitted(contents: WebContents, url: string): void {
+  const state = pageState(contents);
+  if (state.url === url || !/^https?:/i.test(url)) return;
+  state.url = url;
+  state.shieldsActive = shieldEngine.shieldsEnabledFor(hostOf(url));
 }
 
 /** After the user turned shields on or off for a site: the open page follows on its next load. */
@@ -126,14 +131,19 @@ function upgradable(url: string): boolean {
   return !(httpOnlyHosts.has(host) || host === 'localhost' || host.endsWith('.local') || /^[\d.]+$/.test(host) || host.includes(':'));
 }
 
+/** Chromium's codes for: network changed, name not resolved, internet disconnected. */
+const NETWORK_DOWN = new Set([-21, -105, -106]);
+
 /**
  * A main-frame load failed. When it was an address this app upgraded to https, returns the
  * original http address to load instead (and remembers that the host has no https).
  */
-export function httpFallback(contents: WebContents, failedUrl: string): string | null {
+export function httpFallback(contents: WebContents, failedUrl: string, errorCode: number): string | null {
   const state = pageState(contents);
   if (!state.pendingUpgrade || hostOf(state.pendingUpgrade) !== hostOf(failedUrl)) return null;
   state.pendingUpgrade = null;
+  // No network, or no such site: that says nothing about https, and http would fail too.
+  if (NETWORK_DOWN.has(errorCode)) return null;
   const host = hostOf(failedUrl);
   if (host) httpOnlyHosts.add(host);
   return failedUrl.replace(/^https:/i, 'http:');
@@ -145,7 +155,8 @@ export function upgradeSettled(contents: WebContents): void {
 
 /** Whether the user clicked or typed in the page a moment ago (so what happens now is theirs). */
 export function hadRecentGesture(contents: WebContents): boolean {
-  return Date.now() - pageState(contents).lastGesture < 1500;
+  // The same five seconds Chromium gives a click before it stops counting.
+  return Date.now() - pageState(contents).lastGesture < 5000;
 }
 
 // ---------------------------------------------------------------------------

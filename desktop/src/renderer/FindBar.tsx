@@ -12,7 +12,15 @@ export function FindBar({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     input.current?.focus();
-    return api.on('find-result', setResult);
+    const stop = [
+      api.on('find-result', setResult),
+      // The shortcut again while the bar is open: back to the field, ready to type over.
+      api.on('open-find', () => {
+        input.current?.focus();
+        input.current?.select();
+      }),
+    ];
+    return () => stop.forEach((off) => off());
   }, []);
 
   const find = (value: string, forward: boolean, next: boolean) => {

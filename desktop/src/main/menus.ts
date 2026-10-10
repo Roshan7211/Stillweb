@@ -192,7 +192,7 @@ export function showTabMenu(win: BrowserWin, tabId: number, x: number, y: number
   const menu = Menu.buildFromTemplate([
     { label: 'New Tab', click: () => win.createTab({ afterId: tabId }) },
     { type: 'separator' },
-    { label: 'Reload', enabled: !!tab.url, click: () => tab.contents.reload() },
+    { label: 'Reload', enabled: !!tab.url, click: () => win.reload(false, tabId) },
     { label: 'Duplicate', enabled: !!tab.url, click: () => win.createTab({ url: tab.url, afterId: tabId }) },
     { label: tab.contents.isAudioMuted() ? 'Unmute Tab' : 'Mute Tab', click: () => win.toggleMute(tabId) },
     { type: 'separator' },
@@ -277,7 +277,7 @@ export function showPageMenu(win: BrowserWin, tabId: number, params: ContextMenu
     items.push(
       { label: 'Back', enabled: contents.navigationHistory.canGoBack(), click: () => contents.navigationHistory.goBack() },
       { label: 'Forward', enabled: contents.navigationHistory.canGoForward(), click: () => contents.navigationHistory.goForward() },
-      { label: 'Reload', click: () => contents.reload() },
+      { label: 'Reload', click: () => win.reload(false, tabId) },
       { type: 'separator' },
       { label: 'Print…', click: () => contents.print() },
     );

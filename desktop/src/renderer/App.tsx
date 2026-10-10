@@ -37,6 +37,8 @@ export function App() {
         setPanel(name);
       }),
     ];
+    // Only now can messages from the main process be heard.
+    void api.interfaceReady();
     return () => stop.forEach((off) => off());
   }, []);
 

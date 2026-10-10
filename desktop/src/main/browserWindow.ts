@@ -3,11 +3,12 @@
 import { BaseWindow, WebContentsView, dialog, nativeTheme, screen, session as electronSession, shell, type Session, type WebContents } from 'electron';
 import path from 'node:path';
 
-import { resolveInput } from '../../../src/browser/url';
+import { resolveInput, searchUrl } from '../../../src/browser/url';
 import { themeFor } from '../shared/theme';
 import type { ChromeEvents, LoadError, TabState, WindowState } from '../shared/types';
 import { recordVisit, totalBlocked, updateVisitTitle } from './data';
 import { shieldEngine } from './engine/shieldEngine';
+import { allowsAutoplay, rememberMediaSite } from './mediaSites';
 import { showPageMenu } from './menus';
 import { attachPermissions } from './permissions';
 import { getSettings } from './settings';
@@ -16,9 +17,9 @@ import {
   browserUserAgent,
   hadRecentGesture,
   httpFallback,
+  pageCommitted,
   pageInfo,
   refreshShieldsState,
-  resetPage,
   shieldEvents,
   shouldBlockPopup,
   upgradeSettled,
@@ -31,6 +32,8 @@ const TAB_STRIP_HEIGHT = 40;
 const DEFAULT_BAR_HEIGHT = 86;
 /** Chromium's code for a load that was stopped on purpose (by the user or a new navigation). */
 const ERR_ABORTED = -3;
+/** Sound that plays this long counts as the user listening to the site (see mediaSites.ts). */
+const LISTENING_MS = 7000;
 
 // ---------------------------------------------------------------------------
 // Sessions: one for normal windows (kept on disk), one for private windows (memory only).
@@ -76,6 +79,9 @@ class Tab {
   audible = false;
   /** Whether a page ever loaded here (a tab that only started a download is closed again). */
   committed = false;
+  /** A tab from last time that has not been opened yet: its page loads when it is first shown. */
+  asleep = false;
+  listeningTimer: NodeJS.Timeout | null = null;
 
   constructor(readonly view: WebContentsView) {}
 
@@ -110,6 +116,14 @@ type SavedSession = { urls: string[]; active: number };
 
 let windowFile: JsonFile<SavedWindow> | null = null;
 let sessionFile: JsonFile<SavedSession> | null = null;
+
+/** Drops a saved position that no screen shows any more (a monitor that was unplugged). */
+function onScreen(saved: SavedWindow): SavedWindow {
+  const b = saved.bounds;
+  if (!b) return saved;
+  const visible = screen.getAllDisplays().some(({ workArea: a }) => b.x < a.x + a.width - 80 && b.x + b.width > a.x + 80 && b.y >= a.y - 10 && b.y < a.y + a.height - 80);
+  return visible ? saved : { maximized: saved.maximized };
+}
 
 export class BrowserWin {
   static readonly all = new Set<BrowserWin>();
@@ -147,7 +161,8 @@ export class BrowserWin {
   private activeId = 0;
   private barHeight = DEFAULT_BAR_HEIGHT;
   private expanded = false;
-  private htmlFullscreen = false;
+  /** The tab whose page has taken the whole screen (a video in full screen), if any. */
+  private fullscreenTab: Tab | null = null;
   private statePending = false;
   private blockedTimer: NodeJS.Timeout | null = null;
   private closedUrls: string[] = [];
@@ -157,7 +172,7 @@ export class BrowserWin {
 
   constructor(readonly isPrivate = false) {
     windowFile ??= jsonFile<SavedWindow>('window.json', {});
-    const saved = isPrivate || BrowserWin.all.size > 0 ? {} : windowFile.value;
+    const saved = isPrivate || BrowserWin.all.size > 0 ? {} : onScreen(windowFile.value);
     this.session = isPrivate ? privateSession() : normalSession();
     const theme = this.theme();
 
@@ -176,6 +191,8 @@ export class BrowserWin {
         ? { trafficLightPosition: { x: 14, y: (TAB_STRIP_HEIGHT - 16) / 2 } }
         : { titleBarOverlay: { color: theme.surface, symbolColor: theme.text, height: TAB_STRIP_HEIGHT } }),
     });
+    // Windows would draw the menu bar inside the window; its shortcuts work without it.
+    if (!isMac) this.window.setMenuBarVisibility(false);
     if (saved.maximized) this.window.maximize();
 
     this.chrome = new WebContentsView({
@@ -193,11 +210,9 @@ export class BrowserWin {
     // The interface is one local page: it never navigates and never opens windows.
     chromeContents.on('will-navigate', (event) => event.preventDefault());
     chromeContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    chromeContents.once('did-finish-load', () => {
-      this.chromeReady = true;
-      for (const action of this.queued.splice(0)) action();
-      this.window.show();
-    });
+    // Normally the interface reports in (see interfaceReady); if it never does, the window
+    // still appears.
+    chromeContents.once('did-finish-load', () => setTimeout(() => this.interfaceReady(), 2000));
     void chromeContents.loadFile(path.join(__dirname, 'renderer/index.html'));
 
     this.window.on('resize', () => this.layout());
@@ -212,6 +227,17 @@ export class BrowserWin {
     BrowserWin.all.add(this);
     BrowserWin.lastFocused = this;
     this.layout();
+  }
+
+  /**
+   * The interface has drawn itself and is listening: messages that were waiting for it
+   * (the first "put the cursor in the address bar", for one) are delivered now.
+   */
+  interfaceReady(): void {
+    if (this.chromeReady || this.window.isDestroyed()) return;
+    this.chromeReady = true;
+    for (const action of this.queued.splice(0)) action();
+    this.window.show();
   }
 
   theme() {
@@ -283,9 +309,10 @@ export class BrowserWin {
   private layout(): void {
     const [width, height] = this.window.getContentSize();
     const active = this.activeTab;
-    if (this.htmlFullscreen && active) {
+    if (this.fullscreenTab && this.fullscreenTab === active) {
       // A page's video in full screen covers the bars too.
       this.chrome.setVisible(false);
+      for (const tab of this.tabs) tab.view.setVisible(tab === active);
       active.view.setBounds({ x: 0, y: 0, width, height });
       return;
     }
@@ -331,7 +358,7 @@ export class BrowserWin {
    * Opens a tab. `adopt` is the web contents Chromium made for a window a page opened, which
    * keeps the new page connected to the one that opened it.
    */
-  createTab(options: { url?: string; activate?: boolean; adopt?: WebContents; afterId?: number } = {}): Tab {
+  createTab(options: { url?: string; activate?: boolean; adopt?: WebContents; afterId?: number; asleep?: boolean } = {}): Tab {
     const view = new WebContentsView(
       options.adopt
         ? { webContents: options.adopt }
@@ -355,8 +382,12 @@ export class BrowserWin {
     if (after >= 0) this.tabs.splice(after + 1, 0, tab);
     else this.tabs.push(tab);
     this.wire(tab);
-    if (options.activate !== false || !this.activeTab) this.activate(tab.id);
-    if (options.url) this.load(tab, options.url);
+    if (options.url && options.asleep) {
+      tab.url = options.url;
+      tab.asleep = true;
+    }
+    if (options.activate !== false || (!this.activeTab && !options.asleep)) this.activate(tab.id);
+    if (options.url && !options.asleep) this.load(tab, options.url);
     this.layout();
     this.pushState();
     return tab;
@@ -393,6 +424,15 @@ export class BrowserWin {
     });
     contents.on('did-stop-loading', () => {
       tab.loading = false;
+      // A navigation that never arrived (it became a download, or was stopped): the address
+      // goes back to the page that is still showing.
+      if (tab.committed && !tab.error) {
+        const shown = contents.getURL();
+        if (shown) {
+          tab.url = shown;
+          pageCommitted(contents, shown);
+        }
+      }
       this.pushState();
     });
     contents.on('did-start-navigation', (details) => {
@@ -410,6 +450,9 @@ export class BrowserWin {
       tab.favicon = null;
       tab.title = '';
       upgradeSettled(contents);
+      // On a site the user plays media on, the page in front may start by itself: it gets
+      // the same standing a click in the page would give it.
+      if (tab === this.activeTab && allowsAutoplay(url)) void contents.mainFrame.executeJavaScript('void 0', true).catch(() => {});
       if (!this.isPrivate) recordVisit(url, '');
       this.layout();
       this.pushState();
@@ -431,11 +474,19 @@ export class BrowserWin {
     });
     contents.on('audio-state-changed', (event) => {
       tab.audible = event.audible;
+      if (tab.listeningTimer) clearTimeout(tab.listeningTimer);
+      tab.listeningTimer = null;
+      if (event.audible && !this.isPrivate) {
+        tab.listeningTimer = setTimeout(() => {
+          tab.listeningTimer = null;
+          if (!contents.isDestroyed()) rememberMediaSite(contents.getURL());
+        }, LISTENING_MS);
+      }
       this.pushState();
     });
     contents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
       if (!isMainFrame || code === ERR_ABORTED) return;
-      const fallback = httpFallback(contents, url);
+      const fallback = httpFallback(contents, url, code);
       if (fallback) {
         void contents.loadURL(fallback).catch(() => {});
         return;
@@ -459,11 +510,11 @@ export class BrowserWin {
       if (tab === this.activeTab) this.send('find-result', { active: result.activeMatchOrdinal, count: result.matches });
     });
     contents.on('enter-html-full-screen', () => {
-      this.htmlFullscreen = true;
+      this.fullscreenTab = tab;
       this.layout();
     });
     contents.on('leave-html-full-screen', () => {
-      this.htmlFullscreen = false;
+      if (this.fullscreenTab === tab) this.fullscreenTab = null;
       this.layout();
     });
     contents.on('zoom-changed', (_event, direction) => this.zoom(direction === 'in' ? 1 : -1));
@@ -485,6 +536,7 @@ export class BrowserWin {
 
   /** Loads an address once the filters are ready, so the first page is not left unfiltered. */
   private load(tab: Tab, url: string): void {
+    tab.asleep = false;
     tab.url = url;
     tab.error = null;
     tab.loading = true;
@@ -500,7 +552,9 @@ export class BrowserWin {
   /** Address bar input (an address or a search) in the active tab. */
   navigate(input: string): void {
     const settings = getSettings();
-    const url = resolveInput(input, settings.searchEngine, settings.customSearchTemplate);
+    let url = resolveInput(input, settings.searchEngine, settings.customSearchTemplate);
+    // Script pasted into the address bar would run inside the open page: search for it instead.
+    if (/^\s*javascript:/i.test(url)) url = searchUrl(input, settings.searchEngine, settings.customSearchTemplate);
     if (!url) return;
     const tab = this.activeTab ?? this.createTab();
     this.load(tab, url);
@@ -509,10 +563,16 @@ export class BrowserWin {
 
   activate(id: number): void {
     if (!this.tabs.some((tab) => tab.id === id)) return;
+    // Another tab comes to the front: a page in full screen gives the screen back.
+    const full = this.fullscreenTab;
+    if (full && full.id !== id && !full.contents.isDestroyed()) {
+      void full.contents.executeJavaScript('document.exitFullscreen()', true).catch(() => {});
+    }
     this.activeId = id;
+    const tab = this.activeTab;
+    if (tab?.asleep) this.load(tab, tab.url);
     this.layout();
     this.pushState();
-    const tab = this.activeTab;
     if (tab && tab.url) tab.contents.focus();
     else this.focusAddress();
   }
@@ -552,6 +612,8 @@ export class BrowserWin {
   private forget(tab: Tab): void {
     const index = this.tabs.indexOf(tab);
     if (index < 0) return;
+    if (tab.listeningTimer) clearTimeout(tab.listeningTimer);
+    if (this.fullscreenTab === tab) this.fullscreenTab = null;
     this.tabs.splice(index, 1);
     if (!this.window.isDestroyed()) this.window.contentView.removeChildView(tab.view);
     if (this.tabs.length === 0) {
@@ -560,6 +622,16 @@ export class BrowserWin {
       return;
     }
     if (this.activeId === tab.id) this.activate(this.tabs[Math.min(index, this.tabs.length - 1)].id);
+    this.layout();
+    this.pushState();
+  }
+
+  /** A navigation in this tab became a download: a tab that shows nothing else is a new tab again. */
+  downloadStarted(tab: Tab): void {
+    if (tab.committed) return;
+    if (this.tabs.length > 1) return this.closeTab(tab.id);
+    tab.url = '';
+    tab.loading = false;
     this.layout();
     this.pushState();
   }
@@ -582,10 +654,10 @@ export class BrowserWin {
     if (tab?.contents.navigationHistory.canGoForward()) tab.contents.navigationHistory.goForward();
   }
 
-  reload(ignoreCache = false): void {
-    const tab = this.activeTab;
+  /** Reloads the active tab, or the tab with this id. */
+  reload(ignoreCache = false, id = this.activeId): void {
+    const tab = this.tabs.find((t) => t.id === id);
     if (!tab || !tab.url) return;
-    resetPage(tab.contents);
     // A page that failed, or never loaded, is asked for again by its address.
     if (tab.error || !tab.committed) this.load(tab, tab.url);
     else if (ignoreCache) tab.contents.reloadIgnoringCache();
@@ -663,6 +735,7 @@ export class BrowserWin {
     if (this.blockedTimer) clearTimeout(this.blockedTimer);
     if (this.dragTimer) clearInterval(this.dragTimer);
     for (const tab of this.tabs.splice(0)) {
+      if (tab.listeningTimer) clearTimeout(tab.listeningTimer);
       if (!tab.contents.isDestroyed()) tab.contents.close({ waitForBeforeUnload: false });
     }
     if (!this.chrome.webContents.isDestroyed()) this.chrome.webContents.close();

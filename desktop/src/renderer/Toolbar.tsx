@@ -45,12 +45,18 @@ function AddressBar({ tab, isPrivate, focusRequest, onSuggesting }: Pick<Props, 
     input.current?.select();
   }, [focusRequest]);
 
-  // Another tab, or another page in this one: whatever was being typed is dropped.
+  // Another tab: whatever was being typed is dropped. Another address in the same tab (a
+  // redirect, a page changing its own address) must not wipe out what is being typed.
+  const tabId = tab?.id;
+  const shownTab = useRef(tabId);
   useEffect(() => {
+    const sameTab = shownTab.current === tabId;
+    shownTab.current = tabId;
+    if (sameTab && document.activeElement === input.current) return;
     setText(url);
     setSuggestions([]);
     setSelected(-1);
-  }, [url, tab?.id]);
+  }, [url, tabId]);
 
   const open = focused && suggestions.length > 0;
   useEffect(() => {

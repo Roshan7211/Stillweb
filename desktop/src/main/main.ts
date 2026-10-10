@@ -5,6 +5,7 @@ import { clearHistory, getBookmarks, loadData, onBookmarksChanged } from './data
 import { attachDownloads } from './downloads';
 import { shieldEngine } from './engine/shieldEngine';
 import { registerIpc } from './ipc';
+import { loadMediaSites } from './mediaSites';
 import { buildAppMenu, newWindow } from './menus';
 import { SELF_TEST_PORT, runLiveCheck, runSelfTest } from './selfTest';
 import { getSettings, loadSettings, onSettingsChanged } from './settings';
@@ -75,6 +76,7 @@ if (!testing && !app.requestSingleInstanceLock()) {
     app.userAgentFallback = browserUserAgent();
     loadSettings();
     loadData();
+    loadMediaSites();
     configureEngine();
     registerFrameHandlers();
     registerIpc();
@@ -82,8 +84,8 @@ if (!testing && !app.requestSingleInstanceLock()) {
     onBrowsingSession(attachDownloads);
 
     onSettingsChanged((settings, previous) => {
-      const shieldsChanged =
-        settings.shields !== previous.shields || settings.disabledSites !== previous.disabledSites || settings.disabledLists !== previous.disabledLists;
+      const blocking = (s: typeof settings) => JSON.stringify([s.shields, s.disabledSites, s.disabledLists]);
+      const shieldsChanged = blocking(settings) !== blocking(previous);
       if (shieldsChanged) configureEngine();
       nativeTheme.themeSource = settings.theme;
       for (const win of BrowserWin.all) {
@@ -107,8 +109,9 @@ if (!testing && !app.requestSingleInstanceLock()) {
     const saved = BrowserWin.savedSession();
     if (!testing && getSettings().restoreTabs && saved.urls.length > 0) {
       const urls = [...saved.urls];
-      const active = saved.active;
-      urls.forEach((url, index) => first.createTab({ url, activate: index === active }));
+      const active = Math.min(Math.max(0, saved.active), urls.length - 1);
+      // Only the tab in front loads now; the others load when they are first shown.
+      urls.forEach((url, index) => first.createTab({ url, activate: index === active, asleep: true }));
       if (startUrl) first.createTab({ url: startUrl });
     } else {
       first.createTab({ url: startUrl });
