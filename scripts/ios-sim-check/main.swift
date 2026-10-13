@@ -132,6 +132,12 @@ final class Runner {
       log("page: address is now \(shown), title '\(title.prefix(40))'")
     }
     view.onLoadError.handler = { body in log("page: ERROR \(body)") }
+    // As the app does: the bars follow what the view asks for.
+    view.onChromeChange.handler = { [weak self] body in
+      let collapsed = (body["collapsed"] as? Bool) ?? false
+      log("view asks for the bars " + (collapsed ? "shrunk" : "shown"))
+      if bars { self?.setBars(collapsed: collapsed) }
+    }
     view.onLoadEnd.handler = { [weak self] _ in self?.loaded() }
     // The props the app sets, then what Expo calls after setting them.
     if bars { view.chromeInsets = barsShown }
@@ -239,13 +245,14 @@ final class Runner {
       ("play", "(function(){var v=document.querySelector('video'); if(v){ v.play().catch(function(e){window.__playErr=String(e)}); } return 'play asked';})()"),
       ("bars-shrunk", "'the bars shrink (as when the page is scrolled)'"),
       ("bars-back", "'the bars come back'"),
-      ("next1", move + "(true)"), ("next2", move + "(true)"), ("back", move + "(false)"),
+      ("inplace", "(function(){ var v = document.querySelector('video'); history.pushState({}, '', location.pathname.replace(/[^/]+$/, 'swTestNext')); return 'bars shrunk, then the page changes its address in place (as a new Short does)'; })()"),
     ]
     func next() {
       guard !steps.isEmpty else { log("done"); exit(0) }
       let (name, js) = steps.removeFirst()
       if name == "bars-shrunk" { setBars(collapsed: true) }
       if name == "bars-back" { setBars(collapsed: false) }
+      if name == "inplace" { setBars(collapsed: true) }
       view.evaluate(js) { r in
         log("--- \(name): \(r ?? "nil")")
         DispatchQueue.main.asyncAfter(deadline: .now() + 7) { self.report(name, then: next) }

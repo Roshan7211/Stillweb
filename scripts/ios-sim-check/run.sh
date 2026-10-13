@@ -85,11 +85,8 @@ run() {
 if [ $# -gt 0 ]; then
   run custom "$@"
 else
-  # Shorts under the app's bars, with the page scripts as they shipped (they stopped at their
-  # first line) and as fixed; then the long-video and music pages with the fixed scripts.
-  OLD_WRAPPER=1 build tree
-  run old-shorts "https://m.youtube.com/shorts" shorts bars
-  build tree
+  # Shorts under the app's bars with the fixed view: the bars shrink and come back, and the
+  # page changes its address in place while they are shrunk. Then a long video and music.
   run shorts "https://m.youtube.com/shorts" shorts bars
   run watch "https://m.youtube.com/watch?v=Nae8rachpOM" once bars
   run music "https://music.youtube.com/" once bars
