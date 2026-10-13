@@ -1,0 +1,207 @@
+== machine
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G83
+arm64
+Xcode_26.0.1.app
+Xcode_26.0.app
+Xcode_26.1.1.app
+Xcode_26.1.app
+Xcode_26.2.0.app
+Xcode_26.2.app
+Xcode_26.3.0.app
+Xcode_26.3.app
+Xcode_26.4.1.app
+Xcode_26.4.app
+Xcode_26.5.0.app
+Xcode_26.5.app
+Xcode_26.6.0.app
+Xcode_26.6.app
+Xcode.app
+Xcode 26.6
+Build version 17F113
+== Runtimes ==
+iOS 26.2 (26.2 - 23C54) - com.apple.CoreSimulator.SimRuntime.iOS-26-2
+iOS 26.4 (26.4.1 - 23E254a) - com.apple.CoreSimulator.SimRuntime.iOS-26-4
+iOS 26.5 (26.5 - 23F77) - com.apple.CoreSimulator.SimRuntime.iOS-26-5
+tvOS 26.2 (26.2 - 23K51) - com.apple.CoreSimulator.SimRuntime.tvOS-26-2
+tvOS 26.4 (26.4 - 23L243a) - com.apple.CoreSimulator.SimRuntime.tvOS-26-4
+tvOS 26.5 (26.5 - 23L470) - com.apple.CoreSimulator.SimRuntime.tvOS-26-5
+watchOS 26.2 (26.2 - 23S303) - com.apple.CoreSimulator.SimRuntime.watchOS-26-2
+watchOS 26.4 (26.4 - 23T240b) - com.apple.CoreSimulator.SimRuntime.watchOS-26-4
+watchOS 26.5 (26.5 - 23T570) - com.apple.CoreSimulator.SimRuntime.watchOS-26-5
+visionOS 26.2 (26.2 - 23N301) - com.apple.CoreSimulator.SimRuntime.xrOS-26-2
+visionOS 26.4 (26.4.1 - 23O249a) - com.apple.CoreSimulator.SimRuntime.xrOS-26-4
+visionOS 26.5 (26.5 - 23O470) - com.apple.CoreSimulator.SimRuntime.xrOS-26-5
+== runtime com.apple.CoreSimulator.SimRuntime.iOS-26-5, device com.apple.CoreSimulator.SimDeviceType.iPhone-17
+== build (tree)
+231 |   func shortsFlow() {
+232 |     stage = "busy"
+233 |     let move = #"""
+234 |     (function (down) {
+235 |       var before = location.pathname;
+build/ios-sim-check/Test.app: replacing existing signature
+== simulator
+device 2A553072-50DE-43DB-B43A-3CE2A07B24E6
+	Finished
+
+
+================ shorts: https://m.youtube.com/shorts shorts bars
+   0.4s  iOS 26.5, WebKit 8624.2.5.10.4, screen (402.0, 874.0)
+   2.1s  creating the web view for https://m.youtube.com/shorts (engine ready: false)
+  20.2s  page: address is now https://m.youtube.com/shorts, title ''
+  20.2s  engine: ready=true version=2026-10-09T08:29:54Z error=none lists=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"]
+  22.9s  page: load started https://m.youtube.com/shorts
+  34.4s  page: finished loading
+  35.6s  page: address is now https://m.youtube.com/shorts/, title 'YouTube'
+  35.9s  page: address is now https://m.youtube.com/shorts/?ra=m, title 'YouTube'
+  37.1s  page: address is now https://m.youtube.com/shorts/-AU1AZOK5G8, title 'Please be quiet 🤫 #viral #fyp #shorts #r'
+  39.3s  page: address is now https://m.youtube.com/shorts/-AU1AZOK5G8?ra=m, title 'Please be quiet 🤫 #viral #fyp #shorts #r'
+  44.0s  [first] blocked count shown by the app: 1
+  44.0s  [first] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  44.0s  [first] view: zoom=1.0 minZoom=1.0 content=[402.0, 678.0] webView=[0.0, 0.0, 402.0, 874.0]
+  44.0s  [first] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  44.0s  [first] page: {"headings":0,"playerResponse":"present","url":"https:\/\/m.youtube.com\/shorts\/-AU1AZOK5G8?ra=m","sections":0,"images":[3,0],"requests":null,"video":{"muted":true,"paused":true,"ready":0,"t":0},"links":[8,8],"trap":true,"set":"[m.youtube.com]","size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":null,"titleFont":null,"itemFont":null,"rootFont":"10px","player":[0,0,402,678],"client":[402,678],"scroll":[0,0]},"shorts":{"chain":["video:0+678","div:0+678","div#movie_player:0+678","div#player:0+678","div:0+678","player-component:0+678","div:0+678","div:0+678"],"ads":[],"h":678,"scroll":0,"ready":0,"vh":[874,678,874,874,678,678],"path":"\/shorts\/-AU1AZOK5G8","sponsoredText":false,"muted":true,"t":0,"videos":1,"playing":false},"adsShown":[],"adKeys":[],"adPlaying":false,"appState":"function","resources":64,"width":[402,402,402,1,402],"text":" Video unavailable @H.C.H.Q.T Subscribe Please be quiet 🤫 #viral #fyp #shorts #relatable #blowup #relatable #makeuptutorial #butifyoucloseyoureyes #makemefamou","quiet":false,"third":["i.ytimg.com","fonts.googleapis.com","accounts.google.com","www.google.com","www.gstatic.com","fonts.gstatic.com","rr1---sn-ojn4v5-55.googlevideo.com","yt3.ggpht.com"]}
+  44.0s  SHOT first
+  47.2s  --- play: "play asked"
+  54.7s  [play] blocked count shown by the app: 1
+  54.7s  [play] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  54.7s  [play] view: zoom=1.0 minZoom=1.0 content=[402.0, 678.0] webView=[0.0, 0.0, 402.0, 874.0]
+  54.7s  [play] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  54.7s  [play] page: {"headings":0,"playerResponse":"present","url":"https:\/\/m.youtube.com\/shorts\/-AU1AZOK5G8?ra=m","sections":0,"images":[3,0],"requests":null,"video":{"muted":true,"paused":false,"ready":0,"t":0},"set":"[m.youtube.com]","trap":true,"links":[8,8],"size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":null,"titleFont":null,"itemFont":null,"rootFont":"10px","player":[0,0,402,678],"client":[402,678],"scroll":[0,0]},"adsShown":[],"shorts":{"ads":[],"chain":["video:0+678","div:0+678","div#movie_player:0+678","div#player:0+678","div:0+678","player-component:0+678","div:0+678","div:0+678"],"h":678,"scroll":0,"ready":0,"vh":[874,678,874,874,678,678],"sponsoredText":false,"path":"\/shorts\/-AU1AZOK5G8","muted":true,"t":0,"videos":1,"playing":true},"adKeys":[],"appState":"function","adPlaying":false,"resources":66,"quiet":false,"text":" Video unavailable @H.C.H.Q.T Subscribe Please be quiet 🤫 #viral #fyp #shorts #relatable #blowup #relatable #makeuptutorial #butifyoucloseyoureyes #makemefamou","width":[402,402,402,1,402],"third":["i.ytimg.com","fonts.googleapis.com","accounts.google.com","www.google.com","www.gstatic.com","fonts.gstatic.com","rr1---sn-ojn4v5-55.googlevideo.com","yt3.ggpht.com"]}
+  54.8s  SHOT play
+  58.1s  --- bars-shrunk: "the bars shrink (as when the page is scrolled)"
+  65.5s  [bars-shrunk] blocked count shown by the app: 1
+  65.5s  [bars-shrunk] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  65.5s  [bars-shrunk] view: zoom=1.0 minZoom=1.0 content=[402.0, 756.0] webView=[0.0, 0.0, 402.0, 874.0]
+  65.5s  [bars-shrunk] insets: content=[62.0, 0.0, 56.0, 0.0] obscured=[62.0, 0.0, 56.0, 0.0] offset=[0.0, -62.0]
+  65.5s  [bars-shrunk] page: {"headings":0,"playerResponse":"present","url":"https:\/\/m.youtube.com\/shorts\/-AU1AZOK5G8?ra=m","sections":0,"images":[3,0],"requests":null,"set":"[m.youtube.com]","video":{"muted":true,"paused":false,"ready":0,"t":0},"trap":true,"links":[8,8],"size":{"inner":[402,756],"below":null,"item":null,"visual":[402,756,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":null,"titleFont":null,"itemFont":null,"rootFont":"10px","player":[0,0,402,756],"client":[402,756],"scroll":[0,0]},"adsShown":[],"shorts":{"ads":[],"playing":true,"h":756,"chain":["video:0+756","div:0+756","div#movie_player:0+756","div#player:0+756","div:0+756","player-component:0+756","div:0+756","div:0+756"],"vh":[874,756,874,874,756,756],"ready":0,"path":"\/shorts\/-AU1AZOK5G8","sponsoredText":false,"t":0,"muted":true,"videos":1,"scroll":0},"adKeys":[],"appState":"function","adPlaying":false,"resources":66,"quiet":false,"text":" Video unavailable @H.C.H.Q.T Subscribe Please be quiet 🤫 #viral #fyp #shorts #relatable #blowup #relatable #makeuptutorial #butifyoucloseyoureyes #makemefamou","width":[402,402,402,1,402],"third":["i.ytimg.com","fonts.googleapis.com","accounts.google.com","www.google.com","www.gstatic.com","fonts.gstatic.com","rr1---sn-ojn4v5-55.googlevideo.com","yt3.ggpht.com"]}
+  65.5s  SHOT bars-shrunk
+  68.7s  --- bars-back: "the bars come back"
+  76.0s  [bars-back] blocked count shown by the app: 1
+  76.0s  [bars-back] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  76.0s  [bars-back] view: zoom=1.0 minZoom=1.0 content=[402.0, 678.0] webView=[0.0, 0.0, 402.0, 874.0]
+  76.0s  [bars-back] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  76.0s  [bars-back] page: {"headings":0,"playerResponse":"present","url":"https:\/\/m.youtube.com\/shorts\/-AU1AZOK5G8?ra=m","sections":0,"images":[3,0],"set":"[m.youtube.com]","video":{"muted":true,"paused":false,"ready":0,"t":0},"links":[8,8],"trap":true,"requests":null,"size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":null,"titleFont":null,"itemFont":null,"rootFont":"10px","player":[0,0,402,678],"client":[402,678],"scroll":[0,0]},"adsShown":[],"shorts":{"chain":["video:0+678","div:0+678","div#movie_player:0+678","div#player:0+678","div:0+678","player-component:0+678","div:0+678","div:0+678"],"scroll":0,"ads":[],"h":678,"vh":[874,678,874,874,678,678],"ready":0,"path":"\/shorts\/-AU1AZOK5G8","sponsoredText":false,"t":0,"muted":true,"videos":1,"playing":true},"adKeys":[],"appState":"function","adPlaying":false,"resources":66,"quiet":false,"text":" Video unavailable @H.C.H.Q.T Subscribe Please be quiet 🤫 #viral #fyp #shorts #relatable #blowup #relatable #makeuptutorial #butifyoucloseyoureyes #makemefamou","width":[402,402,402,1,402],"third":["i.ytimg.com","fonts.googleapis.com","accounts.google.com","www.google.com","www.gstatic.com","fonts.gstatic.com","rr1---sn-ojn4v5-55.googlevideo.com","yt3.ggpht.com"]}
+  76.0s  SHOT bars-back
+  79.3s  view asks for the bars shown
+  79.3s  page: address is now https://m.youtube.com/shorts/swTestNext, title 'Please be quiet 🤫 #viral #fyp #shorts #r'
+  79.3s  --- inplace: "bars shrunk, then the page changes its address in place (as a new Short does)"
+  86.7s  [inplace] blocked count shown by the app: 1
+  86.7s  [inplace] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  86.7s  [inplace] view: zoom=1.0 minZoom=1.0 content=[402.0, 678.0] webView=[0.0, 0.0, 402.0, 874.0]
+  86.7s  [inplace] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  86.7s  [inplace] page: {"headings":0,"playerResponse":"present","url":"https:\/\/m.youtube.com\/shorts\/swTestNext","sections":0,"images":[3,0],"video":{"muted":true,"paused":false,"ready":0,"t":0},"set":"[m.youtube.com]","links":[8,8],"trap":true,"requests":null,"size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":null,"titleFont":null,"itemFont":null,"rootFont":"10px","player":[0,0,402,678],"client":[402,678],"scroll":[0,0]},"shorts":{"scroll":0,"chain":["video:0+678","div:0+678","div#movie_player:0+678","div#player:0+678","div:0+678","player-component:0+678","div:0+678","div:0+678"],"h":678,"playing":true,"ready":0,"vh":[874,678,874,874,678,678],"sponsoredText":false,"path":"\/shorts\/swTestNext","muted":true,"t":0,"videos":1,"ads":[]},"adsShown":[],"adKeys":[],"appState":"function","adPlaying":false,"resources":66,"width":[402,402,402,1,402],"text":" Video unavailable @H.C.H.Q.T Subscribe Please be quiet 🤫 #viral #fyp #shorts #relatable #blowup #relatable #makeuptutorial #butifyoucloseyoureyes #makemefamou","quiet":false,"third":["i.ytimg.com","fonts.googleapis.com","accounts.google.com","www.google.com","www.gstatic.com","fonts.gstatic.com","rr1---sn-ojn4v5-55.googlevideo.com","yt3.ggpht.com"]}
+  86.7s  SHOT inplace
+  89.8s  done
+app.stillweb.nativetest: 4197
+
+================ watch: https://m.youtube.com/watch?v=Nae8rachpOM once bars
+   7.2s  iOS 26.5, WebKit 8624.2.5.10.4, screen (402.0, 874.0)
+   9.1s  creating the web view for https://m.youtube.com/watch?v=Nae8rachpOM (engine ready: false)
+  10.6s  page: address is now https://m.youtube.com/watch?v=Nae8rachpOM, title ''
+  10.6s  engine: ready=true version=2026-10-09T08:29:54Z error=none lists=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"]
+  11.6s  page: load started https://m.youtube.com/watch?v=Nae8rachpOM
+  14.1s  page: finished loading
+  15.3s  page: address is now https://m.youtube.com/watch?v=Nae8rachpOM&ra=m, title 'YouTube'
+  23.6s  [first] blocked count shown by the app: 1
+  23.6s  [first] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  23.6s  [first] view: zoom=1.0 minZoom=1.0 content=[402.0, 4419.0] webView=[0.0, 0.0, 402.0, 874.0]
+  23.6s  [first] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  23.6s  [first] page: {"headings":12,"playerResponse":"present","url":"https:\/\/m.youtube.com\/watch?v=Nae8rachpOM&ra=m","sections":15,"images":[27,0],"set":"[m.youtube.com]","video":{"muted":false,"paused":true,"ready":0,"t":0},"links":[52,52],"trap":true,"requests":null,"size":{"inner":[402,678],"below":[0,274,402,4145],"item":[0,489,402,303],"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":[16,286,370,26],"titleFont":"18px","itemFont":"14px","rootFont":"10px","player":[0,48,402,0],"client":[402,678],"scroll":[0,0]},"adsShown":[],"shorts":null,"adPlaying":false,"appState":"function","adKeys":["adBreakHeartbeatParams"],"resources":34,"quiet":false,"text":" Open App Sign in to confirm you’re not a bot This helps protect our community Sign in Learn more BMSD WATCHPARTY | SEMI-FINALS DAY 1 | BGMI LIVE @LoLzZzGaming ","width":[402,402,402,1,402],"third":["fonts.googleapis.com","i.ytimg.com","rr2---sn-2on4v5-5a.googlevideo.com","www.google.com","yt3.ggpht.com","www.gstatic.com","fonts.gstatic.com"]}
+  23.6s  SHOT first
+  26.7s  --- scrolled down: the bars shrink
+  31.0s  [scrolled] blocked count shown by the app: 1
+  31.0s  [scrolled] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  31.0s  [scrolled] view: zoom=1.0 minZoom=1.0 content=[402.0, 4419.0] webView=[0.0, 0.0, 402.0, 874.0]
+  31.0s  [scrolled] insets: content=[62.0, 0.0, 56.0, 0.0] obscured=[62.0, 0.0, 56.0, 0.0] offset=[0.0, 438.0]
+  31.0s  [scrolled] page: {"headings":12,"playerResponse":"present","url":"https:\/\/m.youtube.com\/watch?v=Nae8rachpOM&ra=m","sections":15,"images":[27,0],"requests":null,"set":"[m.youtube.com]","video":{"muted":false,"paused":true,"ready":0,"t":0},"trap":true,"links":[52,52],"size":{"inner":[402,756],"below":[0,-226,402,4145],"item":[0,-11,402,303],"visual":[402,756,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":[16,-214,370,26],"titleFont":"18px","itemFont":"14px","rootFont":"10px","player":[0,48,402,0],"client":[402,756],"scroll":[0,500]},"adsShown":[],"shorts":null,"adKeys":["adBreakHeartbeatParams"],"appState":"function","adPlaying":false,"resources":38,"width":[402,402,402,1,402],"text":" Open App Sign in to confirm you’re not a bot This helps protect our community Sign in Learn more BMSD WATCHPARTY | SEMI-FINALS DAY 1 | BGMI LIVE @LoLzZzGaming ","quiet":false,"third":["fonts.googleapis.com","i.ytimg.com","rr2---sn-2on4v5-5a.googlevideo.com","www.google.com","yt3.ggpht.com","www.gstatic.com","fonts.gstatic.com"]}
+  31.0s  SHOT scrolled
+  34.1s  --- the bars come back
+  38.4s  [bars-back] blocked count shown by the app: 1
+  38.4s  [bars-back] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  38.4s  [bars-back] view: zoom=1.0 minZoom=1.0 content=[402.0, 4419.0] webView=[0.0, 0.0, 402.0, 874.0]
+  38.4s  [bars-back] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, 438.0]
+  38.4s  [bars-back] page: {"headings":12,"playerResponse":"present","url":"https:\/\/m.youtube.com\/watch?v=Nae8rachpOM&ra=m","sections":15,"images":[27,0],"requests":null,"video":{"muted":false,"paused":true,"ready":0,"t":0},"set":"[m.youtube.com]","trap":true,"links":[52,52],"size":{"inner":[402,678],"below":[0,-226,402,4145],"item":[0,-11,402,303],"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":[16,-214,370,26],"titleFont":"18px","itemFont":"14px","rootFont":"10px","player":[0,48,402,0],"client":[402,678],"scroll":[0,500]},"shorts":null,"adsShown":[],"adKeys":["adBreakHeartbeatParams"],"appState":"function","adPlaying":false,"resources":39,"width":[402,402,402,1,402],"quiet":false,"text":" Open App Sign in to confirm you’re not a bot This helps protect our community Sign in Learn more BMSD WATCHPARTY | SEMI-FINALS DAY 1 | BGMI LIVE @LoLzZzGaming ","third":["fonts.googleapis.com","i.ytimg.com","rr2---sn-2on4v5-5a.googlevideo.com","www.google.com","yt3.ggpht.com","www.gstatic.com","fonts.gstatic.com"]}
+  38.4s  SHOT bars-back
+  41.5s  --- and shrink again
+  45.8s  [shrunk-again] blocked count shown by the app: 1
+  45.8s  [shrunk-again] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  45.8s  [shrunk-again] view: zoom=1.0 minZoom=1.0 content=[402.0, 4419.0] webView=[0.0, 0.0, 402.0, 874.0]
+  45.8s  [shrunk-again] insets: content=[62.0, 0.0, 56.0, 0.0] obscured=[62.0, 0.0, 56.0, 0.0] offset=[0.0, 438.0]
+  45.8s  [shrunk-again] page: {"headings":12,"playerResponse":"present","url":"https:\/\/m.youtube.com\/watch?v=Nae8rachpOM&ra=m","sections":15,"images":[27,0],"video":{"muted":false,"paused":true,"ready":0,"t":0},"requests":null,"links":[52,52],"trap":true,"set":"[m.youtube.com]","size":{"inner":[402,756],"below":[0,-226,402,4145],"item":[0,-11,402,303],"visual":[402,756,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":[16,-214,370,26],"titleFont":"18px","itemFont":"14px","rootFont":"10px","player":[0,48,402,0],"client":[402,756],"scroll":[0,500]},"adsShown":[],"shorts":null,"adPlaying":false,"appState":"function","adKeys":["adBreakHeartbeatParams"],"resources":39,"quiet":false,"text":" Open App Sign in to confirm you’re not a bot This helps protect our community Sign in Learn more BMSD WATCHPARTY | SEMI-FINALS DAY 1 | BGMI LIVE @LoLzZzGaming ","width":[402,402,402,1,402],"third":["fonts.googleapis.com","i.ytimg.com","rr2---sn-2on4v5-5a.googlevideo.com","www.google.com","yt3.ggpht.com","www.gstatic.com","fonts.gstatic.com"]}
+  45.8s  SHOT shrunk-again
+  48.9s  --- back at the top, bars shown
+  53.1s  [top] blocked count shown by the app: 1
+  53.1s  [top] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  53.1s  [top] view: zoom=1.0 minZoom=1.0 content=[402.0, 4419.0] webView=[0.0, 0.0, 402.0, 874.0]
+  53.1s  [top] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  53.1s  [top] page: {"headings":12,"playerResponse":"present","url":"https:\/\/m.youtube.com\/watch?v=Nae8rachpOM&ra=m","sections":15,"images":[27,0],"set":"[m.youtube.com]","video":{"muted":false,"paused":true,"ready":0,"t":0},"links":[52,52],"requests":null,"trap":true,"size":{"inner":[402,678],"below":[0,274,402,4145],"item":[0,489,402,303],"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":[16,286,370,26],"titleFont":"18px","itemFont":"14px","rootFont":"10px","player":[0,48,402,0],"client":[402,678],"scroll":[0,0]},"adsShown":[],"shorts":null,"adPlaying":false,"appState":"function","adKeys":["adBreakHeartbeatParams"],"resources":39,"quiet":false,"width":[402,402,402,1,402],"text":" Open App Sign in to confirm you’re not a bot This helps protect our community Sign in Learn more BMSD WATCHPARTY | SEMI-FINALS DAY 1 | BGMI LIVE @LoLzZzGaming ","third":["fonts.googleapis.com","i.ytimg.com","rr2---sn-2on4v5-5a.googlevideo.com","www.google.com","yt3.ggpht.com","www.gstatic.com","fonts.gstatic.com"]}
+  53.1s  SHOT top
+  56.3s  --- the user's reload
+  56.4s  page: load started https://m.youtube.com/watch?v=Nae8rachpOM&ra=m
+  57.8s  page: finished loading
+  58.5s  page: address is now https://m.youtube.com/watch?v=Nae8rachpOM&pp=0gcJCY8Co7VqN5tD, title 'YouTube'
+  58.6s  page: address is now https://m.youtube.com/watch?v=Nae8rachpOM&pp=0gcJCY8Co7VqN5tD&ra=m, title 'YouTube'
+  67.3s  [reload] blocked count shown by the app: 2
+  67.3s  [reload] app: scripts=7 builtFor=m.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  67.3s  [reload] view: zoom=1.0 minZoom=1.0 content=[402.0, 4419.0] webView=[0.0, 0.0, 402.0, 874.0]
+  67.3s  [reload] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  67.3s  [reload] page: {"headings":12,"playerResponse":"present","url":"https:\/\/m.youtube.com\/watch?v=Nae8rachpOM&pp=0gcJCY8Co7VqN5tD&ra=m","sections":15,"images":[27,0],"requests":null,"video":{"muted":false,"paused":true,"ready":0,"t":0},"set":"[m.youtube.com]","trap":true,"links":[52,52],"size":{"inner":[402,678],"below":[0,274,402,4145],"item":[0,489,402,303],"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no,viewport-fit=cover","title":[16,286,370,26],"titleFont":"18px","itemFont":"14px","rootFont":"10px","player":[0,48,402,0],"client":[402,678],"scroll":[0,0]},"adsShown":[],"shorts":null,"adPlaying":false,"adKeys":["adBreakHeartbeatParams"],"appState":"function","resources":29,"quiet":false,"text":" Open App Sign in to confirm you’re not a bot This helps protect our community Sign in Learn more BMSD WATCHPARTY | SEMI-FINALS DAY 1 | BGMI LIVE @LoLzZzGaming ","width":[402,402,402,1,402],"third":["fonts.googleapis.com","i.ytimg.com","rr3---sn-n4v7sns7.googlevideo.com","www.google.com","yt3.ggpht.com","www.gstatic.com"]}
+  67.3s  SHOT reload
+  70.4s  done
+app.stillweb.nativetest: 7524
+
+================ music: https://music.youtube.com/ once bars
+   0.3s  iOS 26.5, WebKit 8624.2.5.10.4, screen (402.0, 874.0)
+   1.6s  creating the web view for https://music.youtube.com/ (engine ready: false)
+   2.7s  page: address is now https://music.youtube.com/, title ''
+   2.7s  engine: ready=true version=2026-10-09T08:29:54Z error=none lists=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"]
+   3.5s  page: load started https://music.youtube.com/
+  10.4s  page: finished loading
+  19.9s  [first] blocked count shown by the app: 6
+  19.9s  [first] app: scripts=7 builtFor=music.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  19.9s  [first] view: zoom=1.0 minZoom=1.0 content=[402.0, 1333.0] webView=[0.0, 0.0, 402.0, 874.0]
+  19.9s  [first] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  19.9s  [first] page: {"headings":0,"playerResponse":"none","url":"https:\/\/music.youtube.com\/","sections":0,"images":[40,4],"requests":null,"set":"[music.youtube.com]","links":[44,44],"trap":true,"video":{"muted":false,"paused":true,"ready":0,"t":0},"size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":[79,1050,244,24],"titleFont":"15px","itemFont":"11.7px","rootFont":"10px","player":[0,72,402,270],"client":[402,678],"scroll":[0,0]},"shorts":null,"adsShown":[],"adKeys":null,"appState":"function","adPlaying":false,"resources":121,"quiet":false,"text":" Sign in Podcasts Energize Feel good Relax Workout Party Commute Focus Romance Sad Sleep THE HITS FROM EVERY GENRE All-time essentials Pop's Biggest Hits Justin","width":[402,402,402,1,402],"third":["fonts.googleapis.com","lh3.googleusercontent.com","yt3.googleusercontent.com","yt3.ggpht.com","fonts.gstatic.com","www.google.com","www.gstatic.com","jnn-pa.googleapis.com"]}
+  19.9s  SHOT first
+  23.0s  --- scrolled down: the bars shrink
+  27.2s  [scrolled] blocked count shown by the app: 6
+  27.2s  [scrolled] app: scripts=7 builtFor=music.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  27.2s  [scrolled] view: zoom=1.0 minZoom=1.0 content=[402.0, 2429.0] webView=[0.0, 0.0, 402.0, 874.0]
+  27.2s  [scrolled] insets: content=[62.0, 0.0, 56.0, 0.0] obscured=[62.0, 0.0, 56.0, 0.0] offset=[0.0, 438.0]
+  27.2s  [scrolled] page: {"headings":0,"playerResponse":"none","url":"https:\/\/music.youtube.com\/","sections":0,"images":[77,4],"video":{"muted":false,"paused":true,"ready":0,"t":0},"requests":null,"links":[118,118],"trap":true,"set":"[music.youtube.com]","size":{"inner":[402,756],"below":null,"item":null,"visual":[402,756,1,0,0],"viewport":"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":[79,550,244,24],"titleFont":"15px","itemFont":"11.7px","rootFont":"10px","player":[0,72,402,338],"client":[402,756],"scroll":[0,500]},"adsShown":[],"shorts":null,"adPlaying":false,"appState":"function","adKeys":null,"resources":128,"width":[402,402,402,1,402],"quiet":false,"text":" Sign in Podcasts Energize Feel good Relax Workout Party Commute Focus Romance Sad Sleep THE HITS FROM EVERY GENRE All-time essentials Pop's Biggest Hits Justin","third":["fonts.googleapis.com","lh3.googleusercontent.com","yt3.googleusercontent.com","yt3.ggpht.com","fonts.gstatic.com","www.google.com","www.gstatic.com","jnn-pa.googleapis.com"]}
+  27.2s  SHOT scrolled
+  30.4s  --- the bars come back
+  34.6s  [bars-back] blocked count shown by the app: 6
+  34.6s  [bars-back] app: scripts=7 builtFor=music.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  34.6s  [bars-back] view: zoom=1.0 minZoom=1.0 content=[402.0, 2429.0] webView=[0.0, 0.0, 402.0, 874.0]
+  34.6s  [bars-back] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, 438.0]
+  34.6s  [bars-back] page: {"headings":0,"playerResponse":"none","url":"https:\/\/music.youtube.com\/","sections":0,"images":[77,4],"video":{"muted":false,"paused":true,"ready":0,"t":0},"requests":null,"links":[118,118],"trap":true,"set":"[music.youtube.com]","size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":[79,550,244,24],"titleFont":"15px","itemFont":"11.7px","rootFont":"10px","player":[0,72,402,270],"client":[402,678],"scroll":[0,500]},"shorts":null,"adsShown":[],"adPlaying":false,"appState":"function","adKeys":null,"resources":129,"width":[402,402,402,1,402],"quiet":false,"text":" Sign in Podcasts Energize Feel good Relax Workout Party Commute Focus Romance Sad Sleep THE HITS FROM EVERY GENRE All-time essentials Pop's Biggest Hits Justin","third":["fonts.googleapis.com","lh3.googleusercontent.com","yt3.googleusercontent.com","yt3.ggpht.com","fonts.gstatic.com","www.google.com","www.gstatic.com","jnn-pa.googleapis.com"]}
+  34.6s  SHOT bars-back
+  37.8s  --- and shrink again
+  42.0s  [shrunk-again] blocked count shown by the app: 6
+  42.0s  [shrunk-again] app: scripts=7 builtFor=music.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  42.0s  [shrunk-again] view: zoom=1.0 minZoom=1.0 content=[402.0, 2429.0] webView=[0.0, 0.0, 402.0, 874.0]
+  42.0s  [shrunk-again] insets: content=[62.0, 0.0, 56.0, 0.0] obscured=[62.0, 0.0, 56.0, 0.0] offset=[0.0, 438.0]
+  42.0s  [shrunk-again] page: {"headings":0,"playerResponse":"none","url":"https:\/\/music.youtube.com\/","sections":0,"images":[77,4],"set":"[music.youtube.com]","requests":null,"links":[118,118],"trap":true,"video":{"muted":false,"paused":true,"ready":0,"t":0},"size":{"inner":[402,756],"below":null,"item":null,"visual":[402,756,1,0,0],"viewport":"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":[79,550,244,24],"titleFont":"15px","itemFont":"11.7px","rootFont":"10px","player":[0,72,402,338],"client":[402,756],"scroll":[0,500]},"adsShown":[],"shorts":null,"adKeys":null,"appState":"function","adPlaying":false,"resources":130,"width":[402,402,402,1,402],"quiet":false,"text":" Sign in Podcasts Energize Feel good Relax Workout Party Commute Focus Romance Sad Sleep THE HITS FROM EVERY GENRE All-time essentials Pop's Biggest Hits Justin","third":["fonts.googleapis.com","lh3.googleusercontent.com","yt3.googleusercontent.com","yt3.ggpht.com","fonts.gstatic.com","www.google.com","www.gstatic.com","jnn-pa.googleapis.com"]}
+  42.0s  SHOT shrunk-again
+  45.1s  --- back at the top, bars shown
+  49.4s  [top] blocked count shown by the app: 6
+  49.4s  [top] app: scripts=7 builtFor=music.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  49.4s  [top] view: zoom=1.0 minZoom=1.0 content=[402.0, 2429.0] webView=[0.0, 0.0, 402.0, 874.0]
+  49.4s  [top] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  49.4s  [top] page: {"headings":0,"playerResponse":"none","url":"https:\/\/music.youtube.com\/","sections":0,"images":[77,4],"set":"[music.youtube.com]","requests":null,"links":[118,118],"trap":true,"video":{"muted":false,"paused":true,"ready":0,"t":0},"size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":[79,1050,244,24],"titleFont":"15px","itemFont":"11.7px","rootFont":"10px","player":[0,72,402,270],"client":[402,678],"scroll":[0,0]},"adsShown":[],"shorts":null,"adPlaying":false,"adKeys":null,"appState":"function","resources":130,"width":[402,402,402,1,402],"text":" Sign in Podcasts Energize Feel good Relax Workout Party Commute Focus Romance Sad Sleep THE HITS FROM EVERY GENRE All-time essentials Pop's Biggest Hits Justin","quiet":false,"third":["fonts.googleapis.com","lh3.googleusercontent.com","yt3.googleusercontent.com","yt3.ggpht.com","fonts.gstatic.com","www.google.com","www.gstatic.com","jnn-pa.googleapis.com"]}
+  49.4s  SHOT top
+  52.5s  --- the user's reload
+  54.6s  page: load started https://music.youtube.com/
+  59.3s  page: finished loading
+  68.7s  [reload] blocked count shown by the app: 12
+  68.7s  [reload] app: scripts=7 builtFor=music.youtube.com attached=["shield-20261009T082954Z-0", "shield-20261009T082954Z-1"] scriptsInPage=present repairs=0 quiet=false
+  68.7s  [reload] view: zoom=1.0 minZoom=1.0 content=[402.0, 1368.0] webView=[0.0, 0.0, 402.0, 874.0]
+  68.7s  [reload] insets: content=[62.0, 0.0, 134.0, 0.0] obscured=[62.0, 0.0, 134.0, 0.0] offset=[0.0, -62.0]
+  68.7s  [reload] page: {"headings":0,"playerResponse":"none","url":"https:\/\/music.youtube.com\/","sections":0,"images":[30,4],"set":"[music.youtube.com]","video":{"muted":false,"paused":true,"ready":0,"t":0},"requests":null,"trap":true,"links":[44,44],"size":{"inner":[402,678],"below":null,"item":null,"visual":[402,678,1,0,0],"viewport":"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no","title":[79,1085,244,24],"titleFont":"15px","itemFont":"11.7px","rootFont":"10px","player":[0,72,402,270],"client":[402,678],"scroll":[0,0]},"shorts":null,"adsShown":[],"adKeys":null,"appState":"function","adPlaying":false,"resources":34,"width":[402,402,402,1,402],"quiet":false,"text":" Sign in Podcasts Energize Feel good Relax Workout Party Commute Focus Romance Sad Sleep THE HITS FROM EVERY GENRE All-time essentials Pop's Biggest Hits Justin","third":["fonts.googleapis.com","lh3.googleusercontent.com","yt3.googleusercontent.com","www.google.com","jnn-pa.googleapis.com"]}
+  68.7s  SHOT reload
+  71.9s  done
+app.stillweb.nativetest: 10353
+== finished
