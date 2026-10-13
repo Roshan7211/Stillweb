@@ -317,7 +317,6 @@ function DownloadsPanel() {
   const [downloads, setDownloads] = useState<DownloadState[] | null>(null);
   // Speed so far by download, updated with every report (for the time left).
   const rates = useRef(new Map<number, Rate>());
-  const [, setTick] = useState(0);
   useEffect(() => {
     const take = (list: DownloadState[]) => {
       const now = Date.now();
@@ -325,7 +324,6 @@ function DownloadsPanel() {
       for (const d of list) if (d.state === 'progressing') next.set(d.id, nextRate(rates.current.get(d.id), d.received, now));
       rates.current = next;
       setDownloads(list);
-      setTick((n) => n + 1);
     };
     void api.getDownloads().then(take);
     return api.on('downloads', take);

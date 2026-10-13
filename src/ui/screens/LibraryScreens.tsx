@@ -145,7 +145,9 @@ function ProgressBar({ theme, value }: { theme: Theme; value: number | null }) {
     }).start();
   }, [value, width]);
   useEffect(() => {
-    if (value !== null || reduceMotion) return;
+    if (value !== null) return;
+    // Without animations the stripe stays put, partly along the bar (not off its left end).
+    if (reduceMotion) return sweep.setValue(0.4);
     const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: true }));
     loop.start();
     return () => loop.stop();
