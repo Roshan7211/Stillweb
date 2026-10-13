@@ -8,6 +8,9 @@ out = sys.argv[1]
 web = open(out + '/ShieldWebView.swift.in').read().replace('import ExpoModulesCore\n', '\n')
 engine = open(out + '/ShieldEngine.swift.in').read()
 guard = "if (h !== '\\(quoted)' && !h.endsWith('.\\(quoted)')) return;"
+import os
+if os.environ.get('OLD_WRAPPER') == '1':
+    engine = engine.replace("      const scriptletGlobals = {};\n", "")
 if engine.count(guard) == 1:
     engine = engine.replace(guard, guard + "\n      window.__swSet = (window.__swSet || '') + '[\\(quoted)]';")
 else:

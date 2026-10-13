@@ -48,6 +48,18 @@ let probe = """
     width: [innerWidth, document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, v ? v.scale : null, v ? v.width : null],
     video: video ? { paused: video.paused, t: Math.round(video.currentTime * 10) / 10, ready: video.readyState, muted: video.muted } : null,
     quiet: window.__stillwebQuiet === true, appState: typeof window.__shieldAppState,
+    shorts: (function () {
+      if (location.pathname.indexOf('/shorts') !== 0) return null;
+      var vids = Array.prototype.slice.call(document.querySelectorAll('video'));
+      var on = vids.filter(function (x) { var r = x.getBoundingClientRect(); return r.height > 100 && r.top > -50 && r.top < innerHeight / 2; })[0] || vids[0];
+      var adSel = 'ytm-ad-slot-renderer, ad-slot-renderer, ytm-reel-player-ad-renderer, ytm-shorts-ad-renderer, [class*="ad-badge"], ytm-promoted-sparkles-web-renderer, ytm-companion-ad-renderer';
+      var ads = Array.prototype.filter.call(document.querySelectorAll(adSel), function (e) { return e.getBoundingClientRect().height > 0; }).map(function (e) { return e.tagName.toLowerCase(); });
+      var sponsored = /\\b(Sponsored|Ad ·|Promoted)\\b/.test(document.body ? document.body.innerText : '');
+      var unit = function (u) { var d = document.createElement('div'); d.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:100' + u; document.documentElement.appendChild(d); var h = d.getBoundingClientRect().height; d.remove(); return Math.round(h); };
+      var chain = []; for (var n = on, k = 0; n && n !== document.body && k < 8; n = n.parentElement, k++) { var r = n.getBoundingClientRect(); chain.push(n.tagName.toLowerCase().replace(/^ytm-/, '') + (n.id ? '#' + n.id : '') + ':' + Math.round(r.top) + '+' + Math.round(r.height)); }
+      return { vh: [unit('vh'), unit('dvh'), unit('svh'), unit('lvh'), innerHeight, document.documentElement.clientHeight], chain: chain,
+        path: location.pathname, videos: vids.length, playing: on ? !on.paused : null, t: on ? Math.round(on.currentTime * 10) / 10 : null, ready: on ? on.readyState : null, muted: on ? on.muted : null, h: on ? Math.round(on.getBoundingClientRect().height) : null, ads: ads.slice(0, 6), sponsoredText: sponsored, scroll: Math.round(scrollY) };
+    })(),
     requests: window.__requests || null,
     headings: Array.prototype.filter.call(document.querySelectorAll('a h3, a [role=heading]'), function (e) { return e.offsetParent !== null && e.getBoundingClientRect().height > 0; }).length,
     links: [document.querySelectorAll('a[href]').length, Array.prototype.filter.call(document.querySelectorAll('a[href]'), function (e) { return e.offsetParent !== null; }).length],
@@ -90,7 +102,11 @@ final class Runner {
     ShieldEngine.shared.initialize()
     if arguments.contains("no-shields") { ShieldEngine.shared.setOptions(["enabled": false]) }
     // As in the app: the first tab's view is created while the engine may still be loading.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.createView(in: root) }
+    // As on a phone that has answered the video site's cookie question already.
+    let consent = HTTPCookie(properties: [.domain: ".youtube.com", .path: "/", .name: "SOCS", .value: "CAI", .secure: "TRUE", .expires: Date().addingTimeInterval(86400 * 30)])!
+    WKWebsiteDataStore.default().httpCookieStore.setCookie(consent) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.createView(in: root) }
+    }
     DispatchQueue.main.asyncAfter(deadline: .now() + 420) { log("timeout"); exit(3) }
   }
 
@@ -169,6 +185,8 @@ final class Runner {
         log("--- the page sends the tab to \(target)")
         view.evaluate("location.href = '\(target)'; 1") { _ in }
       }
+    case "first" where arguments.contains("shorts"):
+      report("first") { self.shortsFlow() }
     case "first":
       report("first") {
         if bars { return self.barsFlow() }
@@ -203,6 +221,39 @@ final class Runner {
 
   /// What happens to the page while it is used: a video is opened from a list, the page is
   /// scrolled (the bars shrink), scrolled back (they return); then the user's reload.
+  /** Shorts: play, then move to the next one twice (as a swipe up does), then back once. */
+  func shortsFlow() {
+    stage = "busy"
+    let move = #"""
+    (function (down) {
+      var before = location.pathname;
+      var list = Array.prototype.slice.call(document.querySelectorAll('*')).filter(function (e) {
+        var cs = getComputedStyle(e); return /(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 50 && e.clientHeight > 300;
+      });
+      var box = list[0] || document.scrollingElement;
+      box.scrollBy({ top: (down ? 1 : -1) * box.clientHeight, behavior: 'instant' });
+      return before + ' via ' + (box === document.scrollingElement ? 'page' : box.tagName.toLowerCase() + (box.id ? '#' + box.id : ''));
+    })
+    """#
+    var steps: [(String, String)] = [
+      ("play", "(function(){var v=document.querySelector('video'); if(v){ v.play().catch(function(e){window.__playErr=String(e)}); } return 'play asked';})()"),
+      ("bars-shrunk", "'the bars shrink (as when the page is scrolled)'"),
+      ("bars-back", "'the bars come back'"),
+      ("next1", move + "(true)"), ("next2", move + "(true)"), ("back", move + "(false)"),
+    ]
+    func next() {
+      guard !steps.isEmpty else { log("done"); exit(0) }
+      let (name, js) = steps.removeFirst()
+      if name == "bars-shrunk" { setBars(collapsed: true) }
+      if name == "bars-back" { setBars(collapsed: false) }
+      view.evaluate(js) { r in
+        log("--- \(name): \(r ?? "nil")")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7) { self.report(name, then: next) }
+      }
+    }
+    next()
+  }
+
   func barsFlow() {
     stage = "busy"
     var steps: [(name: String, wait: Double, action: () -> Void)] = []

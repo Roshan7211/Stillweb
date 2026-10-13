@@ -85,15 +85,14 @@ run() {
 if [ $# -gt 0 ]; then
   run custom "$@"
 else
-  # The search site and a few others, with the bundled rules: what the engine loaded, and
-  # whether results, links and pictures are there.
-  run search "https://www.google.com/search?q=best+pizza+recipe" once
-  run search-home "https://www.google.com/" once
-  run video "https://m.youtube.com/watch?v=Nae8rachpOM" once
-  run news "https://www.bbc.com/news" once
-  run shop "https://www.amazon.co.uk/" once
-  # Last: turning protection off is remembered by the test app.
-  run search-off "https://www.google.com/search?q=best+pizza+recipe" once no-shields
+  # Shorts under the app's bars, with the page scripts as they shipped (they stopped at their
+  # first line) and as fixed; then the long-video and music pages with the fixed scripts.
+  OLD_WRAPPER=1 build tree
+  run old-shorts "https://m.youtube.com/shorts" shorts bars
+  build tree
+  run shorts "https://m.youtube.com/shorts" shorts bars
+  run watch "https://m.youtube.com/watch?v=Nae8rachpOM" once bars
+  run music "https://music.youtube.com/" once bars
 fi
 
 # Smaller pictures: they are only looked at, and are kept in the repository's results branch.

@@ -162,7 +162,9 @@ internal object CosmeticScripts {
 
     val out = StringBuilder()
     if (scriptlets.isNotBlank()) {
-      out.append("(function(){\n").append(scriptlets).append("\n})();\n")
+      // The scriptlets (uBlock Origin's) read their settings from `scriptletGlobals`, which
+      // uBlock Origin defines around them: without it every one stops at its first line.
+      out.append("(function(){\nconst scriptletGlobals = {};\n").append(scriptlets).append("\n})();\n")
     }
     if (hasCosmetics) {
       val template = hostTemplate ?: readAsset(context, "shieldjs/cosmetic-host.js").also { hostTemplate = it }
