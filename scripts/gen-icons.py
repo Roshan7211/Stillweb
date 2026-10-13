@@ -10,7 +10,11 @@ Outputs (assets/):
   android-icon-monochrome.png  themed-icon layer (same glyph)
   splash-icon.png              white glyph for the launch screen
   favicon.png                  48px
+and, for the desktop app (desktop/resources/build/):
+  icon-mac.png                 1024, the icon as a rounded square with the margin macOS expects
+  icon-win.png                 1024, the icon as a rounded square, edge to edge
 """
+import math
 import os
 import re
 import shutil
@@ -133,6 +137,36 @@ def scaled(svg_text, scale):
     )
 
 
+def inset(svg_text, margin):
+    """Shrinks the drawing so it leaves `margin` pixels free on every side."""
+    scale = (1024 - 2 * margin) / 1024
+    body = re.sub(r"^.*?<svg[^>]*>", "", svg_text, flags=re.S).rsplit("</svg>", 1)[0]
+    defs = re.search(r"<defs>.*?</defs>", body, flags=re.S)
+    defs_text = defs.group(0) if defs else ""
+    body = body.replace(defs_text, "")
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
+        + defs_text
+        + f'<g transform="translate({margin} {margin}) scale({scale})">{body}</g></svg>'
+    )
+
+
+def rounded(rows, size, margin, radius):
+    """Makes everything outside a rounded square transparent, with smooth edges."""
+    low, high = margin + radius, size - margin - radius
+    out = []
+    for y, r in enumerate(rows):
+        qy = max(low - (y + 0.5), (y + 0.5) - high)
+        line = bytearray(r)
+        for x in range(size):
+            qx = max(low - (x + 0.5), (x + 0.5) - high)
+            # Distance to the rounded square's edge: negative inside, positive outside.
+            distance = math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) - radius
+            line[x * 4 + 3] = round(255 * min(1, max(0, 0.5 - distance)))
+        out.append(bytes(line))
+    return out
+
+
 def main():
     icon_svg = open(os.path.join(SRC, "stillweb-icon.svg")).read()
     glyph_svg = open(os.path.join(SRC, "stillweb-glyph.svg")).read()
@@ -163,6 +197,17 @@ def main():
         capture_output=True,
     )
     print("wrote favicon.png")
+
+    # Desktop app. macOS draws nothing around an icon, so the rounded square and the margin
+    # around it are part of the picture (824 of 1024, as in Apple's template).
+    desktop = os.path.join(ROOT, "desktop", "resources", "build")
+    os.makedirs(desktop, exist_ok=True)
+    w, h, rows = render_svg(inset(icon_svg, 100), 1024)
+    encode_png(os.path.join(desktop, "icon-mac.png"), w, h, rounded(rows, 1024, 100, 185), alpha=True)
+    print("wrote desktop icon-mac.png")
+    w, h, rows = render_svg(icon_svg, 1024)
+    encode_png(os.path.join(desktop, "icon-win.png"), w, h, rounded(rows, 1024, 0, 224), alpha=True)
+    print("wrote desktop icon-win.png")
 
 
 if __name__ == "__main__":

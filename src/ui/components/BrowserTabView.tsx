@@ -169,13 +169,15 @@ function BrowserTabView(props: Props) {
 
   // Coming on screen: a short fade while the page grows into place (or slides in from the side
   // it was swiped from). Runs on the native side, so a busy page doesn't make it stutter.
-  const [enter] = useState(() => new Animated.Value(active ? 0 : 1));
+  // One value owns how visible the tab is, in every state: 0 while it is hidden, 1 while it is
+  // shown or left behind under the tab coming in, and running from 0 to 1 as it comes in.
+  const [enter] = useState(() => new Animated.Value(0));
   const played = useRef(-1);
   useEffect(() => {
     if (!active) {
-      // Ready for the next time: the first frame it is shown again is the animation's first.
       played.current = -1;
-      enter.setValue(0);
+      enter.stopAnimation();
+      enter.setValue(leaving ? 1 : 0);
       return;
     }
     if (played.current === enterKey) return;
@@ -186,7 +188,7 @@ function BrowserTabView(props: Props) {
     }
     enter.setValue(0);
     Animated.timing(enter, { toValue: 1, duration: ENTER_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [active, enterKey, enter]);
+  }, [active, leaving, enterKey, enter]);
   const entering = useMemo(
     () => ({
       opacity: enter,
@@ -199,7 +201,7 @@ function BrowserTabView(props: Props) {
   );
   const frame = (children: ReactNode) => (
     <Animated.View
-      style={[StyleSheet.absoluteFill, active ? [styles.shown, entering] : leaving ? styles.leaving : styles.hidden]}
+      style={[StyleSheet.absoluteFill, active ? styles.shown : leaving ? styles.leaving : styles.hidden, entering]}
       pointerEvents={active ? 'auto' : 'none'}>
       {children}
     </Animated.View>
@@ -394,5 +396,5 @@ const styles = StyleSheet.create({
   // Never above zero: the suggestions, the lock screen and messages are drawn over the tab.
   shown: { zIndex: 0 },
   leaving: { zIndex: -1 },
-  hidden: { opacity: 0, zIndex: -2 },
+  hidden: { zIndex: -2 },
 });

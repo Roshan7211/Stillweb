@@ -31,6 +31,9 @@ Run lint and typecheck before declaring any task done.
 - Never use brand names (for example video sites) in the app name, UI text or store assets. Credit filter list licenses in `AboutScreen`.
 - After changing Rust: `npm run build:rust:android`. After changing filter lists or the catalog: `npm run build:filters -- --bundle`.
 - After adding or upgrading dependencies, vendored scripts or filter lists: `npm run build:licenses` (About › Open-source licenses must list everything the app ships).
+- `desktop/` — the Windows and Mac app (Electron), a separate package with its own `package.json`: run npm commands inside it, never `expo install`. `src/main/` is the main process (windows, tabs, blocking in `shields.ts`), `src/preload/` runs in pages and in the window's interface, `src/renderer/` is the interface (React). It reuses the Rust engine compiled to WebAssembly (`desktop/resources/engine.wasm`), the Android filter bundle, the page scripts in `web/shieldjs/`, and the plain TypeScript in `src/browser/` (`url.ts`, `suggestEndpoints.ts`, `loadErrors.ts`): keep those free of React Native imports.
+- After changing Rust, also rebuild the desktop engine: `npm run build:engine` in `desktop/`. `npm run build:filters -- --bundle` also writes the desktop app's `resources/shield-delta.json` (`--bundle-desktop` writes only that).
+- After changing anything the desktop app uses: `npm run typecheck` and `npm test` in `desktop/`. The test runs the real app against a local web server and must pass; it opens windows on screen. `npm run dist:mac` / `npm run dist:win` build the installers (both work from a Mac).
 - After changing iOS background playback (`backgroundPlayScript` in `ios/ShieldWebView.swift`): `npm run test:background-play`. It simulates how WebKit pauses and resumes media on iOS; add a scenario for every behavior you change.
 
 ## Building with EAS
