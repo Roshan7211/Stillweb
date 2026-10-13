@@ -1,7 +1,8 @@
 // The side panels: Settings, History, Bookmarks, Downloads, Privacy report and About.
 import { FolderOpen, HardDrive, Search, ShieldCheck, Trash2, X } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { formatBytes, fraction, nextRate, progressText, type Rate } from '../../../src/browser/downloadProgress';
 import { SEARCH_ENGINES, displayUrl, type SearchEngineId } from '../../../src/browser/url';
 import type { AboutInfo, Bookmark, DownloadState, EngineStatus, FilterListInfo, HistoryEntry, LicenseData, Panel, PrivacyReport, Settings } from '../shared/types';
 import { api } from './api';
@@ -314,17 +315,26 @@ function size(bytes: number): string {
 
 function DownloadsPanel() {
   const [downloads, setDownloads] = useState<DownloadState[] | null>(null);
+  // Speed so far by download, updated with every report (for the time left).
+  const rates = useRef(new Map<number, Rate>());
+  const [, setTick] = useState(0);
   useEffect(() => {
-    void api.getDownloads().then(setDownloads);
-    return api.on('downloads', setDownloads);
+    const take = (list: DownloadState[]) => {
+      const now = Date.now();
+      const next = new Map<number, Rate>();
+      for (const d of list) if (d.state === 'progressing') next.set(d.id, nextRate(rates.current.get(d.id), d.received, now));
+      rates.current = next;
+      setDownloads(list);
+      setTick((n) => n + 1);
+    };
+    void api.getDownloads().then(take);
+    return api.on('downloads', take);
   }, []);
   const status = (d: DownloadState) =>
     d.state === 'progressing'
-      ? d.total > 0
-        ? `${size(d.received)} of ${size(d.total)}`
-        : size(d.received)
+      ? progressText(d.received, d.total, rates.current.get(d.id))
       : d.state === 'completed'
-        ? size(d.received)
+        ? formatBytes(d.received) || 'Done'
         : d.state === 'cancelled'
           ? 'Cancelled'
           : 'Failed';
@@ -332,26 +342,40 @@ function DownloadsPanel() {
     <>
       {downloads && downloads.length === 0 ? <Empty>Files you download are saved to your Downloads folder and listed here.</Empty> : null}
       <ul className="list">
-        {(downloads ?? []).map((d) => (
-          <li key={d.id} className="list-item">
-            <button className="list-main" title={d.path} disabled={d.state !== 'completed'} onClick={() => void api.openDownload(d.id)}>
-              <span className="list-title">{d.filename}</span>
-              <span className="list-detail muted">{status(d)}</span>
+        {(downloads ?? []).map((d) => {
+          const value = d.state === 'progressing' ? fraction(d.received, d.total) : null;
+          return (
+            <li key={d.id} className="list-item">
+              <button className="list-main" title={d.path} disabled={d.state !== 'completed'} onClick={() => void api.openDownload(d.id)}>
+                <span className="download-head">
+                  <span className="list-title">{d.filename}</span>
+                  {value !== null ? <span className="download-percent">{Math.floor(value * 100)}%</span> : null}
+                </span>
+                {d.state === 'progressing' ? (
+                  <span
+                    className={`download-bar${value === null ? ' unknown' : ''}`}
+                    role="progressbar"
+                    aria-label={`Downloading ${d.filename}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={value === null ? undefined : Math.floor(value * 100)}>
+                    <span className="download-fill" style={value === null ? undefined : { width: `${value * 100}%` }} />
+                  </span>
+                ) : null}
+                <span className="list-detail muted">{status(d)}</span>
+              </button>
               {d.state === 'progressing' ? (
-                <progress className="progress" aria-label={`Downloading ${d.filename}`} max={d.total || undefined} value={d.total ? d.received : undefined} />
+                <button className="icon-button small" aria-label="Cancel download" onClick={() => void api.cancelDownload(d.id)}>
+                  <X size={15} />
+                </button>
+              ) : d.state === 'completed' ? (
+                <button className="icon-button small" aria-label="Show in folder" title="Show in folder" onClick={() => void api.showDownload(d.id)}>
+                  <FolderOpen size={15} />
+                </button>
               ) : null}
-            </button>
-            {d.state === 'progressing' ? (
-              <button className="icon-button small" aria-label="Cancel download" onClick={() => void api.cancelDownload(d.id)}>
-                <X size={15} />
-              </button>
-            ) : d.state === 'completed' ? (
-              <button className="icon-button small" aria-label="Show in folder" title="Show in folder" onClick={() => void api.showDownload(d.id)}>
-                <FolderOpen size={15} />
-              </button>
-            ) : null}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
       {downloads && downloads.some((d) => d.state !== 'progressing') ? (
         <button className="button" onClick={() => void api.clearDownloads()}>

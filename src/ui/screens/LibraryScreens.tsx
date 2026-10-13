@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Platform, StyleSheet, Text } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, Easing, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ShieldEngine } from '../../../native/shield-webview';
 import { useLibrary } from '../../browser/library';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
+import { formatBytes, fraction, nextRate, progressText, type Rate } from '../../browser/downloadProgress';
 import { displayUrl } from '../../browser/url';
-import { IconButton, Row, ScreenHeader } from '../components/primitives';
+import { Icon, IconButton, Row, ScreenHeader } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
@@ -115,21 +116,128 @@ export function HistoryScreen({ theme, onBack, onOpen }: Props) {
 
 type Status = { status: string; bytes: number; total: number };
 
-function formatBytes(n: number): string {
-  if (n <= 0) return '';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i++;
-  }
-  return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
+/** How often a download in progress is looked at again. */
+const POLL_MS = 1000;
+
+let reduceMotion = false;
+AccessibilityInfo.isReduceMotionEnabled()
+  .then((value) => {
+    reduceMotion = value;
+  })
+  .catch(() => {});
+
+/**
+ * A download's bar. It grows smoothly from one reading to the next (over the time until the
+ * next one), so it keeps moving instead of jumping once a second; with no size known, a
+ * stripe runs along it instead.
+ */
+function ProgressBar({ theme, value }: { theme: Theme; value: number | null }) {
+  const [width] = useState(() => new Animated.Value(value ?? 0));
+  const [sweep] = useState(() => new Animated.Value(0));
+  const [track, setTrack] = useState(0);
+  useEffect(() => {
+    if (value === null) return;
+    Animated.timing(width, {
+      toValue: value,
+      duration: reduceMotion ? 0 : POLL_MS,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start();
+  }, [value, width]);
+  useEffect(() => {
+    if (value !== null || reduceMotion) return;
+    const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [value, sweep]);
+  return (
+    <View style={[styles.track, { backgroundColor: theme.surface }]} onLayout={(e) => setTrack(e.nativeEvent.layout.width)}>
+      {value === null ? (
+        <Animated.View
+          style={[
+            styles.stripe,
+            { backgroundColor: theme.accent, width: track * 0.3 },
+            { transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-track * 0.3, track] }) }] },
+          ]}
+        />
+      ) : (
+        <Animated.View
+          style={[styles.fill, { backgroundColor: theme.accent, width: width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]}
+        />
+      )}
+    </View>
+  );
+}
+
+function DownloadRow({
+  theme,
+  title,
+  status,
+  rate,
+  site,
+  checking,
+  onOpen,
+  onRemove,
+}: {
+  theme: Theme;
+  title: string;
+  status: Status | undefined;
+  rate: Rate | undefined;
+  site: string;
+  checking: boolean;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  const s = status;
+  const active = s?.status === 'running' || s?.status === 'pending';
+  const value = s ? fraction(s.bytes, s.total) : null;
+  const detail = !s
+    ? checking
+      ? 'Checking…'
+      : 'No longer available'
+    : active
+      ? s.status === 'pending' && !s.bytes
+        ? 'Waiting…'
+        : progressText(s.bytes, s.total, rate)
+      : s.status === 'paused'
+        ? `Paused · ${formatBytes(s.bytes) || '0 B'}${s.total > 0 ? ` of ${formatBytes(s.total)}` : ''}`
+        : s.status === 'done'
+          ? formatBytes(s.total) || 'Done'
+          : s.status === 'failed'
+            ? 'Failed'
+            : 'Deleted';
+  const percent = active && value !== null ? `${Math.floor(value * 100)}%` : '';
+  return (
+    <Pressable
+      onPress={s?.status === 'done' ? onOpen : undefined}
+      disabled={s?.status !== 'done'}
+      accessibilityRole={s?.status === 'done' ? 'button' : undefined}
+      accessibilityLabel={`${title}, ${percent ? `${percent}, ` : ''}${detail}`}
+      style={({ pressed }) => [styles.download, pressed && { backgroundColor: theme.surface }]}>
+      <Icon name={s?.status === 'failed' ? 'alert-circle' : s?.status === 'missing' ? 'file-minus' : active ? 'download' : 'file'} size={20} color={active ? theme.accent : theme.muted} />
+      <View style={styles.downloadText}>
+        <View style={styles.downloadTitleRow}>
+          <Text style={[styles.downloadTitle, { color: theme.text }]} numberOfLines={1}>
+            {title}
+          </Text>
+          {percent ? <Text style={[styles.percent, { color: theme.accent }]}>{percent}</Text> : null}
+        </View>
+        {active || s?.status === 'paused' ? <ProgressBar theme={theme} value={s?.status === 'paused' ? (value ?? 0) : value} /> : null}
+        <Text style={[styles.downloadDetail, { color: theme.muted }]} numberOfLines={1}>
+          {active ? detail : `${detail} · ${site}`}
+        </Text>
+      </View>
+      <IconButton name="x" label="Remove from list" color={theme.muted} size={18} onPress={onRemove} />
+    </Pressable>
+  );
 }
 
 export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
   const { downloads, removeDownload } = useLibrary();
   // Live state by download record: Android asks DownloadManager by id, iOS checks the files.
   const [status, setStatus] = useState<Record<string, Status>>({});
+  // Speed so far by download record (for the time left).
+  const [rates, setRates] = useState<Record<string, Rate>>({});
 
   // Polled again only when the list itself changes (not when history does).
   const downloadsKey = downloads.map((d) => `${d.id}:${d.nativeId ?? d.filePath ?? ''}`).join('|');
@@ -167,12 +275,20 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
       }
       if (!alive) return;
       setStatus(next);
+      const now = Date.now();
+      setRates((before) => {
+        const after: Record<string, Rate> = {};
+        for (const [id, s] of Object.entries(next)) {
+          if (s.status === 'running' || s.status === 'pending') after[id] = nextRate(before[id], s.bytes, now);
+        }
+        return after;
+      });
       // Nothing downloading any more: stop asking every second.
       const running = Object.values(next).some((s) => s.status === 'running' || s.status === 'pending' || s.status === 'paused');
       if (!running) stop();
     };
     // The timer first, so a first poll that finds nothing to watch can stop it.
-    timer = setInterval(() => poll().catch(() => {}), 1000);
+    timer = setInterval(() => poll().catch(() => {}), POLL_MS);
     poll().catch(() => {});
     return () => {
       alive = false;
@@ -208,30 +324,18 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
             }
           />
         }
-        renderItem={({ item }) => {
-          const s = status[item.id];
-          const detail = !s
-            ? Platform.OS === 'ios' && item.filePath
-              ? 'Checking…'
-              : 'No longer available'
-            : s.status === 'done'
-              ? formatBytes(s.total) || 'Done'
-              : s.status === 'failed'
-                ? 'Failed'
-                : s.status === 'missing'
-                  ? 'Deleted'
-                  : `${formatBytes(s.bytes)}${s.total > 0 ? ` of ${formatBytes(s.total)}` : ''} · ${s.status === 'running' ? 'downloading' : s.status}`;
-          return (
-            <Row
-              title={item.fileName}
-              subtitle={`${detail} · ${displayUrl(item.url).split('/')[0]}`}
-              icon={s?.status === 'failed' ? 'alert-circle' : s?.status === 'missing' ? 'file-minus' : 'file'}
-              theme={theme}
-              onPress={s?.status === 'done' ? () => open(item) : undefined}
-              right={<IconButton name="x" label="Remove from list" color={theme.muted} size={18} onPress={() => removeDownload(item.id)} />}
-            />
-          );
-        }}
+        renderItem={({ item }) => (
+          <DownloadRow
+            theme={theme}
+            title={item.fileName}
+            status={status[item.id]}
+            rate={rates[item.id]}
+            site={displayUrl(item.url).split('/')[0]}
+            checking={Platform.OS === 'ios' && !!item.filePath}
+            onOpen={() => open(item)}
+            onRemove={() => removeDownload(item.id)}
+          />
+        )}
       />
     </SafeAreaView>
   );
@@ -241,4 +345,13 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   empty: { textAlign: 'center', marginTop: 60, marginHorizontal: 32, fontSize: 15, lineHeight: 21 },
   day: { fontSize: 13, fontWeight: '600', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
+  download: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingLeft: 16, paddingRight: 4, paddingVertical: 12, minHeight: 64 },
+  downloadText: { flex: 1, gap: 6 },
+  downloadTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  downloadTitle: { flex: 1, fontSize: 16 },
+  percent: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  downloadDetail: { fontSize: 13, fontVariant: ['tabular-nums'] },
+  track: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  fill: { height: 4, borderRadius: 2 },
+  stripe: { position: 'absolute', top: 0, bottom: 0, borderRadius: 2 },
 });

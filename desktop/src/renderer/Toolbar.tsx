@@ -132,7 +132,11 @@ export function Toolbar(props: Props) {
 
   const isPage = !!tab && /^https?:/i.test(tab.url);
   const shieldsOn = tab ? tab.shieldsActive : settings.shields.enabled;
-  const downloading = downloads.some((d) => d.state === 'progressing');
+  const active = downloads.filter((d) => d.state === 'progressing');
+  const downloading = active.length > 0;
+  // All downloads in progress together, as a ring around the button (none while a size is unknown).
+  const known = active.every((d) => d.total > 0);
+  const ring = downloading && known ? active.reduce((sum, d) => sum + d.received, 0) / Math.max(1, active.reduce((sum, d) => sum + d.total, 0)) : null;
 
   return (
     <div className="toolbar">
@@ -173,8 +177,18 @@ export function Toolbar(props: Props) {
         {shieldsOn && tab && tab.blocked > 0 ? <span className="badge">{tab.blocked > 99 ? '99+' : tab.blocked}</span> : null}
       </button>
       {downloads.length > 0 ? (
-        <button className={`icon-button${downloading ? ' busy' : ''}`} aria-label="Downloads" title="Downloads" onClick={() => onOpenPanel('downloads')}>
+        <button
+          className={`icon-button${downloading ? ' busy' : ''}`}
+          aria-label={ring !== null ? `Downloads, ${Math.floor(ring * 100)}%` : 'Downloads'}
+          title="Downloads"
+          onClick={() => onOpenPanel('downloads')}>
           <Download size={17} />
+          {downloading ? (
+            <svg className={`download-ring${ring === null ? ' unknown' : ''}`} viewBox="0 0 36 36" aria-hidden="true">
+              <circle className="download-ring-track" cx="18" cy="18" r="16" />
+              <circle className="download-ring-fill" cx="18" cy="18" r="16" pathLength={100} strokeDasharray={`${ring === null ? 25 : Math.max(2, ring * 100)} 100`} />
+            </svg>
+          ) : null}
         </button>
       ) : null}
       <button

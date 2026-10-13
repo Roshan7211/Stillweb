@@ -154,6 +154,24 @@ document.getElementById('a').play().then(function () { window.__play = 'playing'
       response.setHeader('Content-Disposition', 'attachment; filename="stillweb-test.bin"');
       return response.end(Buffer.alloc(2048, 7));
     }
+    if (url.pathname === '/slow.bin') {
+      // 3 MB over about six seconds, with its size announced: a download to watch in progress.
+      const chunk = Buffer.alloc(64 * 1024, 3);
+      const chunks = 48;
+      response.setHeader('Content-Type', 'application/octet-stream');
+      response.setHeader('Content-Length', String(chunk.length * chunks));
+      response.setHeader('Content-Disposition', 'attachment; filename="stillweb-slow.bin"');
+      let sent = 0;
+      const timer = setInterval(() => {
+        if (response.destroyed) return clearInterval(timer);
+        response.write(chunk);
+        if (++sent === chunks) {
+          clearInterval(timer);
+          response.end();
+        }
+      }, 125);
+      return;
+    }
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (url.pathname === '/popup') return response.end('<title>Popup</title><script>document.title = "Popup opener:" + (window.opener ? "yes" : "no")</script>');
     response.end(fixturePage(url.searchParams));
@@ -549,6 +567,30 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     check('a download is saved to the Downloads folder', downloaded && !!file && fs.existsSync(file.path) && fs.statSync(file.path).size === 2048, file?.path ?? 'no download');
     await sleep(500);
     await screenshot(win, '08-downloads');
+
+    // A download in progress: the panel shows a bar that grows, the percentage, the speed and
+    // the time left, and the toolbar button a ring.
+    win.createTab({ url: `${site}/slow.bin` });
+    const slow = () => getDownloads().find((d) => d.filename.startsWith('stillweb-slow'));
+    await waitFor(() => (slow()?.received ?? 0) > 1024 * 1024, 6000);
+    await sleep(400);
+    const shownAt = await inChrome<{ bar: number; detail: string; percent: string; ring: boolean }>(
+      win,
+      `(() => { const fill = document.querySelector('.download-fill'); const item = fill && fill.closest('.list-item');
+        return { bar: fill ? fill.getBoundingClientRect().width / fill.parentElement.getBoundingClientRect().width : -1,
+          detail: item ? item.querySelector('.list-detail').textContent : '', percent: item ? (item.querySelector('.download-percent') || {}).textContent || '' : '',
+          ring: !!document.querySelector('.download-ring-fill') }; })()`,
+    );
+    await screenshot(win, '08b-download-in-progress');
+    await sleep(1200);
+    const later = await inChrome<number>(win, `(() => { const f = document.querySelector('.download-fill'); return f ? f.getBoundingClientRect().width / f.parentElement.getBoundingClientRect().width : -1; })()`);
+    check(
+      'a download in progress shows a growing bar, its percentage, speed and time left',
+      shownAt.bar > 0 && later > shownAt.bar && /%$/.test(shownAt.percent) && /MB of 3\.0 MB · .+\/s · \d+ s left/.test(shownAt.detail) && shownAt.ring,
+      `${JSON.stringify(shownAt)} then ${later.toFixed(2)}`,
+    );
+    const slowDone = await waitFor(() => slow()?.state === 'completed', 10000);
+    check('the slow download finishes', slowDone && fs.statSync(slow()!.path).size === 3 * 1024 * 1024, slow()?.state ?? 'none');
 
     // ---- Private window ----
     const privateWin = newWindow(true);
