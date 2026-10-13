@@ -1978,8 +1978,36 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     }
   }
 
+  /// Whether this web view has reloaded the video site after its first load (see reloadsFirstPage).
+  private var videoSiteReloaded = false
+
+  /// The video site, opened for the first time in a web view (a new tab, an address typed or
+  /// picked, a link from another site, or the tabs the app reopens when it starts), is loaded
+  /// once more, the way pulling down reloads it. People found its first load misbehaving (ads,
+  /// a player that doesn't work properly, a slightly zoomed-out page) until they reloaded by
+  /// hand; the cause in WebKit is not known, and that reload reliably put it right. Only the
+  /// site's own pages (not its sign-in or cookie-consent pages).
+  private static let reloadedSiteHosts: Set<String> = ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"]
+  private func reloadsFirstPage(_ url: URL?) -> Bool {
+    guard let host = url?.host?.lowercased(), ["http", "https"].contains(url?.scheme?.lowercased() ?? "") else { return false }
+    return Self.reloadedSiteHosts.contains(host)
+  }
+
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-    verifyScripts()
+    // Only an HTML page asked for with GET (never a submitted form), and not while the app is
+    // in the background, where it could be playing the page's sound.
+    if !videoSiteReloaded, reloadsFirstPage(webView.url), mainRequestIsGet, mainResponseIsHTML,
+       UIApplication.shared.applicationState != .background {
+      videoSiteReloaded = true
+      // Exactly what pulling down does (keeping a reopened tab's media quiet until a touch).
+      // The self-check is left to the page that reload brings.
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.webView === webView else { return }
+        self.reload(quiet: self.contentController?.quiet ?? false)
+      }
+    } else {
+      verifyScripts()
+    }
     zoomBeforePush = nil
     // The page before it took its media with it.
     playingFrames.removeAll()
