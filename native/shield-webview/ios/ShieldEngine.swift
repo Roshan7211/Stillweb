@@ -53,10 +53,13 @@ final class ScriptletIndex {
     }
     let guardHost = entry == nil ? host.lowercased() : matched
     let quoted = guardHost.replacingOccurrences(of: "'", with: "")
+    // The scriptlets (uBlock Origin's) read their settings from `scriptletGlobals`, which
+    // uBlock Origin defines around them: without it every one stops at its first line.
     return """
     (function () {
       var h = location.hostname;
       if (h !== '\(quoted)' && !h.endsWith('.\(quoted)')) return;
+      const scriptletGlobals = {};
     \(body)
     })();
     """

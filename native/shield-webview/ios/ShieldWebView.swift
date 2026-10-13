@@ -1154,6 +1154,30 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   }
 
   /// Edge to edge, like Safari: the page scrolls under the status bar and the app's bars.
+  /// The bars changed how much of the page they cover, so the page's area changed size. WebKit
+  /// lays the page out again but doesn't tell its scripts: players that size their video from
+  /// the window (the video site's Shorts) kept the old size and no longer fit. They're told,
+  /// once the change has settled.
+  private var resizeNotice: DispatchWorkItem?
+  private func pageAreaChanged() {
+    resizeNotice?.cancel()
+    let notice = DispatchWorkItem { [weak self] in
+      self?.webView?.evaluateJavaScript("window.dispatchEvent(new Event('resize')); void 0", completionHandler: nil)
+    }
+    resizeNotice = notice
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: notice)
+  }
+
+  /// The page changed its address without loading (sites that swap pages in place, like the
+  /// video site's Shorts): the bars come back, as for a page that loads.
+  private var lastPagePath: String?
+  private func addressChanged(_ url: URL?) {
+    let path = url.map { "\($0.host ?? "")\($0.path)" }
+    defer { lastPagePath = path }
+    guard let path, let last = lastPagePath, path != last, chromeCollapsed else { return }
+    setChrome(collapsed: false)
+  }
+
   private func applyChromeInsets() {
     guard let webView else { return }
     let scroll = webView.scrollView
@@ -1173,6 +1197,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         // Less is covered: the page's area grows (see minimumZoomChanged).
         if covered.top + covered.bottom < before.top + before.bottom { areaGrewAt = Date() }
         webView.obscuredContentInsets = covered
+        pageAreaChanged()
       }
       inset = covered
     } else if let chrome = chromeInsets {
@@ -1370,7 +1395,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
     let emit: (WKWebView) -> Void = { [weak self] _ in self?.emitNavigationState() }
     observations = [
-      wv.observe(\.url) { v, _ in emit(v) },
+      wv.observe(\.url) { [weak self] v, _ in
+        self?.addressChanged(v.url)
+        emit(v)
+      },
       wv.observe(\.title) { v, _ in emit(v) },
       wv.observe(\.canGoBack) { v, _ in emit(v) },
       wv.observe(\.canGoForward) { v, _ in emit(v) },
