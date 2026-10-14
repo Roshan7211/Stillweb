@@ -1,4 +1,4 @@
-! Stillweb's own fixes for the desktop app: sites where the shared lists fall short.
+! Stillweb's own fixes, for every app (phones and desktop): sites where the shared lists fall short.
 ! Same syntax as the other lists. Keep each rule next to the address it was tested on and
 ! the date, and remove it once the shared lists cover the site again.
 !

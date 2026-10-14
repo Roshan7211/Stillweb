@@ -146,6 +146,17 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   private var fileCallback: ValueCallback<Array<Uri>>? = null
   private var pendingNavigation: String? = null
   private var orientationBeforeFullscreen: Int? = null
+  /** Media with sound has played on this page (a video is being watched). */
+  @Volatile private var watchedOnPage = false
+
+  /** A host's site: its last two labels, or three under endings like co.uk and com.au. */
+  private fun siteOf(host: String): String {
+    val labels = host.split('.')
+    if (labels.size <= 2) return host
+    val keep = if (labels[labels.size - 2].length <= 3 && labels.last().length == 2) 3 else 2
+    return labels.takeLast(keep).joinToString(".")
+  }
+
   /** Site where the user started media; autoplay stays allowed there until leaving it. */
   @Volatile private var mediaAllowedHost: String? = null
   private var extraScripts = mutableListOf<ScriptHandler>()
@@ -269,6 +280,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       val data = runCatching { JSONObject(message.data ?: "{}") }.getOrNull() ?: return@addWebMessageListener
       val playing = data.optBoolean("playing")
       if (playing) {
+        watchedOnPage = true
         requestNotificationPermissionOnce()
         // Media already started here (which needed a tap), so let the site continue on its own:
         // next track, autoplay of the next video, resuming after buffering, all without a tap.
@@ -458,6 +470,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     }
     if (url == pageUrl) return
     pageUrl = url
+    watchedOnPage = false
     if (blockedOnPage.getAndSet(0) != 0) queueBlockedEvent()
   }
 
@@ -943,6 +956,13 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
         onPopupBlocked(mapOf("url" to "", "kind" to "popup"))
         return false
       }
+      // Video players on some sites (film sites' "ev" players) open advertisers' sites from
+      // taps on the video once it has played a while; a tap is a real one, so the windows get
+      // through. As in the desktop app: while a video is being watched, a window to another
+      // site that wasn't opened by tapping a real link is not opened.
+      val onLink = view.hitTestResult.type.let { it == WebView.HitTestResult.SRC_ANCHOR_TYPE || it == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE }
+      val strict = ShieldEngine.blockPopups && shieldsActive && watchedOnPage && !onLink
+      val openerSite = hostOf(pageUrl)?.let(::siteOf)
       // Capture the target URL with a throwaway WebView, then let JS open it as a new tab.
       val probe = WebView(view.context)
       profileName()?.let { WebViewCompat.setProfile(probe, it) }
@@ -955,7 +975,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
             handled = true
             val target = request.url.toString()
             debug("popup target $target")
-            val isAd = shieldsActive && ShieldEngine.check(target, pageUrl, "document") != Verdict.Allow
+            val targetSite = hostOf(target)?.let(::siteOf)
+            val offSite = strict && targetSite != null && openerSite != null && targetSite != openerSite
+            val isAd = offSite || (shieldsActive && ShieldEngine.check(target, pageUrl, "document") != Verdict.Allow)
             if (isAd) {
               countBlocked(target)
               onPopupBlocked(mapOf("url" to target, "kind" to "popup"))

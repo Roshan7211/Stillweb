@@ -35,6 +35,8 @@ const option = (name, fallback) => {
 const OUT = path.resolve(ROOT, option('--out', 'filter-server/dist'));
 const CACHE = path.join(ROOT, 'scripts/filters/.cache');
 const MODULE = path.join(ROOT, 'native/shield-webview');
+const FIXES_ID = 'stillweb-fixes';
+const FIXES_FILE = path.join(ROOT, 'desktop/resources/stillweb-fixes.txt');
 
 // `!#if` tokens that are true per platform; anything not listed evaluates to false.
 const PLATFORM_ENV = {
@@ -361,6 +363,10 @@ async function main() {
 
   const forPlatform = (platform) => catalog.lists.filter((l) => !l.platforms || l.platforms.includes(platform));
 
+  // Stillweb's own fixes (sites the shared lists don't cover yet): always on, in every app.
+  // The desktop app ships the file itself, so it skips this entry of the bundle.
+  const fixesText = fs.readFileSync(FIXES_FILE, 'utf8');
+
   // The desktop app reads the android lists; only the few lines inside `!#if env_mobile`
   // blocks differ, so it gets those as lines to drop and lines to add, per list.
   const delta = {};
@@ -375,6 +381,8 @@ async function main() {
     const add = [...desktop].filter((line) => line && !mobile.has(line));
     if (remove.length || add.length) delta[list.id] = { remove, add };
   }
+  manifest.android.lists.push({ id: FIXES_ID, trusted: true, always: true, ...writeFile(`android/${FIXES_ID}.txt`, fixesText) });
+  log(`${FIXES_ID}: ${fixesText.split('\n').filter((l) => l.trim() && !l.startsWith('!')).length} rules`);
   manifest.desktop = { delta: writeFile('desktop/delta.json', JSON.stringify(delta)) };
   log(`desktop: ${Object.entries(delta).map(([id, d]) => `${id} -${d.remove.length} +${d.add.length}`).join(', ') || 'no differences'}`);
   const resources = await buildResources();
@@ -391,6 +399,9 @@ async function main() {
       fs.writeFileSync(file, preprocess(raw[list.id], PLATFORM_ENV.ios));
       (list.group === 'calm' ? calmArgs : coreArgs).push('--list', `${file}${list.trusted ? ':trusted' : ''}`);
     }
+    const fixesFile = path.join(work, `${FIXES_ID}.txt`);
+    fs.writeFileSync(fixesFile, fixesText);
+    coreArgs.push('--list', `${fixesFile}:trusted`);
     const iosOut = path.join(OUT, 'ios');
     const compiler = compilerPath();
     const compile = (args) =>

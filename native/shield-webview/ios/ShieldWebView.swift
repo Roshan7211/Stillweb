@@ -1831,7 +1831,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     } else if message.name == "shieldMedia" {
       // A pop-up shares its opener's handlers: its media isn't this tab's.
       guard message.webView === webView, let body = message.body as? [String: Any], let id = body["id"] as? String else { return }
-      if body["playing"] as? Bool == true { playingFrames.insert(id) } else { playingFrames.remove(id) }
+      if body["playing"] as? Bool == true {
+        playingFrames.insert(id)
+        watchedOnPage = true
+      } else {
+        playingFrames.remove(id)
+      }
       emitMediaState()
     } else if message.name == "shieldGesture" {
       // The user is using the page: what loads from here on may play. Frames this page adds
@@ -2042,6 +2047,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     zoomBeforePush = nil
     // The page before it took its media with it.
     playingFrames.removeAll()
+    watchedOnPage = false
     emitMediaState()
     switch UIApplication.shared.applicationState {
     case .background: sendAppState("background", fresh: true)
@@ -2233,6 +2239,33 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
 
   // MARK: - WKUIDelegate
 
+  /// Media with sound has played on this page (a video is being watched).
+  private var watchedOnPage = false
+
+  /// Video players on some sites (the "ev" players of film sites) open advertisers' sites from
+  /// taps on the video once it has played for a while: a tap is a real one, so the windows get
+  /// through the usual pop-up blocking. As in the desktop app: while a video is being watched,
+  /// a window to another site (or a blank one, filled in by script afterwards) that wasn't
+  /// opened by tapping a real link is not opened.
+  private func opensAdWhileWatching(_ action: WKNavigationAction, opener: WKWebView) -> Bool {
+    guard shieldsActive, ShieldEngine.shared.blockPopups, watchedOnPage || !playingFrames.isEmpty else { return false }
+    if action.navigationType == .linkActivated { return false }
+    guard let page = opener.url?.host?.lowercased() else { return false }
+    let target = action.request.url
+    let scheme = target?.scheme?.lowercased() ?? ""
+    guard let host = target?.host?.lowercased(), !host.isEmpty else { return scheme.isEmpty || scheme == "about" }
+    guard scheme == "http" || scheme == "https" else { return false }
+    return Self.site(of: host) != Self.site(of: page)
+  }
+
+  /// A host's site: its last two labels, or three under endings like co.uk and com.au.
+  static func site(of host: String) -> String {
+    let labels = host.split(separator: ".")
+    guard labels.count > 2 else { return host }
+    let keep = labels[labels.count - 2].count <= 3 && labels[labels.count - 1].count == 2 ? 3 : 2
+    return labels.suffix(keep).joined(separator: ".")
+  }
+
   func webView(
     _ webView: WKWebView,
     createWebViewWith configuration: WKWebViewConfiguration,
@@ -2240,6 +2273,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     windowFeatures: WKWindowFeatures
   ) -> WKWebView? {
     // javaScriptCanOpenWindowsAutomatically=false means only user-initiated windows get here.
+    if opensAdWhileWatching(action, opener: webView) {
+      let host = action.request.url?.host?.lowercased()
+      countBlocked(hosts: host.map { [$0: 1] } ?? [:])
+      onPopupBlocked(["url": action.request.url?.absoluteString ?? "", "kind": "popup"])
+      return nil
+    }
     let id = UUID().uuidString
     let popup = WKWebView(frame: webView.bounds, configuration: configuration)
     Self.pendingPopups[id] = popup

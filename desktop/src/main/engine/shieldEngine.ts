@@ -249,6 +249,8 @@ class ShieldEngine {
     const lists = manifest.android.lists.filter((entry) => {
       // Calm Mode's annoyance lists are not part of the desktop app.
       if (entry.group === 'calm') return false;
+      // The phones' copy of the app's own fixes: the desktop app reads its own (below).
+      if (entry.id === FIXES_LIST_ID) return false;
       if (entry.id === COOKIE_LIST_ID && !this.options.hideCookieBanners) return false;
       return !this.disabledLists.has(entry.id);
     });

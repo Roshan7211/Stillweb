@@ -395,7 +395,8 @@ internal object ShieldEngine {
     for (i in 0 until lists.length()) {
       val entry = lists.getJSONObject(i)
       val id = entry.getString("id")
-      if (wanted != null && id !in wanted) continue
+      // Stillweb's own fixes are always on; the shared lists can be chosen.
+      if (wanted != null && id !in wanted && !entry.optBoolean("always", false)) continue
       // Calm Mode's annoyance lists only while it's on.
       if (entry.optString("group") == "calm" && !calmMode) continue
       paths += File(dir, entry.getString("file")).absolutePath
