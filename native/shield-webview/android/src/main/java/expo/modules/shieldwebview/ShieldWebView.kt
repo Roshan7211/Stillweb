@@ -362,7 +362,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       }
       return
     }
-    val target = upgradeIfNeeded(url)
+    val target = videoSiteMobileUrl(wv, url) ?: upgradeIfNeeded(url)
     applySiteFix(wv, target)
     beginMainFrame(target)
     registerHostScript(target)
@@ -479,6 +479,37 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
         mapOf("blocked" to blockedOnPage.get(), "totalBlocked" to ShieldEngine.totalBlocked().toDouble(), "hosts" to hosts)
       )
     }, 250)
+  }
+
+  /**
+   * The video site sends phones to its mobile pages, unless its own cookie says the desktop
+   * site was chosen once (`PREF=app=desktop`, sticky; it then even sends its mobile addresses
+   * to the desktop site). Those pages are wider than a phone's screen. While that cookie is
+   * there and the user hasn't asked for the desktop website, the site's pages open on the
+   * mobile site with the site's own switch back to mobile, which replaces the cookie.
+   */
+  private var lastVideoSiteSwitch = 0L
+
+  private fun videoSiteMobileUrl(wv: WebView, url: String): String? {
+    // At most once in a while: should the site ever ignore the switch, no endless back and forth.
+    if (android.os.SystemClock.elapsedRealtime() - lastVideoSiteSwitch < 10_000) return null
+    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+    val host = uri.host?.lowercase() ?: return null
+    if (host !in setOf("www.youtube.com", "youtube.com", "m.youtube.com")) return null
+    if (uri.scheme != "https" && uri.scheme != "http") return null
+    if (ShieldEngine.siteFixFor(host)?.desktop == true) return null
+    val path = uri.path.orEmpty().lowercase()
+    if (listOf("/signin", "/logout", "/redirect", "/embed").any { path.startsWith(it) }) return null
+    if (uri.getQueryParameter("app") == "m") return null
+    val cookies = runCatching { cookieManagerFor(wv).getCookie("https://www.youtube.com/") }.getOrNull() ?: return null
+    if (!Regex("""(^|;\s*)PREF=[^;]*\bapp=desktop""").containsMatchIn(cookies)) return null
+    val builder = uri.buildUpon().scheme("https").authority("m.youtube.com").clearQuery()
+    for (name in uri.queryParameterNames) {
+      if (name == "app" || name == "persist_app") continue
+      for (value in uri.getQueryParameters(name)) builder.appendQueryParameter(name, value)
+    }
+    lastVideoSiteSwitch = android.os.SystemClock.elapsedRealtime()
+    return builder.appendQueryParameter("app", "m").appendQueryParameter("persist_app", "1").build().toString()
   }
 
   private fun upgradeIfNeeded(url: String): String {
@@ -806,6 +837,13 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       }
 
       if (request.method.equals("GET", ignoreCase = true)) {
+        videoSiteMobileUrl(view, url)?.let { mobile ->
+          applySiteFix(view, mobile)
+          beginMainFrame(mobile)
+          registerHostScript(mobile)
+          view.loadUrl(mobile)
+          return true
+        }
         val upgraded = upgradeIfNeeded(url)
         if (upgraded != url) {
           applySiteFix(view, upgraded)

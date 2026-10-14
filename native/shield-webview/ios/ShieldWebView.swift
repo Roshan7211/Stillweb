@@ -1925,7 +1925,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// zoomed out. When it is about to show one and the user hasn't asked for the desktop
   /// website, the same page is opened on the mobile site instead, with the site's own switch
   /// back to mobile, which replaces that cookie: needed once, after that it redirects itself.
+  private var lastVideoSiteSwitch = Date.distantPast
   private func videoSiteMobileAddress(for response: URLResponse) -> URL? {
+    // At most once in a while: should the site ever ignore the switch, no endless back and forth.
+    guard Date().timeIntervalSince(lastVideoSiteSwitch) > 10 else { return nil }
     guard let url = response.url, let host = url.host?.lowercased(), host == "www.youtube.com" || host == "youtube.com",
           (response as? HTTPURLResponse)?.statusCode == 200,
           ShieldEngine.shared.siteFix(forHost: host)?.desktop != true,
@@ -1937,7 +1940,9 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     let items = (parts.queryItems ?? []).filter { $0.name != "app" && $0.name != "persist_app" }
     parts.host = "m.youtube.com"
     parts.queryItems = items + [URLQueryItem(name: "app", value: "m"), URLQueryItem(name: "persist_app", value: "1")]
-    return parts.url
+    guard let mobile = parts.url else { return nil }
+    lastVideoSiteSwitch = Date()
+    return mobile
   }
 
   func webView(
