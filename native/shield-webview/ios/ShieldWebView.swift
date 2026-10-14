@@ -1919,6 +1919,27 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     decisionHandler(.allow)
   }
 
+  /// The video site sends phones to its mobile pages, unless a cookie of its own says the
+  /// desktop site was chosen once (`PREF=app=desktop`, sticky: set by its desktop site or a
+  /// link). Its desktop pages are wider than a phone's screen, so they slide sideways and look
+  /// zoomed out. When it is about to show one and the user hasn't asked for the desktop
+  /// website, the same page is opened on the mobile site instead, with the site's own switch
+  /// back to mobile, which replaces that cookie: needed once, after that it redirects itself.
+  private func videoSiteMobileAddress(for response: URLResponse) -> URL? {
+    guard let url = response.url, let host = url.host?.lowercased(), host == "www.youtube.com" || host == "youtube.com",
+          (response as? HTTPURLResponse)?.statusCode == 200,
+          ShieldEngine.shared.siteFix(forHost: host)?.desktop != true,
+          var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+    // Only the site's pages, not its sign-in hand-offs; and never twice (the switch is there).
+    let path = parts.path.lowercased()
+    if path.hasPrefix("/signin") || path.hasPrefix("/logout") || path.hasPrefix("/redirect") || path.hasPrefix("/embed") { return nil }
+    if (parts.queryItems ?? []).contains(where: { $0.name == "app" && $0.value == "m" }) { return nil }
+    let items = (parts.queryItems ?? []).filter { $0.name != "app" && $0.name != "persist_app" }
+    parts.host = "m.youtube.com"
+    parts.queryItems = items + [URLQueryItem(name: "app", value: "m"), URLQueryItem(name: "persist_app", value: "1")]
+    return parts.url
+  }
+
   func webView(
     _ webView: WKWebView,
     decidePolicyFor navigationResponse: WKNavigationResponse,
@@ -1927,6 +1948,11 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     if navigationResponse.isForMainFrame {
       let type = navigationResponse.response.mimeType?.lowercased() ?? ""
       mainResponseIsHTML = type == "text/html" || type == "application/xhtml+xml"
+      if mainResponseIsHTML, mainRequestIsGet, let mobile = videoSiteMobileAddress(for: navigationResponse.response) {
+        decisionHandler(.cancel)
+        webView.load(URLRequest(url: mobile))
+        return
+      }
     }
     // Files the server marks as attachments are downloaded, like in Safari.
     let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
