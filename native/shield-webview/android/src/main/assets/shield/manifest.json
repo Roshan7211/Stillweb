@@ -1,20 +1,20 @@
 {
   "schema": 1,
-  "version": "2026-11-01T22:19:16Z",
+  "version": "2026-11-01T23:14:23Z",
   "android": {
     "lists": [
       {
         "id": "easylist",
         "trusted": false,
         "file": "android/easylist.txt",
-        "sha256": "6eebdbd3a05ab7b2988f9237f9dacd7dcc8f5398b5761ee490709ea1472dd591",
-        "bytes": 2047241
+        "sha256": "bed4531a41d031a527cb575df6c1ce43c5799915a6c122f6b34d41cc2148c941",
+        "bytes": 2047383
       },
       {
         "id": "easyprivacy",
         "trusted": false,
         "file": "android/easyprivacy.txt",
-        "sha256": "aa836a18685aba316e49cda603c0c7758a2c35c14f3ac395281863c67692f808",
+        "sha256": "959c3e2e4a7e6e72546bac49e5396704192b80aec86445bc952f4ddb1ba10607",
         "bytes": 1512338
       },
       {
@@ -78,7 +78,7 @@
         "trusted": false,
         "group": "calm",
         "file": "android/fanboy-annoyance.txt",
-        "sha256": "eb57e5fa7f9389d836b69e182aa37499d1f93ae051dd4ee08177f164e4e92ca5",
+        "sha256": "f058dee321d1953421ef853ee42b799ecaf4407455bef8faac593103a10c0e81",
         "bytes": 1732460
       },
       {
@@ -94,8 +94,8 @@
         "trusted": true,
         "always": true,
         "file": "android/stillweb-fixes.txt",
-        "sha256": "18bf5a294b2699716dc907bc7d4584e3b8e3ec944c00f50a1814b45057b9f0a1",
-        "bytes": 588
+        "sha256": "685f93f97936d5dd13d5a287664bf72c2d7c39eeb3ea6792418597e04fb8238d",
+        "bytes": 1604
       }
     ],
     "resources": {

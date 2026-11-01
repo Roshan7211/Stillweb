@@ -6,3 +6,17 @@
 ! on clicks after a minute of watching and draws a banner over the video. The shared lists
 ! block it under its old name (static.js). Tested on https://hdstream4u.com/file/0w4zg7o8rp7a, 2026-10-10.
 /assets/jquery/ev-static.js$script
+!
+! LookMovie: its pop-under and redirect scripts (ad zone 130116) load from addresses that
+! change every few hours, so they are kept out by type: no other site's scripts, except the
+! two it needs (Google's reCAPTCHA, and cdnjs). Its player is its own. Tested 2026-11-01 on
+! https://www.lookmovie2.to/movies/play/37961714-surviving-hurricane-otis-2026
+*$script,3p,domain=lookmovie2.*|lookmovie.*
+@@||google.com^$script,3p,domain=lookmovie2.*|lookmovie.*
+@@||gstatic.com^$script,3p,domain=lookmovie2.*|lookmovie.*
+@@||cdnjs.cloudflare.com^$script,3p,domain=lookmovie2.*|lookmovie.*
+! Without its ad, the player waits behind a "Premium membership?" screen until a countdown
+! (`tortureTimeout` in /api/v1/security/movie-access) has run out and it is closed by hand.
+! The countdown is set to 0, as uBlock Origin's Annoyances list does (that list is only on
+! with Calm Mode here); the player then starts straight away.
+lookmovie2.*,lookmovie.*##+js(trusted-replace-xhr-response, /Timeout":\d+/, Timeout":0, /api/v)
