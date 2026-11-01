@@ -223,6 +223,46 @@ function preprocess(lines, env) {
   return out.join('\n') + '\n';
 }
 
+/**
+ * Hosts whose pages the lists block outright, for iOS: WebKit's content rules block such a
+ * page only after the app has opened a tab for it, and say nothing to the app. The iOS app
+ * checks windows and script-driven page changes against this list first, as adblock-rust
+ * does on Android and the desktop (which treats `||host^` with no request type as blocking
+ * pages too). Exceptions without a site restriction take a host out.
+ */
+function adHosts(texts) {
+  const HOST = /^\|\|([a-z0-9.-]+\.[a-z0-9-]+)\^$/;
+  const PAGE_TYPES = new Set(['document', 'doc', 'all']);
+  const NEUTRAL = new Set(['third-party', '3p', 'important']);
+  const TYPES = /^~?(document|doc|subdocument|frame|script|image|stylesheet|css|xmlhttprequest|xhr|media|font|object|other|ping|websocket|all)$/;
+  const blocked = new Set();
+  const allowed = new Set();
+  for (const text of texts) {
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      if (!line || line.startsWith('!') || line.includes('#')) continue;
+      const exception = line.startsWith('@@');
+      const rule = exception ? line.slice(2) : line;
+      const dollar = rule.indexOf('$');
+      const host = (dollar < 0 ? rule : rule.slice(0, dollar)).match(HOST)?.[1];
+      if (!host) continue;
+      const options = dollar < 0 ? [] : rule.slice(dollar + 1).split(',');
+      if (options.includes('badfilter')) { allowed.add(host); continue; }
+      if (exception) {
+        // Any exception that isn't limited to certain sites: leave the host alone.
+        if (!options.some((o) => o.startsWith('domain=') || o.startsWith('from='))) allowed.add(host);
+        continue;
+      }
+      const types = options.filter((o) => TYPES.test(o));
+      const others = options.filter((o) => !TYPES.test(o));
+      if (others.some((o) => !NEUTRAL.has(o))) continue;
+      if (types.length === 0 || types.some((o) => PAGE_TYPES.has(o))) blocked.add(host);
+    }
+  }
+  for (const host of allowed) blocked.delete(host);
+  return [...blocked].sort().join('\n') + '\n';
+}
+
 // ---------------------------------------------------------------------------
 // uBlock Origin resources -> adblock-rust `Resource` JSON.
 
@@ -428,10 +468,13 @@ async function main() {
     fs.mkdirSync(work, { recursive: true });
     const coreArgs = [];
     const calmArgs = [];
+    const coreTexts = [fixesText];
     for (const list of forPlatform('ios')) {
       const file = path.join(work, `${list.id}.txt`);
-      fs.writeFileSync(file, preprocess(raw[list.id], PLATFORM_ENV.ios));
+      const text = preprocess(raw[list.id], PLATFORM_ENV.ios);
+      fs.writeFileSync(file, text);
       (list.group === 'calm' ? calmArgs : coreArgs).push('--list', `${file}${list.trusted ? ':trusted' : ''}`);
+      if (list.group !== 'calm') coreTexts.push(text);
     }
     const fixesFile = path.join(work, `${FIXES_ID}.txt`);
     fs.writeFileSync(fixesFile, fixesText);
@@ -445,12 +488,14 @@ async function main() {
     // lists' site exceptions. Their scriptlets aren't used on iOS.
     const contextArgs = coreArgs.map((a) => (a === '--list' ? '--context' : a));
     const calm = calmArgs.length ? compile([...calmArgs, ...contextArgs, '--no-scriptlets', '--prefix', 'calm']) : { ruleFiles: [] };
+    const hosts = adHosts(coreTexts);
     manifest.ios = {
       rules: summary.ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
       scriptlets: hashOf('ios/scriptlets.json'),
       calm: calm.ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
+      adHosts: writeFile('ios/ad-hosts.txt', hosts),
     };
-    log(`ios: ${[...summary.ruleFiles, ...calm.ruleFiles].map((f) => `${f.file}=${f.count}`).join(', ')}, ${summary.scriptletHosts} scriptlet hosts`);
+    log(`ios: ${[...summary.ruleFiles, ...calm.ruleFiles].map((f) => `${f.file}=${f.count}`).join(', ')}, ${summary.scriptletHosts} scriptlet hosts, ${hosts.split('\n').length - 1} ad hosts`);
     checkWithWebKit([...summary.ruleFiles, ...calm.ruleFiles].map((f) => path.join(iosOut, f.file)));
   }
 
@@ -488,6 +533,7 @@ function bundleIntoApp(manifest) {
     fs.rmSync(iosAssets, { recursive: true, force: true });
     for (const r of [...manifest.ios.rules, ...manifest.ios.calm]) copy(r.file, iosAssets);
     copy(manifest.ios.scriptlets.file, iosAssets);
+    copy(manifest.ios.adHosts.file, iosAssets);
     fs.writeFileSync(
       path.join(iosAssets, 'manifest.json'),
       JSON.stringify({ ...manifest, android: null, desktop: null }, null, 2),

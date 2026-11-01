@@ -1,41 +1,46 @@
 {
   "schema": 1,
-  "version": "2026-10-14T13:09:22Z",
+  "version": "2026-11-01T21:38:39Z",
   "android": null,
   "ios": {
     "rules": [
       {
-        "count": 123938,
+        "count": 118828,
         "file": "ios/rules-0.json",
-        "sha256": "69389ea4d6609c5dd66b4746ce55d7aa4e312505fb690dfd959da0e16d70775d",
-        "bytes": 13579766
+        "sha256": "d27601c15351026dd252cf46d57b6b46f7bdeeba97178ae466c5d73589434c0d",
+        "bytes": 13076214
       },
       {
-        "count": 54713,
+        "count": 54896,
         "file": "ios/rules-1.json",
-        "sha256": "f7475c61bbbf91f82b922467b0edcecf83bb1797d8126148ee468d59b5b23825",
-        "bytes": 6932919
+        "sha256": "6d6c117e1aadfd0ec691d5984f3b812275502586d7744a34dea179b7ac36568b",
+        "bytes": 6964340
       }
     ],
     "scriptlets": {
       "file": "ios/scriptlets.json",
-      "sha256": "1a3dafcbed93f4f13473375eadbac3a493366d59c1d9e3d0ea579a1aa21c29fe",
-      "bytes": 5179951
+      "sha256": "23d1831a909cc54a8361b94ad8ae84e73765169ad4099668c2176e7c73bb0650",
+      "bytes": 5212418
     },
     "calm": [
       {
-        "count": 4413,
+        "count": 4416,
         "file": "ios/calm-0.json",
-        "sha256": "dfa6096001a95736f1806c2744b0a818f3c03515bffbf81a932c3677798dd6b8",
-        "bytes": 560035
+        "sha256": "f6b72343819970cb909f0018f857c9ab0aee7ad2a40fa55ca40f1e28d79a8380",
+        "bytes": 560453
       },
       {
-        "count": 46086,
+        "count": 46218,
         "file": "ios/calm-1.json",
-        "sha256": "f79de3a0d60c722acb218f3e8e2d3fde2ba5fffa4339770160333e4e4fe903ca",
-        "bytes": 5626777
+        "sha256": "27d4d3af58ccbe86a6c957db9b9f7a549816cf3479e095eb921b7a202f5d8225",
+        "bytes": 5648496
       }
-    ]
+    ],
+    "adHosts": {
+      "file": "ios/ad-hosts.txt",
+      "sha256": "4ac51fc9b8ac5a21ceaa1acb0eda972a2db6808b985cba53baab2b824c7886c5",
+      "bytes": 1883964
+    }
   },
   "desktop": null
 }

@@ -14,8 +14,16 @@ type Manifest = {
   schema: number;
   version: string;
   android: { lists: (ManifestFile & { id: string; trusted: boolean; group?: string })[]; resources: ManifestFile };
-  /** `calm`: Calm Mode's rule lists (absent in bundles built before it existed). */
-  ios: { rules: (ManifestFile & { count: number })[]; scriptlets: ManifestFile; calm?: (ManifestFile & { count: number })[] } | null;
+  /**
+   * `calm`: Calm Mode's rule lists; `adHosts`: hosts whose pages the lists block, for stopping
+   * ad windows and redirects. Both are absent in bundles built before they existed.
+   */
+  ios: {
+    rules: (ManifestFile & { count: number })[];
+    scriptlets: ManifestFile;
+    calm?: (ManifestFile & { count: number })[];
+    adHosts?: ManifestFile;
+  } | null;
 };
 
 export type UpdateResult =
@@ -59,7 +67,7 @@ async function runCheck(force: boolean): Promise<UpdateResult> {
   const files: ManifestFile[] =
     Platform.OS === 'ios'
       ? manifest.ios
-        ? [...manifest.ios.rules, ...(manifest.ios.calm ?? []), manifest.ios.scriptlets]
+        ? [...manifest.ios.rules, ...(manifest.ios.calm ?? []), manifest.ios.scriptlets, ...(manifest.ios.adHosts ? [manifest.ios.adHosts] : [])]
         : []
       : [...manifest.android.lists, manifest.android.resources];
   if (!files.length) return { status: 'up-to-date', version: current.version };

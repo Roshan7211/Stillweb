@@ -87,6 +87,57 @@ extension ScriptletIndex {
   }
 }
 
+/// Hosts whose pages the lists block outright (`ios/ad-hosts.txt`, see `adHosts` in
+/// scripts/filters/build.mjs). WebKit's content rules block such a page only once a tab is
+/// open for it; this lets the web view stop ad windows and ad redirects before that. Kept as
+/// sorted 64-bit hashes: about 8 bytes a host.
+final class AdHostSet {
+  private let hashes: [UInt64]
+
+  init(text: String) {
+    var hashes: [UInt64] = []
+    hashes.reserveCapacity(text.utf8.count / 14)
+    for line in text.split(separator: "\n") where !line.isEmpty {
+      hashes.append(Self.hash(line.utf8))
+    }
+    hashes.sort()
+    self.hashes = hashes
+  }
+
+  var count: Int { hashes.count }
+
+  /// True when the host or a domain it belongs to is listed.
+  func contains(host: String) -> Bool {
+    var candidate = Substring(host.lowercased())
+    while candidate.contains(".") {
+      if has(Self.hash(candidate.utf8)) { return true }
+      guard let dot = candidate.firstIndex(of: ".") else { break }
+      candidate = candidate[candidate.index(after: dot)...]
+    }
+    return false
+  }
+
+  private func has(_ value: UInt64) -> Bool {
+    var low = 0
+    var high = hashes.count
+    while low < high {
+      let mid = (low + high) / 2
+      if hashes[mid] < value { low = mid + 1 } else { high = mid }
+    }
+    return low < hashes.count && hashes[low] == value
+  }
+
+  /// FNV-1a.
+  private static func hash<S: Sequence>(_ bytes: S) -> UInt64 where S.Element == UInt8 {
+    var value: UInt64 = 0xcbf29ce484222325
+    for byte in bytes {
+      value ^= UInt64(byte)
+      value = value &* 0x100000001b3
+    }
+    return value
+  }
+}
+
 /// Process-wide filter state for iOS. All mutable state is confined to the main thread.
 final class ShieldEngine {
   static let shared = ShieldEngine()
@@ -99,6 +150,7 @@ final class ShieldEngine {
   /// Calm Mode's annoyance lists (attached only while it's on).
   private(set) var calmRuleLists: [WKContentRuleList] = []
   private var scriptlets: ScriptletIndex?
+  private var adHosts: AdHostSet?
   private(set) var version: String?
   private(set) var source = "none"
   private(set) var buildMillis = 0
@@ -343,6 +395,11 @@ final class ShieldEngine {
     scriptlets?.script(forHost: host)
   }
 
+  /// The lists block this host's pages (an ad server, a pop-up or redirect network).
+  func isAdHost(_ host: String) -> Bool {
+    adHosts?.contains(host: host) ?? false
+  }
+
   func recordBlocked(_ count: Int) {
     totalBlocked += count
     defaults.set(totalBlocked, forKey: "shield.totalBlocked")
@@ -454,7 +511,8 @@ final class ShieldEngine {
           throw ShieldError("manifest has no iOS section")
         }
         let calm = ios["calm"] as? [[String: Any]] ?? []
-        for entry in rules + calm + [scriptlets] {
+        let adHosts = (ios["adHosts"] as? [String: Any]).map { [$0] } ?? []
+        for entry in rules + calm + [scriptlets] + adHosts {
           guard let rel = entry["file"] as? String, let expected = entry["sha256"] as? String else {
             throw ShieldError("manifest entry is incomplete")
           }
@@ -596,9 +654,15 @@ final class ShieldEngine {
     }
 
     var index: ScriptletIndex?
+    var hosts: AdHostSet?
+    let adHostsFile = (ios["adHosts"] as? [String: Any])?["file"] as? String
     group.enter()
     queue.async {
       index = (try? Data(contentsOf: dir.appendingPathComponent(scriptletFile))).flatMap(ScriptletIndex.init(data:))
+      // Bundles from before the list existed have none: then only the content rules block.
+      hosts = adHostsFile
+        .flatMap { try? String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8) }
+        .map(AdHostSet.init(text:))
       DispatchQueue.main.async { group.leave() }
     }
 
@@ -612,6 +676,7 @@ final class ShieldEngine {
       self.ruleLists = coreLists
       self.calmRuleLists = []
       self.scriptlets = index
+      self.adHosts = hosts
       self.version = version
       self.source = source
       self.lastError = coreError.map { "Some rules could not be loaded (\($0.localizedDescription))" }

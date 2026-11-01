@@ -1,5 +1,5 @@
 ! Title: uBlock filters – Privacy
-! Last modified: Mon, 12 Oct 2026 20:02:16 +0000
+! Last modified: Fri, 30 Oct 2026 19:03:49 +0000
 ! Expires: 7 days
 ! Description: |
 !   Some of these filters make use of the `important` filter option,`
@@ -325,7 +325,7 @@ tacobell.com##+js(set, bmak.js_post, false)
 ||videovard.*/api/front/view^$xhr,important
 
 ! https://github.com/uBlockOrigin/uAssets/issues/11644
-endbasic.dev,jmmv.dev##+js(no-xhr-if, method:POST)
+endbasic.dev##+js(no-xhr-if, method:POST)
 
 ! https://github.com/AdguardTeam/AdguardFilters/issues/106875
 ||b90.yahoo.co.jp^
@@ -1638,6 +1638,8 @@ $removeparam=s,to=twitter.com|x.com
 ! https://github.com/uBlockOrigin/uAssets/issues/20941
 ! https://github.com/uBlockOrigin/uAssets/issues/30129
 ||com/*/status/$removeparam=t,to=twitter.com|x.com
+! "copy link" tracking parameters
+||x.com/*/status/$doc,removeparam=a
 ! https://github.com/DandelionSprout/adfilt/discussions/163#discussioncomment-8955444
 ! https://github.com/brave/adblock-lists/pull/1455
 ! eBay tracking parameters
@@ -2145,7 +2147,7 @@ r.mail.wowvegas.com%2Ftr%2Fop%2F*$image
 ! github.com
 /github.com/notifications/beacon/*$image
 *%2Fgithub.com%2Fnotifications%2Fbeacon%2F*$image
-||api.github.com/_private/browser/rum?*beacon$ping
+||api.github.com/_private/browser/rum?
 ! vistaprint.com
 *%2Flinks.mail.vistaprint.com%2Fs%2F*$image
 ! controld.com
@@ -2715,6 +2717,9 @@ evropa2.cz##+js(set-local-storage-item, /cnc_alien_invasion_code|pixelsLastFired
 ||al.fanza.co.jp/?lurl=$doc,urlskip=?lurl
 ||ck.jp.ap.valuecommerce.com/servlet/referral?*&vc_url=$doc,urlskip=?vc_url
 ||hb.afl.rakuten.co.jp/hgc/*/?pc=$doc,urlskip=?pc
+!
+||dlaf.jp/home/dlaf/=/aid/*/url/$urlskip=/\/url\/(http.+)/ -uricomponent
+erogamescape.org,erogamescape.dyndns.org##+js(href-sanitizer, a[href^="https://dlaf.jp/home/dlaf/=/aid/"][href*="/url/http"], /\/url\/(http.+)/ -uricomponent)
 
 ! https://pagalfree.com/
 ||spexjs.com^
@@ -3100,9 +3105,6 @@ fileditchfiles.me##+js(no-fetch-if, method:POST body:/pageview|engagement/)
 ||cza.crazygames.com^
 ||web-platform.bytebrew.io/api/game/logs/
 
-! https://github.com/uBlockOrigin/uAssets/issues/7164
-||pornhub.*/redirect/$doc,urlskip=/(https%253A%252F%252F[^?#]+)/ -uricomponent -uricomponent
-
 ! https://github.com/uBlockOrigin/uAssets/issues/31536
 pooembed.eu##+js(no-xhr-if, body:pageview method:POST)
 ||poocloud.in/api/event
@@ -3177,10 +3179,10 @@ vaughn.live##+js(no-fetch-if, method:POST body:zaraz)
 ||vaughn.live/vsz/
 
 ! https://github.com/uBlockOrigin/uAssets/issues/33072#issuecomment-4937969164
-x.com##+js(prevent-xhr, /i/api/1.1/flow/viewer.json)
-x.com##+js(prevent-xhr, /i/api/1.1/flow/timeline.json)
+x.com##+js(prevent-xhr, /api/1.1/flow/viewer.json)
+x.com##+js(prevent-xhr, /api/1.1/flow/timeline.json)
 x.com##+js(proxy-apply-config, {"skipToString":true})
-x.com##+js(prevent-xhr, /i/api/1.1/graphql/viewer_context.json)
+x.com##+js(prevent-xhr, /api/1.1/graphql/viewer_context.json)
 
 ! https://github.com/uBlockOrigin/uAssets/issues/12635#issuecomment-4982050273
 telegraph.co.uk##.onward-journey
@@ -3282,6 +3284,26 @@ oklivetv.com##+js(no-fetch-if, method:POST body:tracker)
 
 ! https://github.com/uBlockOrigin/uAssets/issues/34822
 ||sentry.efabrica.sk^
+
+! https://github.com/uBlockOrigin/uAssets/issues/34882
+||crunchyscan.st/api/insights
+
+! https://github.com/uBlockOrigin/uAssets/issues/34905
+||emudesk.com/api/analytics/
+
+! https://github.com/uBlockOrigin/uAssets/issues/35002
+||go.portail-assurance.ca^
+||proxyhog.com^
+
+! https://github.com/uBlockOrigin/uAssets/issues/35020
+||bol.com/rs/v*/batch|
+bol.com##+js(json-edit-fetch-request, $[?.operationName=="sendExperimentMeasurementReferences"].*, propsToMatch, /graphql)
+
+! https://github.com/uBlockOrigin/uAssets/issues/35036
+||tarnkappe.info/matABC.js
+
+! https://github.com/uBlockOrigin/uAssets/issues/35086
+||analytics.fullstak.pl^
 
 ! Merge in resource-abuse.txt
 ! >>> included /uAssets/filters/resource-abuse.txt

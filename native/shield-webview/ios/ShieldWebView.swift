@@ -1491,6 +1491,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     guard var url = URL(string: string) else { return }
     if let upgraded = upgradeIfNeeded(url) { url = upgraded }
     applyShields(for: url)
+    appLoad = url
     var request = URLRequest(url: url)
     request.setValue("1", forHTTPHeaderField: "Sec-GPC")
     webView.load(request)
@@ -1877,6 +1878,20 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     self.webView(webView, decidePolicyFor: action) { policy in decisionHandler(policy, preferences) }
   }
 
+  /// The last address the app itself loaded (typed, a bookmark, a link from elsewhere).
+  private var appLoad: URL?
+
+  /// A page sending the tab to a host whose pages the lists block: an ad redirect (film and
+  /// streaming sites send the whole tab to advertisers on a tap, or right away). Stopped
+  /// before anything loads, so the user stays on the page, as on Android and the desktop;
+  /// WebKit's rules alone would show an error page instead. What the user asked for (an
+  /// address the app loaded, back and forward, reload) always goes ahead.
+  private func isAdRedirect(_ action: WKNavigationAction, to url: URL) -> Bool {
+    guard shieldsActive, let host = url.host, ShieldEngine.shared.isAdHost(host) else { return false }
+    if action.navigationType == .backForward || action.navigationType == .reload { return false }
+    return url != appLoad
+  }
+
   func webView(
     _ webView: WKWebView,
     decidePolicyFor action: WKNavigationAction,
@@ -1908,6 +1923,16 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       pendingUpgradeURL = nil
       applyShields(for: url)
       return decisionHandler(.allow)
+    }
+
+    if isMainFrame && (scheme == "http" || scheme == "https") && isAdRedirect(action, to: url) {
+      decisionHandler(.cancel)
+      countBlocked(hosts: url.host.map { [$0.lowercased(): 1] } ?? [:])
+      onPopupBlocked(["url": url.absoluteString, "kind": "redirect"])
+      // A window that opened blank and was then sent to the ad: nothing of it is left to show.
+      let blank = webView.url == nil || webView.url?.absoluteString == "about:blank"
+      if popupId != nil && blank { onCloseRequest(["reason": "script"]) }
+      return
     }
 
     if isMainFrame && (scheme == "http" || scheme == "https") {
@@ -2273,7 +2298,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     windowFeatures: WKWindowFeatures
   ) -> WKWebView? {
     // javaScriptCanOpenWindowsAutomatically=false means only user-initiated windows get here.
-    if opensAdWhileWatching(action, opener: webView) {
+    // Windows to an ad host (the lists block its pages) are not opened at all, as on Android
+    // and the desktop: the content rules would only block the page inside a new tab.
+    let adWindow = shieldsActive && (action.request.url?.host).map(ShieldEngine.shared.isAdHost) == true
+    if adWindow || opensAdWhileWatching(action, opener: webView) {
       let host = action.request.url?.host?.lowercased()
       countBlocked(hosts: host.map { [$0: 1] } ?? [:])
       onPopupBlocked(["url": action.request.url?.absoluteString ?? "", "kind": "popup"])

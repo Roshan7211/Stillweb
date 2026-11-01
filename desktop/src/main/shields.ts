@@ -1,7 +1,7 @@
 // Blocking for a browsing session: every request is checked against adblock-rust, and each
 // frame gets its cosmetic filters and scriptlets before the page's own scripts run (the
 // desktop counterpart of ShieldWebView.kt and RequestSupport.kt).
-import { app, ipcMain, protocol, type Session, type WebContents } from 'electron';
+import { app, ipcMain, protocol, type Session, type WebContents, type WebFrameMain } from 'electron';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
@@ -308,6 +308,21 @@ function hasHeader(headers: Record<string, unknown>, name: string): string | und
 }
 
 /** Turns on blocking for a session; every tab that uses the session is covered. */
+/**
+ * The address of the frame a request comes from, when that is a frame inside the page (the
+ * page's own requests go by the tab's address). A blank frame belongs to its parent's site.
+ */
+function frameUrl(frame: WebFrameMain | null | undefined): string | null {
+  try {
+    for (let f = frame; f && f.parent; f = f.parent) {
+      if (/^https?:/i.test(f.url)) return f.url;
+    }
+  } catch {
+    // The frame went away while its request was on the way.
+  }
+  return null;
+}
+
 export function attachShields(session: Session): void {
   session.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, 'preload-page.js') });
 
@@ -344,9 +359,13 @@ export function attachShields(session: Session): void {
 
     // Requests without a tab (a service worker's own) are checked against the site that made them.
     const state = contents ? pageState(contents) : null;
-    const source = state ? state.url : (details.initiatorOrigin ?? details.referrer ?? '');
-    const active = state ? state.shieldsActive : shieldEngine.shieldsEnabledFor(hostOf(source));
-    if (!active || !shieldEngine.isReady || !/^https?:/i.test(source)) return callback({});
+    const pageUrl = state ? state.url : (details.initiatorOrigin ?? details.referrer ?? '');
+    const active = state ? state.shieldsActive : shieldEngine.shieldsEnabledFor(hostOf(pageUrl));
+    if (!active || !shieldEngine.isReady || !/^https?:/i.test(pageUrl)) return callback({});
+    // A frame's own requests count as that frame's site's, as in uBlock Origin, whose lists
+    // are written that way: `*$script,3p,domain=a.com` keeps other sites' scripts off a.com,
+    // not a video player's own scripts inside its frame on a.com.
+    const source = (details.resourceType !== 'subFrame' && frameUrl(details.frame)) || pageUrl;
 
     const verdict = shieldEngine.check(url, source, REQUEST_TYPES[details.resourceType] ?? 'other');
     if (verdict.action === 'allow') return callback({});
