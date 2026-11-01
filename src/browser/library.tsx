@@ -5,7 +5,8 @@ import { displayUrl, hostOf, isBlank } from './url';
 
 /** `vault`: saved from a private tab into the Face ID-locked vault (Stillweb Plus). */
 export type Bookmark = { id: string; url: string; title: string; createdAt: number; vault?: boolean };
-export type HistoryEntry = { url: string; title: string; visitedAt: number };
+/** `visits`: how many times the page was opened (absent in history saved before it was counted: once). */
+export type HistoryEntry = { url: string; title: string; visitedAt: number; visits?: number };
 export type DownloadRecord = {
   id: string;
   /** Android DownloadManager id; absent when the platform handled it (iOS). */
@@ -46,6 +47,12 @@ type LibraryValue = LibraryActions & {
   isBookmarked: (url: string) => boolean;
   /** Sites whose name starts with the text first, then other bookmark and history matches. */
   suggest: (query: string, limit?: number) => { url: string; title: string; kind: 'bookmark' | 'history' }[];
+  /**
+   * The address the user most likely means by the first letters they typed ("you" →
+   * "youtube.com"): the site they use most whose name starts that way, if they have used it
+   * more than once or bookmarked it. `historyToo` false: bookmarks only (private tabs).
+   */
+  completeSite: (typed: string, historyToo: boolean) => string | null;
 };
 
 const LibraryContext = createContext<LibraryValue | null>(null);
@@ -64,6 +71,9 @@ type IndexEntry = {
   lowerTitle: string;
   words: string[];
   display: string;
+  /** Times opened (history) and when last; a bookmark counts as none, added at `last`. */
+  visits: number;
+  last: number;
 };
 
 /** Runs `make` the first time the result is needed, then keeps it. */
@@ -75,7 +85,7 @@ function once<T>(make: () => T): () => T {
   };
 }
 
-function indexEntry(url: string, title: string, kind: 'bookmark' | 'history'): IndexEntry {
+function indexEntry(url: string, title: string, kind: 'bookmark' | 'history', visits: number, last: number): IndexEntry {
   const host = hostOf(url).replace(/^www\./, '');
   const root = /^[a-z]+:\/\/[^/?#]+/i.exec(url)?.[0] ?? url;
   const lowerTitle = title.toLowerCase();
@@ -91,7 +101,18 @@ function indexEntry(url: string, title: string, kind: 'bookmark' | 'history'): I
     lowerTitle,
     words: lowerTitle.split(/\s+/),
     display: displayUrl(url).toLowerCase(),
+    visits,
+    last,
   };
+}
+
+/**
+ * How much a page or site is "the user's": visits count most, a bookmark and a recent visit
+ * add to it (as in the desktop app).
+ */
+function weight(use: { visits: number; last: number; bookmarked: boolean }): number {
+  const days = (Date.now() - use.last) / (24 * 60 * 60 * 1000);
+  return use.visits + (use.bookmarked ? 4 : 0) + (days < 1 ? 3 : days < 7 ? 2 : days < 30 ? 1 : 0);
 }
 
 function usePersistentState<T>(
@@ -150,9 +171,11 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       addVisit: (url, title) => {
         if (isBlank(url) || url.startsWith('data:')) return;
         setHistory((list) => {
-          // One row per page: a revisit moves it to the top.
-          const rest = list.filter((h) => h.url !== url);
-          return [{ url, title: title || url, visitedAt: Date.now() }, ...rest].slice(0, MAX_HISTORY);
+          // One row per page: a revisit moves it to the top and counts.
+          const before = list.find((h) => h.url === url);
+          const rest = before ? list.filter((h) => h.url !== url) : list;
+          const visits = (before?.visits ?? (before ? 1 : 0)) + 1;
+          return [{ url, title: title || url, visitedAt: Date.now(), visits }, ...rest].slice(0, MAX_HISTORY);
         });
       },
       updateVisitTitle: (url, title) => {
@@ -176,8 +199,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     // Built on the first suggestion request after a change (not on every visit).
     const index = once(() => [
       // The vault never shows up in suggestions.
-      ...normalBookmarks.map((b) => indexEntry(b.url, b.title, 'bookmark')),
-      ...history.map((h) => indexEntry(h.url, h.title, 'history')),
+      ...normalBookmarks.map((b) => indexEntry(b.url, b.title, 'bookmark', 0, b.createdAt)),
+      ...history.map((h) => indexEntry(h.url, h.title, 'history', h.visits ?? 1, h.visitedAt)),
     ]);
     return {
       ...actions,
@@ -190,37 +213,72 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       suggest: (query, limit = 6) => {
         const q = query.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
         if (!q) return [];
-        type Match = { url: string; title: string; kind: 'bookmark' | 'history'; rank: number };
-        const matches: Match[] = [];
+        type Use = { visits: number; last: number; bookmarked: boolean };
+        type Match = { url: string; title: string; kind: 'bookmark' | 'history'; rank: number; use: Use };
+        const add = (use: Use, entry: IndexEntry) => {
+          use.visits += entry.visits;
+          use.last = Math.max(use.last, entry.last);
+          use.bookmarked ||= entry.kind === 'bookmark';
+        };
         // Typing the start of a site's name offers the site itself (its home page) first,
         // once per site (www. and mobile m. versions count as one), like Safari's top hit.
         const sites = new Map<string, Match>();
-        for (const { url, title, kind, host, site, root, isRoot, lowerUrl, lowerTitle, words, display } of index()) {
+        const pages = new Map<string, Match>();
+        for (const entry of index()) {
+          const { url, title, kind, host, site, root, isRoot, lowerUrl, lowerTitle, words, display } = entry;
           if (host.startsWith(q) || site.startsWith(q)) {
-            const known = sites.get(site);
+            let known = sites.get(site);
             if (!known) {
-              const match: Match = { url: `${root}/`, title: isRoot ? title : host, kind, rank: kind === 'bookmark' ? 0 : 1 };
-              sites.set(site, match);
-              matches.push(match);
+              known = { url: `${root}/`, title: isRoot ? title : host, kind, rank: 0, use: { visits: 0, last: 0, bookmarked: false } };
+              sites.set(site, known);
             } else if (isRoot && known.title === host) {
               // The site's own home page, seen further down, names it best.
               known.title = title;
             }
+            if (kind === 'bookmark') known.kind = 'bookmark';
+            add(known.use, entry);
             // The home page is the top hit; other pages of the site are listed as matches too.
             if (isRoot) continue;
           }
-          if (display.startsWith(q) || words.some((w) => w.startsWith(q))) {
-            matches.push({ url, title, kind, rank: 2 });
-          } else if (lowerUrl.includes(q) || lowerTitle.includes(q)) {
-            matches.push({ url, title, kind, rank: 3 });
-          }
+          const rank = display.startsWith(q) || words.some((w) => w.startsWith(q)) ? 1 : lowerUrl.includes(q) || lowerTitle.includes(q) ? 2 : -1;
+          if (rank < 0) continue;
+          const page = pages.get(url) ?? { url, title, kind, rank, use: { visits: 0, last: 0, bookmarked: false } };
+          if (kind === 'bookmark') page.kind = 'bookmark';
+          add(page.use, entry);
+          pages.set(url, page);
         }
+        // Sites first, then pages: the ones used most (and lately, and bookmarked) first.
         const seen = new Set<string>();
-        return matches
-          .sort((a, b) => a.rank - b.rank) // stable: bookmarks, then most recent history
+        return [...sites.values(), ...pages.values()]
+          .sort((a, b) => a.rank - b.rank || weight(b.use) - weight(a.use))
           .filter((m) => !seen.has(m.url) && seen.add(m.url))
           .slice(0, limit)
           .map(({ url, title, kind }) => ({ url, title, kind }));
+      },
+      completeSite: (typed, historyToo) => {
+        const start = typed.trim().toLowerCase();
+        if (!start || /[\s/?#@:]/.test(typed)) return null;
+        const hosts = new Map<string, { visits: number; last: number; bookmarked: boolean }>();
+        for (const entry of index()) {
+          if (!historyToo && entry.kind === 'history') continue;
+          if (!/^https?:/i.test(entry.url) || !entry.site) continue;
+          // By site: the mobile pages (m.) count for the site itself.
+          const use = hosts.get(entry.site) ?? { visits: 0, last: 0, bookmarked: false };
+          use.visits += entry.visits;
+          use.last = Math.max(use.last, entry.last);
+          use.bookmarked ||= entry.kind === 'bookmark';
+          hosts.set(entry.site, use);
+        }
+        let best: { text: string; score: number } | null = null;
+        for (const [host, use] of hosts) {
+          if (use.visits < 2 && !use.bookmarked) continue;
+          // Typed with or without "www.", as the user prefers.
+          const text = host.startsWith(start) ? host : start.length > 3 && `www.${host}`.startsWith(start) ? `www.${host}` : '';
+          if (!text || text === start) continue;
+          const score = weight(use);
+          if (!best || score > best.score) best = { text, score };
+        }
+        return best ? typed + best.text.slice(typed.length) : null;
       },
     };
   }, [bookmarks, history, downloads, actions]);

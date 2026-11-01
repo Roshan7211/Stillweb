@@ -20,6 +20,8 @@ type Props = {
   /** Text being edited (owned by the screen, which shows suggestions for it). */
   text: string;
   onChangeText: (text: string) => void;
+  /** Completes the first letters of a site the user goes to ("you" → "youtube.com"), or null. */
+  complete?: (typed: string) => string | null;
   onStartEditing: () => void;
   onEndEditing: () => void;
   onSubmit: (text: string) => void;
@@ -39,6 +41,17 @@ export type BarTone = { fg: string; muted: string; field: string; accent: string
 export default function AddressBar(props: Props) {
   const { theme, url, incognito, loading, progress, secure, shieldsActive, blocked, position, editing, text } = props;
   const input = useRef<TextInput>(null);
+  // The rest of a site's name after what was typed, shown selected in the field like Safari:
+  // typing on replaces it, Delete takes it away, Go opens the site.
+  const [completion, setCompletion] = useState<{ typed: string; full: string } | null>(null);
+  const completing = editing && completion !== null && completion.typed === text;
+  const changeText = (next: string) => {
+    // Only while the text grows: deleting never completes again.
+    const grew = next.length > text.length && next.toLowerCase().startsWith(text.toLowerCase());
+    const full = grew ? (props.complete?.(next) ?? null) : null;
+    setCompletion(full && full.length > next.length ? { typed: next, full } : null);
+    props.onChangeText(next);
+  };
 
   // Swiping the bar sideways switches tabs, with the bar following the finger. The gesture
   // handler must outlive re-renders (page progress re-renders the bar mid-swipe), so it reads
@@ -123,8 +136,9 @@ export default function AddressBar(props: Props) {
               ref={input}
               autoFocus
               style={[styles.input, { color: fg }]}
-              value={text}
-              onChangeText={props.onChangeText}
+              value={completing ? completion.full : text}
+              selection={completing ? { start: text.length, end: completion.full.length } : undefined}
+              onChangeText={changeText}
               onBlur={props.onEndEditing}
               onSubmitEditing={(e) => submit(e.nativeEvent.text)}
               selectTextOnFocus
