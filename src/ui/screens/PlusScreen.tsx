@@ -6,7 +6,6 @@ import { ShieldEngine } from '../../../native/shield-webview';
 import { PRIVACY_POLICY_URL } from '../../blocking/config';
 import { PLUS_PRODUCTS, usePlus } from '../../plus/plus';
 import { formatPrice, hasTrial, planTerms, planTitle } from '../../plus/pricing';
-import { PLAN_NAMES, PREVIEW_PRODUCTS } from '../../plus/preview';
 import { Icon, IconButton, type IconName } from '../components/primitives';
 import type { Theme } from '../theme';
 
@@ -78,16 +77,14 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
   }, []);
 
   // TestFlight only: example plans while the real ones aren't available (buying is off).
-  const [preview, setPreview] = useState(false);
-  const showingPreview = preview && productsState !== 'ready';
-  const products = productsState === 'ready' ? plus.products : showingPreview ? PREVIEW_PRODUCTS : [];
+  const products = productsState === 'ready' ? plus.products : [];
   const chosen = products.find((p) => p.id === selected) ?? products[0];
   const monthly = products.find((p) => p.id === PLUS_PRODUCTS.monthly);
   const yearly = products.find((p) => p.id === PLUS_PRODUCTS.yearly);
   const yearlySaving = monthly && yearly ? Math.round((1 - yearly.price / (monthly.price * 12)) * 100) : 0;
 
   const buy = async () => {
-    if (!chosen || busy || showingPreview) return;
+    if (!chosen || busy) return;
     setBusy('purchase');
     const result = await plus.purchase(chosen.id);
     setBusy(null);
@@ -164,22 +161,8 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
               </Pressable>
             ) : null}
           </View>
-        ) : (productsState === 'ready' || showingPreview) && chosen ? (
+        ) : productsState === 'ready' && chosen ? (
           <>
-            {showingPreview ? (
-              <View style={[styles.previewNote, { backgroundColor: theme.accentSoft }]}>
-                <Text style={[styles.previewText, { color: theme.text }]}>
-                  Preview with example prices. Buying works once the plans are available from the App Store.
-                </Text>
-                {productsState === 'loading' ? (
-                  <ActivityIndicator color={theme.accent} />
-                ) : (
-                  <Pressable onPress={loadProducts} accessibilityRole="button" hitSlop={8}>
-                    <Text style={[styles.link, { color: theme.accent }]}>Load the real plans</Text>
-                  </Pressable>
-                )}
-              </View>
-            ) : null}
             <View style={styles.plans}>
               {products.map((product) => {
                 const active = product.id === chosen.id;
@@ -212,9 +195,9 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
 
             <Pressable
               onPress={buy}
-              disabled={!!busy || showingPreview}
+              disabled={!!busy}
               accessibilityRole="button"
-              style={[styles.cta, { backgroundColor: theme.accent, opacity: busy || showingPreview ? 0.6 : 1 }]}>
+              style={[styles.cta, { backgroundColor: theme.accent, opacity: busy ? 0.6 : 1 }]}>
               {busy === 'purchase' ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
@@ -223,12 +206,6 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
                 </Text>
               )}
             </Pressable>
-            {plus.sandbox && productsState === 'ready' && plus.missingProducts.length ? (
-              <Text style={[styles.devNote, { color: theme.muted }]}>
-                Test build: {plus.missingProducts.map((id) => PLAN_NAMES[id] ?? id).join(', ')} not available from the App Store
-                yet ({plus.missingProducts.join(', ')}). App Store users only see the plans that are available.
-              </Text>
-            ) : null}
             <Text style={[styles.legal, { color: theme.muted }]}>
               {chosen.type === 'lifetime'
                 ? 'One-time purchase, charged to your Apple Account.'
@@ -237,35 +214,10 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
           </>
         ) : productsState === 'empty' || productsState === 'error' ? (
           <View style={styles.status}>
-            {plus.sandbox ? (
-              // TestFlight: what to check in App Store Connect (App Store users never see this).
-              <>
-                <Text style={[styles.statusTitle, { color: theme.text }]}>
-                  {productsState === 'empty' ? 'Plans aren’t available to this test build yet' : 'The App Store’s test service couldn’t be reached'}
-                </Text>
-                {productsState === 'empty' ? (
-                  <Text style={[styles.checklist, { color: theme.muted }]}>
-                    {'In App Store Connect, check that:\n'}
-                    {'• the Paid Apps agreement shows Active\n'}
-                    {'• each plan has a price, an English display name and a review screenshot\n'}
-                    {`• the product IDs are ${PLUS_PRODUCTS.yearly}, ${PLUS_PRODUCTS.monthly} and ${PLUS_PRODUCTS.lifetime}\n`}
-                    {'Changes can take up to an hour to reach test builds.'}
-                  </Text>
-                ) : (
-                  <Text style={[styles.statusText, { color: theme.muted }]}>Check your connection and try again.</Text>
-                )}
-              </>
-            ) : (
-              <Text style={[styles.statusText, { color: theme.muted }]}>Plans couldn’t be loaded. Check your connection.</Text>
-            )}
+            <Text style={[styles.statusText, { color: theme.muted }]}>Plans couldn’t be loaded. Check your connection.</Text>
             <Pressable onPress={loadProducts} accessibilityRole="button" hitSlop={8}>
               <Text style={[styles.link, { color: theme.accent }]}>Try again</Text>
             </Pressable>
-            {plus.sandbox ? (
-              <Pressable onPress={() => setPreview(true)} accessibilityRole="button" hitSlop={8}>
-                <Text style={[styles.link, { color: theme.accent }]}>Preview the plans</Text>
-              </Pressable>
-            ) : null}
           </View>
         ) : (
           <View style={styles.status}>
@@ -323,11 +275,6 @@ const styles = StyleSheet.create({
   activeBody: { fontSize: 14, textAlign: 'center' },
   status: { marginTop: 32, alignItems: 'center', gap: 10 },
   statusText: { fontSize: 15, textAlign: 'center' },
-  statusTitle: { fontSize: 17, fontWeight: '600', textAlign: 'center' },
-  checklist: { fontSize: 14, lineHeight: 21, alignSelf: 'stretch' },
-  previewNote: { marginTop: 24, padding: 12, borderRadius: 12, alignItems: 'center', gap: 6 },
-  previewText: { fontSize: 14, lineHeight: 19, textAlign: 'center' },
-  devNote: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 12 },
   link: { fontSize: 15, fontWeight: '600', marginTop: 4 },
   footer: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 20 },
   footerLink: { fontSize: 14 },
