@@ -1834,10 +1834,21 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// WebKit's rules alone would show an error page instead. What the user asked for (an
   /// address the app loaded, back and forward, reload) always goes ahead.
   private func isAdRedirect(_ action: WKNavigationAction, to url: URL) -> Bool {
-    guard shieldsActive, let host = url.host, ShieldEngine.shared.isAdHost(host) else { return false }
-    if action.navigationType == .backForward || action.navigationType == .reload { return false }
-    return url != appLoad
+    guard shieldsActive, let host = url.host?.lowercased() else { return false }
+    if action.navigationType == .backForward || action.navigationType == .reload || url == appLoad { return false }
+    if ShieldEngine.shared.isAdHost(host) { return true }
+    // A page (its script, or a server it sent the tab to) leaving for the App Store: what ads
+    // do after a tap on a video. Only a tapped link to it goes there.
+    return Self.appStoreHosts.contains(host) && action.navigationType != .linkActivated && webView?.url != nil
   }
+
+  private static let appStoreHosts: Set<String> = ["apps.apple.com", "itunes.apple.com", "app.apple.com"]
+
+  /// WebKit's "allow, without trying to open an app" (WKNavigationActionPolicyAllowWithoutTryingAppLink,
+  /// allow + 2): a web address an app has claimed (a shop's, the App Store's) loads in the tab
+  /// instead of switching to that app. Pages, ads among them, never launch other apps by
+  /// themselves; links to apps by their own scheme still ask first (onExternalLink).
+  private static let allowWithoutAppLink = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
 
   func webView(
     _ webView: WKWebView,
@@ -1869,7 +1880,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       if let host = url.host?.lowercased() { Self.httpOnlyHosts.insert(host) }
       pendingUpgradeURL = nil
       applyShields(for: url)
-      return decisionHandler(.allow)
+      return decisionHandler(Self.allowWithoutAppLink)
     }
 
     if isMainFrame && (scheme == "http" || scheme == "https") && isAdRedirect(action, to: url) {
@@ -1892,6 +1903,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         return
       }
       applyShields(for: url)
+      return decisionHandler(Self.allowWithoutAppLink)
     }
     decisionHandler(.allow)
   }
