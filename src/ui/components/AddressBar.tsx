@@ -46,9 +46,9 @@ export default function AddressBar(props: Props) {
   const [completion, setCompletion] = useState<{ typed: string; full: string } | null>(null);
   const completing = editing && completion !== null && completion.typed === text;
   const changeText = (next: string) => {
-    // Only while the text grows: deleting never completes again.
-    const grew = next.length > text.length && next.toLowerCase().startsWith(text.toLowerCase());
-    const full = grew ? (props.complete?.(next) ?? null) : null;
+    // Deleting never completes again; typing does, also the first letter over the selected address.
+    const deleting = next.length <= text.length && text.toLowerCase().startsWith(next.toLowerCase());
+    const full = next && !deleting ? (props.complete?.(next) ?? null) : null;
     setCompletion(full && full.length > next.length ? { typed: next, full } : null);
     props.onChangeText(next);
   };
@@ -61,7 +61,6 @@ export default function AddressBar(props: Props) {
     onSwipe.current = props.onSwipe;
   });
   const [shift] = useState(() => new Animated.Value(0));
-   
   const [swipe] = useState(() => {
     const settle = () => Animated.spring(shift, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
     return PanResponder.create({

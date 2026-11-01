@@ -40,7 +40,6 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
 
   useEffect(() => {
     // Asks right away; its state changes all come after the system prompt (after an await).
-     
     authenticate();
     // Locked again whenever the app leaves the screen.
     const sub = AppState.addEventListener('change', (state) => {
