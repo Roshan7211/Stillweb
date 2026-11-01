@@ -48,7 +48,7 @@ export default function AddressBar(props: Props) {
     onSwipe.current = props.onSwipe;
   });
   const [shift] = useState(() => new Animated.Value(0));
-  // eslint-disable-next-line react-hooks/refs
+   
   const [swipe] = useState(() => {
     const settle = () => Animated.spring(shift, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
     return PanResponder.create({
