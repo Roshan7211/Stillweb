@@ -4,7 +4,6 @@ import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Environment
 import android.view.WindowManager
@@ -14,15 +13,12 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewDatabase
 import androidx.webkit.ProfileStore
-import androidx.webkit.ProxyConfig
-import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
-import java.util.concurrent.Executor
 
 class ShieldEngineModule : Module() {
   private val context: Context
@@ -171,26 +167,6 @@ class ShieldEngineModule : Module() {
         false
       }
     }
-
-    /**
-     * Debug builds only: route WebView traffic through a proxy, e.g. "127.0.0.1:8899" forwarded
-     * from a computer with `adb reverse` when the test device has no network of its own.
-     */
-    AsyncFunction("setDebugProxy") { hostPort: String?, promise: Promise ->
-      val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-      if (!debuggable || !WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-        promise.resolve(false)
-        return@AsyncFunction
-      }
-      val controller = ProxyController.getInstance()
-      val executor = Executor { it.run() }
-      if (hostPort.isNullOrEmpty()) {
-        controller.clearProxyOverride(executor) { promise.resolve(true) }
-      } else {
-        val config = ProxyConfig.Builder().addProxyRule(hostPort).build()
-        controller.setProxyOverride(config, executor) { promise.resolve(true) }
-      }
-    }.runOnQueue(Queues.MAIN)
 
     /** Keeps private tabs out of screenshots and the recent-apps preview. */
     AsyncFunction("setSecureWindow") { secure: Boolean ->

@@ -21,7 +21,6 @@ type Props = {
   theme: Theme;
   onBack: () => void;
   onOpenAbout: () => void;
-  onOpenShieldTest: () => void;
   onOpenPlus: () => void;
   onOpenReport: () => void;
   onClearedData: () => void;
@@ -42,7 +41,7 @@ export function forgetSettingsPlace() {
   place.advanced = false;
 }
 
-export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShieldTest, onOpenPlus, onOpenReport, onClearedData }: Props) {
+export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus, onOpenReport, onClearedData }: Props) {
   const { settings, update, setSiteShields, setSiteFix } = useSettings();
   const library = useLibraryActions();
   const stats = usePrivacyStatsActions();
@@ -521,7 +520,6 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenShiel
                 onPress={updating ? undefined : checkUpdates}
               />
             ) : null}
-            <Row title="Test blocking" subtitle="Open the ad block test page" icon="activity" theme={theme} onPress={onOpenShieldTest} />
           </>
         ) : null}
         <Row title="About and licenses" icon="info" theme={theme} onPress={onOpenAbout} />

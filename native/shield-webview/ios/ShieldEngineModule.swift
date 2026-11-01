@@ -201,7 +201,6 @@ public class ShieldEngineModule: Module {
       PrivacyCover.shared.enabled = secure
     }.runOnQueue(.main)
 
-    AsyncFunction("setDebugProxy") { (_: String?) -> Bool in false }
 
     AsyncFunction("openExternal") { (url: String, promise: Promise) in
       guard let target = URL(string: url) else { return promise.resolve(false) }

@@ -55,8 +55,6 @@ declare class ShieldEngineModule extends NativeModule<ShieldEngineEvents> {
    * (`darkButtons`) or light after what is drawn under them.
    */
   setNavigationBar?(darkButtons: boolean): Promise<void>;
-  /** Debug builds (Android): route web traffic through `host:port`; null clears it. */
-  setDebugProxy(hostPort: string | null): Promise<boolean>;
   /** Opens a link in another app (mailto:, tel:, intent:, ...). */
   openExternal(url: string): Promise<boolean>;
   /** Listen Mode: pauses all media in every tab after `seconds` (null cancels); fires onSleepTimerFired. */

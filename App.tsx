@@ -5,7 +5,6 @@ import { Appearance, AppState, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ShieldEngine } from './native/shield-webview';
-import { applyDevProxy } from './src/blocking/devProxy';
 import { checkForFilterUpdate, registerFilterUpdateTask } from './src/blocking/filterUpdater';
 import { LibraryProvider, useLibraryActions } from './src/browser/library';
 import { PrivacyStatsProvider, usePrivacyStatsActions } from './src/browser/privacyStats';
@@ -56,7 +55,6 @@ function Root() {
   useEffect(() => {
     if (!loaded) return;
     (async () => {
-      await atMost(applyDevProxy(), 3000);
       // Private tabs are never restored, so anything left in the private profile (for
       // example after the app was killed) is wiped before browsing starts.
       await atMost(ShieldEngine.clearPrivateData(), 4000);
