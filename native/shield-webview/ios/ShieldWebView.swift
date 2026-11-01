@@ -1848,7 +1848,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// allow + 2): a web address an app has claimed (a shop's, the App Store's) loads in the tab
   /// instead of switching to that app. Pages, ads among them, never launch other apps by
   /// themselves; links to apps by their own scheme still ask first (onExternalLink).
-  private static let allowWithoutAppLink = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
+  static let allowWithoutAppLink = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
 
   func webView(
     _ webView: WKWebView,
@@ -2279,9 +2279,45 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     let popup = WKWebView(frame: webView.bounds, configuration: configuration)
     Self.pendingPopups[id] = popup
     // Never shown (e.g. the tab couldn't open): let it go.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { Self.pendingPopups.removeValue(forKey: id) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+      Self.pendingPopups.removeValue(forKey: id)
+      Self.heldWindows.removeValue(forKey: id)
+    }
+    if let held = holdBlankWindow(action, opener: webView, features: windowFeatures, id: id) {
+      popup.navigationDelegate = held
+      Self.heldWindows[id] = held
+      return popup
+    }
     onOpenWindow(["url": action.request.url?.absoluteString ?? "", "incognito": incognito, "popupId": id])
     return popup
+  }
+
+  /// Windows held back until their first address is known (see HeldWindow), by popup id.
+  private static var heldWindows: [String: HeldWindow] = [:]
+
+  /// Pop-unders open a blank window from a tap and send it to the advertiser a moment later,
+  /// by script, so the address can't be checked when it opens. Such a window (blank, not from
+  /// a link, not a sized pop-up) only becomes a tab once its first address is known: the
+  /// site's own opens, another site or an ad host is stopped like any ad window. One that
+  /// stays blank (filled in by script) opens after a moment. As on Android and the desktop.
+  private func holdBlankWindow(_ action: WKNavigationAction, opener: WKWebView, features: WKWindowFeatures, id: String) -> HeldWindow? {
+    guard shieldsActive, ShieldEngine.shared.blockPopups, action.navigationType != .linkActivated else { return nil }
+    guard features.width == nil, features.height == nil else { return nil }
+    let target = action.request.url
+    guard target?.host?.isEmpty ?? true, ["", "about"].contains(target?.scheme?.lowercased() ?? "") else { return nil }
+    let frameHost = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host.lowercased() ?? ""
+    let sites = Set([opener.url?.host?.lowercased() ?? "", frameHost].filter { !$0.isEmpty }.map(Self.site(of:)))
+    guard !sites.isEmpty else { return nil }
+    let held = HeldWindow(sites: sites) { [weak self] url in
+      guard let self else { return }
+      self.onOpenWindow(["url": url?.absoluteString ?? "", "incognito": self.incognito, "popupId": id])
+    } stop: { [weak self] url in
+      Self.pendingPopups.removeValue(forKey: id)
+      self?.countBlocked(hosts: url.host.map { [$0.lowercased(): 1] } ?? [:])
+      self?.onPopupBlocked(["url": url.absoluteString, "kind": "popup"])
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak held] in held?.settle(nil) }
+    return held
   }
 
   // Page dialogs (alert, confirm, prompt), shown like Safari's. Background tabs can't show
@@ -2610,5 +2646,50 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     guard let path = downloadPaths.removeValue(forKey: key) else { return }
     let bytes = download.progress.completedUnitCount
     ShieldEngine.shared.updateDownload(path: path, status: status, bytes: bytes, total: bytes)
+  }
+}
+
+/// A window a tap opened blank, deciding on its first address (see holdBlankWindow).
+private final class HeldWindow: NSObject, WKNavigationDelegate {
+  private let sites: Set<String>
+  private let open: (URL?) -> Void
+  private let stop: (URL) -> Void
+  private var settled = false
+
+  init(sites: Set<String>, open: @escaping (URL?) -> Void, stop: @escaping (URL) -> Void) {
+    self.sites = sites
+    self.open = open
+    self.stop = stop
+  }
+
+  /// Opens the tab (nil: the window stayed blank), once.
+  func settle(_ url: URL?) {
+    guard !settled else { return }
+    settled = true
+    open(url)
+  }
+
+  func webView(
+    _ webView: WKWebView,
+    decidePolicyFor action: WKNavigationAction,
+    decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+  ) {
+    guard let url = action.request.url else { return decisionHandler(.cancel) }
+    let scheme = url.scheme?.lowercased() ?? ""
+    // Still blank, or filled in by the page itself.
+    if ["about", "data", "blob"].contains(scheme) { return decisionHandler(.allow) }
+    let host = url.host?.lowercased() ?? ""
+    let web = scheme == "http" || scheme == "https"
+    // After the tab opened, until the tab's own view takes over: like any page of it.
+    if settled { return decisionHandler(web ? ShieldWebView.allowWithoutAppLink : .cancel) }
+    if web, !host.isEmpty, sites.contains(ShieldWebView.site(of: host)), !ShieldEngine.shared.isAdHost(host) {
+      decisionHandler(ShieldWebView.allowWithoutAppLink)
+      settle(url)
+      return
+    }
+    // Another site, an ad host, or another app: a pop-under.
+    decisionHandler(.cancel)
+    settled = true
+    stop(url)
   }
 }
