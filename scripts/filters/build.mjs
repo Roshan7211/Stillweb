@@ -18,6 +18,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -47,6 +48,41 @@ const PLATFORM_ENV = {
 
 const log = (...m) => console.log('[filters]', ...m);
 
+// Downloads go through node:https, not fetch: Node's fetch (undici) sometimes crashes the
+// whole process with `assert(!this.paused)` when a server closes a connection mid-download
+// (the daily build failed that way about once a week). That crash can't be caught; an
+// error here can, and is retried.
+function download(url, headers, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers, timeout: 60_000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        if (redirects >= 5) return reject(new Error('too many redirects'));
+        return resolve(download(new URL(res.headers.location, url).href, headers, redirects + 1));
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('error', reject);
+      res.on('aborted', () => reject(new Error('connection closed mid-download')));
+      res.on('end', () => {
+        if (!res.complete) return reject(new Error('connection closed mid-download'));
+        const body = Buffer.concat(chunks);
+        const expected = Number(res.headers['content-length']);
+        if (expected && !res.headers['content-encoding'] && body.length !== expected) {
+          return reject(new Error(`got ${body.length} of ${expected} bytes`));
+        }
+        resolve(body);
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timed out')));
+    req.on('error', reject);
+  });
+}
+
 async function fetchText(url) {
   const headers = { 'User-Agent': 'stillweb-filter-builder' };
   if (process.env.GITHUB_TOKEN && url.startsWith('https://api.github.com/')) {
@@ -54,12 +90,10 @@ async function fetchText(url) {
   }
   for (let attempt = 1; ; attempt++) {
     try {
-      const res = await fetch(url, { headers });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return Buffer.from(await res.arrayBuffer());
+      return await download(url, headers);
     } catch (err) {
-      if (attempt >= 3) throw new Error(`fetch ${url}: ${err.message}`);
-      await new Promise((r) => setTimeout(r, 1000 * attempt));
+      if (attempt >= 4) throw new Error(`fetch ${url}: ${err.message}`);
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
     }
   }
 }
