@@ -67,7 +67,8 @@ window.__badge = typeof navigator.setAppBadge; if (navigator.setAppBadge) naviga
 <div id="generic" class="${query.get('generic') ?? ''}">generic ad</div>
 <button id="fullscreen" onclick="document.documentElement.requestFullscreen()" style="display:block;width:200px;height:40px">full screen</button>
 <iframe id="adframe" src="http://googleads.g.doubleclick.net/pagead/ads?client=x" width="300" height="60"></iframe>
-<a id="poplink" href="#" onclick="window.open('http://popup.example.org/popup');return false" style="display:block;width:200px;height:40px;background:#ddd">open a window</a>
+<a id="poplink" href="#" onclick="window.open('http://popup.example.org/popup','signin','width=480,height=600');return false" style="display:block;width:200px;height:40px;background:#ddd">open a window</a>
+<div id="adclick" onclick="window.open('http://popup.example.org/popup?ad')" style="display:block;width:200px;height:40px;background:#eee">anywhere on the page</div>
 <img src="http://127.0.0.1:${port}/photo.png?n=1" onload="var i=new Image();i.src='http://127.0.0.1:${port}/photo.png?n=2'">
 <script>fetch('/fp?n=1').then(function(){return fetch('/fp?n=2')});</script>
 </body></html>`;
@@ -316,11 +317,20 @@ export async function runSelfTest(win: BrowserWin): Promise<void> {
     await inPage(page, `window.open("http://popup.example.org/popup"); 0`);
     await sleep(500);
     check('pop-up without a click is blocked', win.tabs.length === tabsBefore, `${win.tabs.length - tabsBefore} tabs opened`);
-    const box = await inPage<{ x: number; y: number }>(page, '(function(){var r=document.getElementById("poplink").getBoundingClientRect();return {x:Math.round(r.left+20),y:Math.round(r.top+10)}})()');
-    page.sendInputEvent({ type: 'mouseDown', x: box.x, y: box.y, button: 'left', clickCount: 1 });
-    page.sendInputEvent({ type: 'mouseUp', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+    const pressElement = async (id: string) => {
+      const box = await inPage<{ x: number; y: number }>(page, `(function(){var r=document.getElementById("${id}").getBoundingClientRect();return {x:Math.round(r.left+20),y:Math.round(r.top+10)}})()`);
+      page.sendInputEvent({ type: 'mouseDown', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+      page.sendInputEvent({ type: 'mouseUp', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+    };
+    // A press anywhere that opens another site in a new tab: what pop-unders and ad tabs do.
+    const stoppedBefore = pageInfo(page).popups.count;
+    await pressElement('adclick');
+    await sleep(800);
+    check('a click that opens another site in a tab (not a link to it) is stopped', win.tabs.length === tabsBefore && pageInfo(page).popups.count === stoppedBefore + 1, `${win.tabs.length - tabsBefore} tabs opened`);
+    // A sized pop-up window from a press (sign-in, sharing, payment) still opens.
+    await pressElement('poplink');
     const opened = await waitFor(() => win.tabs.length === tabsBefore + 1, 4000);
-    check('a window the user asked for opens as a new tab', opened);
+    check('a pop-up window the user asked for opens as a new tab', opened);
     if (opened) {
       const popup = win.activeTab!;
       await waitFor(() => popup.title.startsWith('Popup opener:'), 4000);

@@ -224,25 +224,33 @@ function preprocess(lines, env) {
 }
 
 /**
- * Hosts whose pages the lists block outright, for iOS: WebKit's content rules block such a
- * page only after the app has opened a tab for it, and say nothing to the app. The iOS app
- * checks windows and script-driven page changes against this list first, as adblock-rust
- * does on Android and the desktop (which treats `||host^` with no request type as blocking
- * pages too). Exceptions without a site restriction take a host out.
+ * The plain server rules of some lists (`||host^`, with no request type or a page type):
+ * - `blocked`: hosts whose pages and requests the lists block outright;
+ * - `allowed`: hosts an exception (not limited to certain sites) or `$badfilter` takes out;
+ * - `excepted`: every host any exception is about, and the domains above it;
+ * - `exceptionHosts`: just the hosts exceptions are about (they cover the hosts below them).
  */
-function adHosts(texts) {
+function hostRules(texts) {
   const HOST = /^\|\|([a-z0-9.-]+\.[a-z0-9-]+)\^$/;
+  const ANY_HOST = /^\|\|([a-z0-9.-]+\.[a-z0-9-]+)[\^/$]/;
   const PAGE_TYPES = new Set(['document', 'doc', 'all']);
   const NEUTRAL = new Set(['third-party', '3p', 'important']);
   const TYPES = /^~?(document|doc|subdocument|frame|script|image|stylesheet|css|xmlhttprequest|xhr|media|font|object|other|ping|websocket|all)$/;
   const blocked = new Set();
   const allowed = new Set();
+  const excepted = new Set();
+  const exceptionHosts = new Set();
   for (const text of texts) {
     for (const raw of text.split('\n')) {
       const line = raw.trim();
       if (!line || line.startsWith('!') || line.includes('#')) continue;
       const exception = line.startsWith('@@');
       const rule = exception ? line.slice(2) : line;
+      if (exception) {
+        const host = rule.match(ANY_HOST)?.[1];
+        if (host) exceptionHosts.add(host);
+        for (let h = host; h && h.includes('.'); h = h.slice(h.indexOf('.') + 1)) excepted.add(h);
+      }
       const dollar = rule.indexOf('$');
       const host = (dollar < 0 ? rule : rule.slice(0, dollar)).match(HOST)?.[1];
       if (!host) continue;
@@ -260,7 +268,49 @@ function adHosts(texts) {
     }
   }
   for (const host of allowed) blocked.delete(host);
-  return [...blocked].sort().join('\n') + '\n';
+  return { blocked, allowed, excepted, exceptionHosts };
+}
+
+/**
+ * Hosts whose pages the lists block outright, for iOS: WebKit's content rules block such a
+ * page only after the app has opened a tab for it, and say nothing to the app. The iOS app
+ * checks windows and script-driven page changes against this list first, as adblock-rust
+ * does on Android and the desktop (which treats `||host^` with no request type as blocking
+ * pages too).
+ */
+function adHostsText(rules) {
+  return [...rules.blocked].sort().join('\n') + '\n';
+}
+
+/** Is the host, or a domain above it, in the set? */
+function coveredBy(set, host) {
+  for (let h = host; h.includes('.'); h = h.slice(h.indexOf('.') + 1)) if (set.has(h)) return true;
+  return false;
+}
+
+/**
+ * The server lists too big for WebKit's rule limit beside the others (AdGuard's DNS filter),
+ * as rule lists of their own, for iOS: one third-party block per server the other lists don't
+ * block already. An exception only works inside its own list, so each of these lists ends
+ * with the main list's exceptions (`coreExceptions`, its ignore-previous-rules rules): what
+ * the other lists unblock stays unblocked. The server lists' own exceptions leave a server out.
+ */
+function serverRuleLists(serverRules, coreRules, coreExceptions) {
+  const hosts = [...serverRules.blocked]
+    .filter((host) => !coveredBy(coreRules.blocked, host))
+    .filter((host) => !serverRules.excepted.has(host) && !coveredBy(serverRules.exceptionHosts, host))
+    .sort();
+  const kept = new Set(hosts);
+  // A host whose parent domain is listed already is covered by the parent's rule.
+  const unique = hosts.filter((host) => !coveredBy(kept, host.slice(host.indexOf('.') + 1)));
+  const rules = unique.map((host) => ({
+    trigger: { 'url-filter': `^[^:]+:(//)?([^/]+\\.)?${host.replace(/\./g, '\\.')}[^a-zA-Z0-9_.%-]`, 'load-type': ['third-party'] },
+    action: { type: 'block' },
+  }));
+  const room = 150_000 - coreExceptions.length;
+  const files = [];
+  for (let i = 0; i < rules.length; i += room) files.push([...rules.slice(i, i + room), ...coreExceptions]);
+  return files;
 }
 
 // ---------------------------------------------------------------------------
@@ -488,15 +538,29 @@ async function main() {
     // lists' site exceptions. Their scriptlets aren't used on iOS.
     const contextArgs = coreArgs.map((a) => (a === '--list' ? '--context' : a));
     const calm = calmArgs.length ? compile([...calmArgs, ...contextArgs, '--no-scriptlets', '--prefix', 'calm']) : { ruleFiles: [] };
-    const hosts = adHosts(coreTexts);
+    // Server lists too big to sit beside the others (see serverRuleLists).
+    const serverTexts = catalog.lists.filter((l) => l.iosHosts).map((l) => preprocess(raw[l.id], PLATFORM_ENV.ios));
+    const coreRules = hostRules(coreTexts);
+    const serverRules = hostRules(serverTexts);
+    const coreExceptions = summary.ruleFiles
+      .filter((f) => f.file === 'rules-0.json')
+      .flatMap((f) => JSON.parse(fs.readFileSync(path.join(iosOut, f.file), 'utf8')))
+      .filter((rule) => rule.action.type === 'ignore-previous-rules');
+    const serverFiles = serverRuleLists(serverRules, coreRules, coreExceptions).map((rules, i) => {
+      const file = `servers-${i}.json`;
+      fs.writeFileSync(path.join(iosOut, file), JSON.stringify(rules));
+      return { file, count: rules.length };
+    });
+    const ruleFiles = [...summary.ruleFiles, ...serverFiles];
+    const hosts = adHostsText(hostRules([...coreTexts, ...serverTexts]));
     manifest.ios = {
-      rules: summary.ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
+      rules: ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
       scriptlets: hashOf('ios/scriptlets.json'),
       calm: calm.ruleFiles.map((f) => ({ ...f, ...hashOf(`ios/${f.file}`) })),
       adHosts: writeFile('ios/ad-hosts.txt', hosts),
     };
-    log(`ios: ${[...summary.ruleFiles, ...calm.ruleFiles].map((f) => `${f.file}=${f.count}`).join(', ')}, ${summary.scriptletHosts} scriptlet hosts, ${hosts.split('\n').length - 1} ad hosts`);
-    checkWithWebKit([...summary.ruleFiles, ...calm.ruleFiles].map((f) => path.join(iosOut, f.file)));
+    log(`ios: ${[...ruleFiles, ...calm.ruleFiles].map((f) => `${f.file}=${f.count}`).join(', ')}, ${summary.scriptletHosts} scriptlet hosts, ${hosts.split('\n').length - 1} ad hosts`);
+    checkWithWebKit([...ruleFiles, ...calm.ruleFiles].map((f) => path.join(iosOut, f.file)));
   }
 
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));

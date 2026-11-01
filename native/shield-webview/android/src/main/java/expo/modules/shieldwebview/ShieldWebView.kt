@@ -956,12 +956,16 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
         onPopupBlocked(mapOf("url" to "", "kind" to "popup"))
         return false
       }
-      // Video players on some sites (film sites' "ev" players) open advertisers' sites from
-      // taps on the video once it has played a while; a tap is a real one, so the windows get
-      // through. As in the desktop app: while a video is being watched, a window to another
-      // site that wasn't opened by tapping a real link is not opened.
-      val onLink = view.hitTestResult.type.let { it == WebView.HitTestResult.SRC_ANCHOR_TYPE || it == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE }
-      val strict = ShieldEngine.blockPopups && shieldsActive && watchedOnPage && !onLink
+      // Pop-unders, ad tabs and video players that earn from every tap work the same way on
+      // any site: a script opens an advertiser in a new tab from a tap anywhere on the page,
+      // and a tap is a real one. As on iOS and the desktop: a new tab to another site opens
+      // only from a tapped link to it; sized pop-up windows (sign-in, sharing, payment) and the
+      // site's own windows still open; while a video is being watched, sized ones to another
+      // site don't either. "Blocked a pop-up" offers to open it anyway.
+      val hit = view.hitTestResult
+      val onLink = hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE || hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+      val linkSite = if (onLink) hit.extra?.let(::hostOf)?.let(::siteOf) else null
+      val strict = ShieldEngine.blockPopups && shieldsActive && (watchedOnPage || !isDialog)
       val openerSite = hostOf(pageUrl)?.let(::siteOf)
       // Capture the target URL with a throwaway WebView, then let JS open it as a new tab.
       val probe = WebView(view.context)
@@ -976,7 +980,8 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
             val target = request.url.toString()
             debug("popup target $target")
             val targetSite = hostOf(target)?.let(::siteOf)
-            val offSite = strict && targetSite != null && openerSite != null && targetSite != openerSite
+            val offSite = strict && targetSite != null && openerSite != null && targetSite != openerSite &&
+              !(onLink && (linkSite == null || linkSite == targetSite))
             val isAd = offSite || (shieldsActive && ShieldEngine.check(target, pageUrl, "document") != Verdict.Allow)
             if (isAd) {
               countBlocked(target)

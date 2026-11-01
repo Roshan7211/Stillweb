@@ -1,28 +1,28 @@
 {
   "schema": 1,
-  "version": "2026-11-01T21:38:39Z",
+  "version": "2026-11-01T22:19:16Z",
   "android": {
     "lists": [
       {
         "id": "easylist",
         "trusted": false,
         "file": "android/easylist.txt",
-        "sha256": "36efc6e9138ad44c7114303e4c8e553d86c19f2c9c06b75dab26d857097e35a6",
-        "bytes": 2047071
+        "sha256": "6eebdbd3a05ab7b2988f9237f9dacd7dcc8f5398b5761ee490709ea1472dd591",
+        "bytes": 2047241
       },
       {
         "id": "easyprivacy",
         "trusted": false,
         "file": "android/easyprivacy.txt",
-        "sha256": "bc853e15346f0c5b7b521ff7ef353acf3350cfee536c7eaee3c0ef0b9848474d",
+        "sha256": "aa836a18685aba316e49cda603c0c7758a2c35c14f3ac395281863c67692f808",
         "bytes": 1512338
       },
       {
         "id": "adguard-dns",
         "trusted": false,
         "file": "android/adguard-dns.txt",
-        "sha256": "abd7e94b68d13b0b618fbc43ebc7b1a55b03f1071c018f58425d4bad118f0fff",
-        "bytes": 4556013
+        "sha256": "1b9e5321c46a7118f1ceee75ffd3838d6f0ca2964be8ec99be52156b720f066b",
+        "bytes": 4556700
       },
       {
         "id": "easylist-cookie",
@@ -60,11 +60,25 @@
         "bytes": 279034
       },
       {
+        "id": "ubo-badware",
+        "trusted": true,
+        "file": "android/ubo-badware.txt",
+        "sha256": "8ee221347f905a180a997227654dec21db9fa4c5111a4db9896beb189cc733de",
+        "bytes": 267191
+      },
+      {
+        "id": "ubo-resource-abuse",
+        "trusted": true,
+        "file": "android/ubo-resource-abuse.txt",
+        "sha256": "da4a5d5c8ccbd52b5bcaba57a651013996eb48267de8ef8ff870b8c21ec04912",
+        "bytes": 9244
+      },
+      {
         "id": "fanboy-annoyance",
         "trusted": false,
         "group": "calm",
         "file": "android/fanboy-annoyance.txt",
-        "sha256": "854968dbba238d842f5bbb67db0085edde4bac98efc655c9b4e42328024d7829",
+        "sha256": "eb57e5fa7f9389d836b69e182aa37499d1f93ae051dd4ee08177f164e4e92ca5",
         "bytes": 1732460
       },
       {

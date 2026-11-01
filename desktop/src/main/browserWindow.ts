@@ -441,7 +441,8 @@ export class BrowserWin {
     const contents = tab.contents;
 
     contents.setWindowOpenHandler((details) => {
-      const guard = popupDecision(contents, details.url);
+      // A sized pop-up window (window.open with a size), as sign-in and sharing use.
+      const guard = popupDecision(contents, details.url, details.disposition === 'new-window');
       if (!guard) return { action: 'deny' };
       rememberOpener(contents);
       const background = details.disposition === 'background-tab';

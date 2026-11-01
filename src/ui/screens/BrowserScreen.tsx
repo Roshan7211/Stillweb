@@ -5,7 +5,6 @@ import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'ex
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   AppState,
   BackHandler,
   Dimensions,
@@ -38,7 +37,7 @@ import { useTabs } from '../../browser/tabs';
 import { usePlus } from '../../plus/plus';
 import { displayHost, isBlank, resolveInput, SEARCH_ENGINES, searchUrl, siteKey } from '../../browser/url';
 import AddressBar from '../components/AddressBar';
-import BrowserTabView, { type TabEnter } from '../components/BrowserTabView';
+import BrowserTabView, { type TabEnter, type ToastAction } from '../components/BrowserTabView';
 import type { BarTone } from '../components/AddressBar';
 import ContextMenuSheet, { type ContextAction, type ContextTarget } from '../components/ContextMenuSheet';
 import { ErrorBoundary, ProblemScreen } from '../components/ErrorBoundary';
@@ -53,11 +52,10 @@ import PlusScreen from './PlusScreen';
 import PrivacyReportScreen from './PrivacyReportScreen';
 import { BookmarksScreen, DownloadsScreen, HistoryScreen } from './LibraryScreens';
 import SettingsScreen, { forgetSettingsPlace } from './SettingsScreen';
-import ShieldTestScreen from './ShieldTestScreen';
 import TabSwitcherScreen from './TabSwitcherScreen';
 import VaultScreen from './VaultScreen';
 
-type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'shieldTest' | 'report' | 'plus' | 'vault';
+type Overlay = 'none' | 'tabs' | 'bookmarks' | 'history' | 'downloads' | 'settings' | 'about' | 'report' | 'plus' | 'vault';
 
 const NO_PROFILES: Profile[] = [];
 
@@ -69,29 +67,6 @@ const LIQUID_GLASS = (() => {
     return false;
   }
 })();
-
-/** The page's own view of its size and zoom (for "Page layout info" in test builds). */
-const PAGE_LAYOUT_SCRIPT = `(function () {
-  var d = document.documentElement, b = document.body, v = window.visualViewport;
-  var m = document.querySelector('meta[name=viewport]');
-  return {
-    host: location.hostname,
-    inner: [innerWidth, innerHeight],
-    screen: [screen.width, screen.height],
-    doc: [d.scrollWidth, d.scrollHeight, d.clientWidth, d.clientHeight],
-    body: b ? [b.scrollWidth, b.scrollHeight] : null,
-    visual: v ? [v.width, v.height, v.scale, v.offsetLeft, v.offsetTop] : null,
-    scroll: [scrollX, scrollY],
-    dpr: devicePixelRatio,
-    viewport: m ? m.content : null,
-    // Whether the app's page scripts ran here, and what loaded from other sites.
-    pageScripts: typeof window.__shieldAppState,
-    gpc: navigator.globalPrivacyControl === true,
-    otherSites: Array.from(new Set(performance.getEntriesByType('resource').map(function (e) {
-      try { return new URL(e.name).hostname; } catch (err) { return ''; }
-    }).filter(function (h) { return h && h !== location.hostname; }))).slice(0, 25)
-  };
-})()`;
 
 export default function BrowserScreen() {
   const { settings, setSiteFix } = useSettings();
@@ -135,7 +110,7 @@ export default function BrowserScreen() {
   const [toolbarHeight, setToolbarHeight] = useState(0);
   // Height of the floating bottom bars (edge-to-edge layout): the page's bottom inset.
   const [barsHeight, setBarsHeight] = useState(0);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; action?: ToastAction } | null>(null);
   const [privateUnlocked, setPrivateUnlocked] = useState(false);
   const [contextTarget, setContextTarget] = useState<ContextTarget | null>(null);
   const [fullscreenTabId, setFullscreenTabId] = useState<string | null>(null);
@@ -182,10 +157,11 @@ export default function BrowserScreen() {
   const privateLocked = settings.lockPrivateTabs && !privateUnlocked;
   const activeRef = () => (activeTab ? refs.current.get(activeTab.id) : undefined);
 
-  const showToast = useCallback((message: string) => {
-    setToast(message);
+  const showToast = useCallback((message: string, action?: ToastAction) => {
+    setToast({ message, action });
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2200);
+    // A toast with a button stays long enough to reach it.
+    toastTimer.current = setTimeout(() => setToast(null), action ? 4500 : 2200);
   }, []);
 
   useEffect(() => {
@@ -561,7 +537,7 @@ export default function BrowserScreen() {
       }
       if (overlay !== 'none') {
         setOverlay(
-          overlay === 'about' || overlay === 'shieldTest'
+          overlay === 'about'
             ? 'settings'
             : overlay === 'report'
               ? reportBack
@@ -650,21 +626,6 @@ export default function BrowserScreen() {
           setFindResult(null);
           setFindOpen(true);
         }, Platform.OS === 'ios' ? 350 : 0);
-        return;
-      }
-      case 'layoutInfo': {
-        // What the app, the web view and the page each think the page's size and zoom are.
-        const ref = activeRef();
-        const native = await ref?.layoutInfo?.().catch(() => null);
-        const page = await ref?.evaluateJavaScript(PAGE_LAYOUT_SCRIPT).catch(() => null);
-        let pageInfo: unknown = null;
-        try {
-          pageInfo = page ? JSON.parse(page) : null;
-        } catch {}
-        const app = { insets, barsHeight, keyboardHeight, textZoom: settings.textZoom };
-        const text = JSON.stringify({ app, native, page: pageInfo });
-        Clipboard.setStringAsync(text).catch(() => {});
-        setTimeout(() => Alert.alert('Page layout info (copied)', text), afterMenu);
         return;
       }
       case 'desktop': {
@@ -816,6 +777,9 @@ export default function BrowserScreen() {
       editing={editing}
       text={addressText}
       onChangeText={setAddressText}
+      // iPhone, like Safari; Android keyboards compose words in the field, which a selected
+      // completion would get in the way of.
+      complete={Platform.OS === 'ios' ? (typed) => library.completeSite(typed, !incognito) : undefined}
       onStartEditing={() => (incognito && privateLocked ? unlockPrivate() : startEditing())}
       onEndEditing={() => setEditing(false)}
       onSubmit={submitAddress}
@@ -1114,8 +1078,19 @@ export default function BrowserScreen() {
         {toast ? (
           <View
             style={[styles.toast, { backgroundColor: theme.dark ? '#ECEDEF' : '#25272B' }, edgeToEdge && { bottom: coveredBottom + 16 }]}
-            pointerEvents="none">
-            <Text style={{ color: theme.dark ? '#16171A' : '#FFFFFF' }}>{toast}</Text>
+            pointerEvents={toast.action ? 'box-none' : 'none'}>
+            <Text style={{ color: theme.dark ? '#16171A' : '#FFFFFF' }}>{toast.message}</Text>
+            {toast.action ? (
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={10}
+                onPress={() => {
+                  toast.action?.onPress();
+                  setToast(null);
+                }}>
+                <Text style={[styles.toastAction, { color: theme.dark ? '#3B5BDB' : '#8EA6FF' }]}>{toast.action.label}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -1170,9 +1145,8 @@ export default function BrowserScreen() {
         desktop={!!activeTab && !!settings.siteFixes[siteKey(activeTab.url)]?.desktop}
         showQuit={Platform.OS === 'android'}
         clearsOnQuit={settings.clearDataOnExit}
-        showLayoutInfo={Platform.OS === 'ios' && plus.sandbox}
         navigation={
-          single
+          single && Platform.OS === 'android'
             ? {
                 canGoBack: !!activeTab && (activeTab.canGoBack || activeTab.reader || !!activeTab.openerId),
                 canGoForward: !!activeTab?.canGoForward,
@@ -1254,7 +1228,6 @@ export default function BrowserScreen() {
               theme={theme}
               onBack={() => setOverlay('none')}
               onOpenAbout={() => setOverlay('about')}
-              onOpenShieldTest={() => setOverlay('shieldTest')}
               onOpenPlus={() => openPlus('settings')}
               onOpenReport={() => openReport('settings')}
               onClearedData={refreshBlockedTotal}
@@ -1268,8 +1241,6 @@ export default function BrowserScreen() {
                 openTab(url);
               }}
             />
-          ) : overlay === 'shieldTest' ? (
-            <ShieldTestScreen onClose={() => setOverlay('settings')} />
           ) : overlay === 'vault' ? (
             <VaultScreen
               theme={theme}
@@ -1341,8 +1312,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 16,
     alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
   },
+  toastAction: { fontWeight: '600' },
 });

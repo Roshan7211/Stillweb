@@ -81,7 +81,10 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
     );
   }
 
-  const lists = catalog.lists.filter((l) => !('platforms' in l) || (l.platforms as string[]).includes(Platform.OS));
+  // On iOS, lists marked iosHosts are used for their server rules (see scripts/filters/build.mjs).
+  const lists = catalog.lists.filter(
+    (l) => !('platforms' in l) || (l.platforms as string[]).includes(Platform.OS) || (Platform.OS === 'ios' && 'iosHosts' in l && l.iosHosts),
+  );
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <ScreenHeader title="About" onBack={onBack} theme={theme} />

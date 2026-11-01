@@ -232,12 +232,15 @@ function stopPopup(opener: WebContents | undefined, url: string, why: string): v
  * Decides about a window a page wants to open. Stopped are:
  *  - one that no click or key press asked for;
  *  - one whose address the filters block (`$popup` rules, checked as documents);
- *  - on a page where the user is watching video or listening, one to another site that the
- *    press was not a link to. That is how players earn from every click on the video; a real
- *    link, the site's own windows and sites the user allowed still open.
+ *  - a new tab to another site that the press was not a link to. That is what pop-unders,
+ *    ad tabs and players that earn from every click do, on any site: a script opens the
+ *    advertiser in a tab from a press anywhere on the page. Real links, the site's own
+ *    windows, sized pop-up windows (sign-in, sharing, payment) and sites the user allowed
+ *    still open; the toolbar's "Pop-up stopped" opens a stopped one anyway.
+ *  - while a video is being watched, sized pop-up windows to another site as well.
  * Returns null when it is stopped, otherwise how to watch the new window.
  */
-export function popupDecision(opener: WebContents, url: string): PopupGuard | null {
+export function popupDecision(opener: WebContents, url: string, sizedWindow = false): PopupGuard | null {
   const state = pageState(opener);
   const guard = (strict: boolean): PopupGuard => ({ openerId: opener.id, openerUrl: state.url, strict, until: Date.now() + GUARD_MS });
   if (!state.shieldsActive) return guard(false);
@@ -246,12 +249,12 @@ export function popupDecision(opener: WebContents, url: string): PopupGuard | nu
   const press = state.lastPress && Date.now() - state.lastPress.time < 2000 ? state.lastPress : null;
   // The press was on a link to this address (or to its site, for links that pass through a redirect).
   const fromLink = !!press && press.href !== '' && (press.href === url || (web && !shieldEngine.isThirdParty(url, press.href)));
-  const strict = shieldEngine.options.blockPopups && state.watching && !fromLink && !popupsAllowedOn(state.url);
-  log('window', url, byUser ? 'after a click' : 'no click', fromLink ? 'on a link' : '', state.watching ? 'while watching' : '', 'from', state.url);
+  const strict = shieldEngine.options.blockPopups && !fromLink && !popupsAllowedOn(state.url) && (state.watching || !sizedWindow);
+  log('window', url, byUser ? 'after a click' : 'no click', fromLink ? 'on a link' : '', sizedWindow ? 'sized' : 'tab', state.watching ? 'while watching' : '', 'from', state.url);
 
   if (web && shieldEngine.check(url, state.url, 'document').action !== 'allow') return stopPopup(opener, url, 'matches a filter'), null;
   if (!byUser && shieldEngine.options.blockPopups) return stopPopup(opener, url, 'no click'), null;
-  if (strict && web && shieldEngine.isThirdParty(url, state.url)) return stopPopup(opener, url, 'another site, while watching'), null;
+  if (strict && web && shieldEngine.isThirdParty(url, state.url)) return stopPopup(opener, url, state.watching ? 'another site, while watching' : 'a tab to another site, not from a link'), null;
   return guard(strict);
 }
 

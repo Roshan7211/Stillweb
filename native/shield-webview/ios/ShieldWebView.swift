@@ -1497,59 +1497,6 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     webView.load(request)
   }
 
-  /// Sizes, zoom and insets of the page view, for "Page layout info" in test builds: layout
-  /// problems that only show on a device can be read off instead of guessed at.
-  func layoutInfo() -> [String: Any] {
-    guard let webView else { return [:] }
-    let scroll = webView.scrollView
-    let edges = { (i: UIEdgeInsets) -> [Double] in [i.top, i.left, i.bottom, i.right].map { Double($0) } }
-    let rect = { (r: CGRect) -> [Double] in [r.minX, r.minY, r.width, r.height].map { Double($0) } }
-    var info: [String: Any] = [
-      "system": UIDevice.current.systemVersion,
-      "screen": rect(UIScreen.main.bounds),
-      "window": rect(window?.bounds ?? .zero),
-      "view": rect(bounds),
-      // In the window's coordinates: differs from `view` in size when something scales it.
-      "viewInWindow": rect(convert(bounds, to: nil)),
-      "webView": rect(webView.frame),
-      "content": [Double(scroll.contentSize.width), Double(scroll.contentSize.height)],
-      "offset": [Double(scroll.contentOffset.x), Double(scroll.contentOffset.y)],
-      "zoom": Double(scroll.zoomScale),
-      "minZoom": Double(scroll.minimumZoomScale),
-      "maxZoom": Double(scroll.maximumZoomScale),
-      "inset": edges(scroll.contentInset),
-      "adjustedInset": edges(scroll.adjustedContentInset),
-      "insetBehavior": scroll.contentInsetAdjustmentBehavior.rawValue,
-      "safeArea": edges(safeAreaInsets),
-      "chrome": chromeInsets.map(edges) ?? [],
-      "pageZoom": Double(webView.pageZoom),
-      "bounce": [scroll.bounces, scroll.alwaysBounceVertical, scroll.alwaysBounceHorizontal],
-      "zoomBeforePush": zoomBeforePush.map { Double($0) } ?? -1,
-      // Blocking: what the engine has, what this view attached, and whether the page got it.
-      "engine": [
-        "ready": ShieldEngine.shared.isReady,
-        "version": ShieldEngine.shared.version ?? "",
-        "error": ShieldEngine.shared.lastError ?? "",
-        "lists": ShieldEngine.shared.ruleLists.map { $0.identifier ?? "" },
-        "calmLists": ShieldEngine.shared.calmRuleLists.count,
-        "calmMode": ShieldEngine.shared.calmMode,
-        "enabled": ShieldEngine.shared.enabled,
-      ] as [String: Any],
-      "attached": contentController?.attachedLists ?? [],
-      "scripts": webView.configuration.userContentController.userScripts.count,
-      "scriptsFor": contentController?.appliedHost ?? "",
-      "quiet": contentController?.quiet ?? false,
-      "shieldsActive": shieldsActive,
-      "scriptsInPage": scriptsSeen,
-      "repairs": repairs,
-      "blockedOnPage": blockedOnPage,
-    ]
-    #if compiler(>=6.2)
-    if #available(iOS 26.0, *) { info["obscured"] = edges(webView.obscuredContentInsets) }
-    #endif
-    return info
-  }
-
   /// Snapshot of the visible page as a small JPEG in Caches/thumbs; completes with a file URL.
   func captureThumbnail(key: String, completion: @escaping (String?) -> Void) {
     // No address: nothing loaded yet, or the page's process has ended and the view is blank
@@ -2267,20 +2214,29 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   /// Media with sound has played on this page (a video is being watched).
   private var watchedOnPage = false
 
-  /// Video players on some sites (the "ev" players of film sites) open advertisers' sites from
-  /// taps on the video once it has played for a while: a tap is a real one, so the windows get
-  /// through the usual pop-up blocking. As in the desktop app: while a video is being watched,
-  /// a window to another site (or a blank one, filled in by script afterwards) that wasn't
-  /// opened by tapping a real link is not opened.
-  private func opensAdWhileWatching(_ action: WKNavigationAction, opener: WKWebView) -> Bool {
-    guard shieldsActive, ShieldEngine.shared.blockPopups, watchedOnPage || !playingFrames.isEmpty else { return false }
+  /// Pop-unders, ad tabs and video players that earn from every tap work the same way on any
+  /// site: a script opens an advertiser in a new tab from a tap anywhere on the page. A tap is
+  /// a real one, so such windows get through the usual pop-up blocking. As on Android and the
+  /// desktop, a new tab to another site opens only from a tapped link; sized pop-up windows
+  /// (sign-in, sharing, payment: `window.open` with a size) and the site's own windows still
+  /// open. While a video is being watched, sized windows to another site and blank ones
+  /// (filled in by script afterwards) don't open either. "Blocked a pop-up" offers to open it.
+  private func opensAdWindow(_ action: WKNavigationAction, opener: WKWebView, features: WKWindowFeatures) -> Bool {
+    guard shieldsActive, ShieldEngine.shared.blockPopups else { return false }
     if action.navigationType == .linkActivated { return false }
+    let watching = watchedOnPage || !playingFrames.isEmpty
+    let sized = features.width != nil || features.height != nil
+    if sized && !watching { return false }
     guard let page = opener.url?.host?.lowercased() else { return false }
     let target = action.request.url
     let scheme = target?.scheme?.lowercased() ?? ""
-    guard let host = target?.host?.lowercased(), !host.isEmpty else { return scheme.isEmpty || scheme == "about" }
+    guard let host = target?.host?.lowercased(), !host.isEmpty else { return watching && (scheme.isEmpty || scheme == "about") }
     guard scheme == "http" || scheme == "https" else { return false }
-    return Self.site(of: host) != Self.site(of: page)
+    // The site's own windows, and those of the frame that opened it (a sign-in button's frame).
+    let site = Self.site(of: host)
+    // (WebKit has been seen to leave sourceFrame nil despite its type: read it as optional.)
+    let frameHost = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host.lowercased() ?? ""
+    return site != Self.site(of: page) && (frameHost.isEmpty || site != Self.site(of: frameHost))
   }
 
   /// A host's site: its last two labels, or three under endings like co.uk and com.au.
@@ -2301,7 +2257,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     // Windows to an ad host (the lists block its pages) are not opened at all, as on Android
     // and the desktop: the content rules would only block the page inside a new tab.
     let adWindow = shieldsActive && (action.request.url?.host).map(ShieldEngine.shared.isAdHost) == true
-    if adWindow || opensAdWhileWatching(action, opener: webView) {
+    if adWindow || opensAdWindow(action, opener: webView, features: windowFeatures) {
       let host = action.request.url?.host?.lowercased()
       countBlocked(hosts: host.map { [$0: 1] } ?? [:])
       onPopupBlocked(["url": action.request.url?.absoluteString ?? "", "kind": "popup"])

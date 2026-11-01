@@ -32,7 +32,8 @@
       "platforms": [
         "android"
       ],
-      "note": "Android only: on iOS it would exceed WebKit's content rule limit."
+      "note": "On iOS its server rules go into a rule list of their own (WebKit takes at most 150,000 rules per list); servers that another list makes an exception for are left out there.",
+      "iosHosts": true
     },
     {
       "id": "easylist-cookie",
@@ -79,6 +80,26 @@
       "title": "uBlock filters – Unbreak",
       "purpose": "Fixes sites broken by other lists",
       "url": "https://ublockorigin.github.io/uAssets/filters/unbreak.txt",
+      "homepage": "https://github.com/uBlockOrigin/uAssets",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
+      "trusted": true
+    },
+    {
+      "id": "ubo-badware",
+      "title": "uBlock filters – Badware risks",
+      "purpose": "Scam, fake-update and malware pages",
+      "url": "https://ublockorigin.github.io/uAssets/filters/badware.txt",
+      "homepage": "https://github.com/uBlockOrigin/uAssets",
+      "license": "GPLv3",
+      "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",
+      "trusted": true
+    },
+    {
+      "id": "ubo-resource-abuse",
+      "title": "uBlock filters – Resource abuse",
+      "purpose": "Crypto-miners",
+      "url": "https://ublockorigin.github.io/uAssets/filters/resource-abuse.txt",
       "homepage": "https://github.com/uBlockOrigin/uAssets",
       "license": "GPLv3",
       "licenseUrl": "https://github.com/uBlockOrigin/uAssets/blob/master/LICENSE",

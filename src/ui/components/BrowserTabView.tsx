@@ -17,12 +17,15 @@ import type { ContextTarget } from './ContextMenuSheet';
 import LoadErrorPage from './LoadErrorPage';
 import NewTabPage from './NewTabPage';
 
+/** A button on a toast ("Open" on a blocked pop-up). */
+export type ToastAction = { label: string; onPress: () => void };
+
 type Props = {
   tab: Tab;
   active: boolean;
   theme: Theme;
   registerRef: (id: string, ref: ShieldWebViewRef | null) => void;
-  onToast: (message: string) => void;
+  onToast: (message: string, action?: ToastAction) => void;
   onContextMenu: (target: ContextTarget) => void;
   onFullscreenChange: (tabId: string, fullscreen: boolean) => void;
   onFindResult: (tabId: string, active: number, count: number) => void;
@@ -315,7 +318,13 @@ function BrowserTabView(props: Props) {
         onChromeChange={({ nativeEvent }) => active && onChromeChange(nativeEvent.collapsed)}
         onMediaStateChange={({ nativeEvent }) => updateTab(tab.id, { playing: nativeEvent.playing })}
         onPopupBlocked={({ nativeEvent }) => {
-          if (active) onToast(nativeEvent.kind === 'redirect' ? 'Blocked a redirect' : 'Blocked a pop-up');
+          if (!active) return;
+          const { url } = nativeEvent;
+          // A pop-up the user wanted after all (the blocking is by how it was opened): one tap.
+          const open = nativeEvent.kind !== 'redirect' && /^https?:/i.test(url)
+            ? { label: 'Open', onPress: () => openTab(url, { incognito: tab.incognito, openerId: tab.id }) }
+            : undefined;
+          onToast(nativeEvent.kind === 'redirect' ? 'Blocked a redirect' : 'Blocked a pop-up', open);
         }}
         onDownloadRequest={async ({ nativeEvent: d }) => {
           if (d.handledNatively) {

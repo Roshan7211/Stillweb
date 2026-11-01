@@ -9,8 +9,8 @@ import { pipeline } from 'node:stream/promises';
 import { shieldEngine } from './engine/shieldEngine';
 import { dataPath, jsonFile, type JsonFile } from './store';
 
-/** The manifest.json published by the Filters workflow; empty when the build did not set it. */
-const MANIFEST_URL = process.env.STILLWEB_FILTER_MANIFEST_URL || '';
+/** The manifest.json published daily by the Filters workflow (STILLWEB_FILTER_MANIFEST_URL points it elsewhere). */
+const MANIFEST_URL = process.env.STILLWEB_FILTER_MANIFEST_URL || 'https://roshan7211.github.io/Stillweb/manifest.json';
 const INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 type ManifestFile = { file: string; sha256: string; bytes: number };
