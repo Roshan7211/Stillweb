@@ -1,5 +1,5 @@
 ! Title: uBlock filters – Unbreak
-! Last modified: Sat, 31 Oct 2026 14:06:58 +0000
+! Last modified: Fri, 06 Nov 2026 02:39:15 +0000
 ! Expires: 5 days
 ! Description: Filters optimized for uBlock Origin, to unbreak sites broken as a result of 3rd-party filter lists enabled by default.
 ! Homepage: https://github.com/uBlockOrigin/uAssets
@@ -1158,7 +1158,6 @@ ebay.com#@#li.s-item:has(span:has-text(SPONSORED))
 
 ! To counter the adswizz filter in Peter Lowe's list
 ||adswizz.com^$badfilter
-||adswizz.com^$3p
 
 ! https://www.reddit.com/r/uBlockOrigin/comments/d6zbqv/login_popup_for_disqus_being_blocked/
 
@@ -4174,7 +4173,6 @@ delta.com#@#.adv-container
 ! To counter `statcounter.com` in Peter Lowe's
 ! https://github.com/uBlockOrigin/uAssets/commit/1142bef68ee287d27f6191c433ff8491570b6612
 ||statcounter.com^$badfilter
-||statcounter.com^$3p
 
 ! https://github.com/AdguardTeam/AdguardFilters/issues/142003
 vindobona.org#@#.ads_footer
@@ -5320,7 +5318,7 @@ topgear.com##+js(set, _sp_.config.events.onSPPMObjectReady, noopFunc)
 @@||worldsurfleague.com/js/videojs8/nuevo/plugins/videojs-contrib-ads.min.js^$script,1p
 @@||micro.rubiconproject.com/prebid/dynamic/$script,domain=worldsurfleague.com
 @@||securepubads.g.doubleclick.net/pagead/ima_ppub_config$xhr,domain=worldsurfleague.com
-||pubads.g.doubleclick.net/gampad/ads?*www.worldsurfleague.com$xhr,redirect=noop-vmap1.0.xml:5,domain=imasdk.googleapis.com
+||pubads.g.doubleclick.net/gampad/ads?*www.worldsurfleague.com$xhr,redirect=noop-vmap1.xml:5,domain=imasdk.googleapis.com
 
 ! https://github.com/uBlockOrigin/uAssets/issues/25049
 eservice.directauto.com##+js(set, gtm, {})
@@ -6016,4 +6014,7 @@ funradio.fr##+js(trusted-set, getUserConsentStatus, json:{"dailymotion":true}, a
 
 ! https://github.com/uBlockOrigin/uAssets/issues/35085
 @@||securepubads.g.doubleclick.net/tag/js/gpt.js$script,redirect-rule=googletagservices_gpt.js:5,domain=theglobeandmail.com
+
+! https://github.com/uBlockOrigin/uAssets/issues/35181
+@@||h-visa2.online-metrix.net^$frame,domain=src.visa.com
 

@@ -20,3 +20,7 @@
 ! The countdown is set to 0, as uBlock Origin's Annoyances list does (that list is only on
 ! with Calm Mode here); the player then starts straight away.
 lookmovie2.*,lookmovie.*##+js(trusted-replace-xhr-response, /Timeout":\d+/, Timeout":0, /api/v)
+!
+! GSMArena (phones): empty 300x250 ad boxes stay on the page; no shared list names them.
+! Tested 2026-11-13 on https://m.gsmarena.com/ (Android).
+gsmarena.com##[id^="mob-300x250"]

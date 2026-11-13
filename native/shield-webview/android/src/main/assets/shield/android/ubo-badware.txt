@@ -1,5 +1,5 @@
 ! Title: uBlock₀ filters – Badware risks
-! Last modified: Sun, 01 Nov 2026 16:21:26 +0000
+! Last modified: Fri, 13 Nov 2026 13:10:12 +0000
 ! Expires: 5 days
 ! Description: For sites documented to put users at risk of installing adware/crapware/malware, having login credentials stolen, etc.
 ! The purpose is to at least ensure a user is warned of the risks ahead.
@@ -307,6 +307,7 @@ howtoremove.guide###gray_de
 ||fortuneadvert.com^$all
 ||lalielynaualish.com^$all
 .com/go/*?clickid=$doc
+/c1/*?externalId=*&cv1=$doc
 
 ! hacked and abused for redirect
 ||clicks.affstrack.com^
@@ -636,6 +637,7 @@ howtoremove.guide###gray_de
 ||freefiles-upload.com^$doc
 ||projecthygieia.com^$all
 ||iridia.me^$doc
+||nexusmops.com^$doc
 
 ! fake software updaters /redirections
 ||atnpx.com^
@@ -672,7 +674,8 @@ howtoremove.guide###gray_de
 ||messagesafe.net^$all
 ||msgsafe.net^$all
 ||best4fuck.com^$all
-! https://github.com/uBlockOrigin/uAssets/issues/26047
+! https://github.com/uBlockOrigin/uAssets/issues/35238
+||stearndb.info^$all
 
 ! https://www.huorong.cn/info/1531309921141.html
 ||kuaizip.com^$all
@@ -1600,6 +1603,12 @@ cracksmid.com##div[style=""] > center > center
 ||japan-pairs.com^$all
 ! https://x.com/masaomi346/status/2116851586421194906
 ||vn-ku88.net^$all
+! https://x.com/masaomi346/status/2117100506564952146
+||galanzmotzjp.com^$all
+! https://x.com/masaomi346/status/2117779362707886178
+||downioads-japan.com^$all
+! https://x.com/masaomi346/status/2118996613377212533
+||cb-customa.com^$all
 
 ! scam sites
 ||webuzz.me^$doc
@@ -2832,6 +2841,23 @@ cracksmid.com##div[style=""] > center > center
 ||fapr3i.com^$doc
 ||fawl4vx.com^$doc
 ||tendresse.shop^$doc
+||your-compass.jp^$doc
+||tennoito.jp^$doc
+||cla-fando.com^$doc
+||weclo-offer.online^$doc
+||yx5s6.com^$doc
+||xrfg0dt.com^$doc
+||pascal2417.com^$doc
+||sunnys-day.net^$doc
+||hare-days.com^$doc
+||new-platinum.tokyo^$doc
+||aiamiam.com^$doc
+||aiamiiam.com^$doc
+||amaiamiam.com^$doc
+||lotosecond.com^$doc
+||ejpjeip.com^$doc
+||jpjeip.com^$doc
+||pjpjeip.com^$doc
 
 ! https://github.com/AdguardTeam/AdguardFilters/issues/142492
 ||webogram.ru^$all
@@ -3309,6 +3335,33 @@ r2.dev##body > .main-wrapper > .main-content:has(> #checkbox-window.checkbox-win
 
 ! https://bahisotv36.com/
 ##div.grid[aria-hidden="true"]:not([id]):not([style]) + main:not([class]):not([id]):not([style]) ~ div[style="position: fixed; inset: 0px; z-index: 2147483647;"]:not([class]):not([id])
+
+! https://github.com/AdguardTeam/AdguardFilters/issues/246015
+##body[data-m][style] > footer ~ #plcontent > #plgate
+###plcontent > #bw-cf-root
+||top^$doc,ipaddress=13.143.164.28
+||digital^$doc,ipaddress=13.143.164.28
+||birelopater.top^$all
+||desorantpola.top^$all
+||koostergop.top^$all
+||montopera.top^$all
+||nezercert.top^$all
+||olvantrise.top^$all
+||prostevision.top^$all
+||repolander.top^$all
+||uirolader.top^$all
+||yolopander.top^$all
+||pentomorinexolentokarodarimexotavo.digital^$all
+
+! https://ohey.ca/research/clocktail-clickfix-unfilled-command/
+##body.glue-body > #cf-modal-overlay
+
+! https://github.com/PaloAltoNetworks/Unit42-timely-threat-intel/blob/main/2026-10-31-Romulus-Loader-spread-via-ClickFix-technique.txt
+/^https:\/\/sites\.google\.com\/view\/antibot[0-9]+\b/$doc,match-case
+
+! https://github.com/uBlockOrigin/uAssets/issues/35302
+||browse-cloud.codes^$all
+||encodelp.com^$all
 
 ! !SECTION: ClickFix
 
@@ -4507,7 +4560,7 @@ www.cambe.pr.gov.br##+js(noeval-if, tigervip2)
 ||steamcommunitylog.chez.com^$all
 ! https://github.com/uBlockOrigin/uBOL-home/issues/156
 ! https://github.com/uBlockOrigin/uAssets/issues/27941
-/^https:\/\/s[cfntz]y?[ace][acemnu][a-z]{1,4}or?[mn][a-z]{4,8}[iy][a-z]?\.com\//$doc,to=com|~steamcommunity.com|~stauntonandhenry.com|~szentkoronaradio.com
+/^https:\/\/s[cfntz]y?[ace][acemnu][a-z]{1,4}or?[mn][a-z]{4,8}[iy][a-z]?\.com\//$doc,to=com|~steamcommunity.com|~stankomladenovic.com|~stauntonandhenry.com|~szentkoronaradio.com
 /^https:\/\/s[cfntz]y?[ace][acemnu][a-z]{1,4}or?[mn][a-z]{4,8}[iy][a-z]?\.cc\//$doc,to=cc
 /^https:\/\/s[cfntz]y?[ace][acemnu][a-z]{1,4}or?[mn][a-z]{4,8}[iy][a-z]?\.ru\//$doc,to=ru
 /^https:\/\/steam\.(?:community)?workshop-?[a-z]+\.com\//$doc,to=com|~steamcommunity.com
@@ -4519,7 +4572,7 @@ www.cambe.pr.gov.br##+js(noeval-if, tigervip2)
 ! https://www.virustotal.com/gui/url/3cfd2e05f7e6129a6278d7f0ab0bce05d021cdf47407f51b5dbe6d975eb5ff56
 ! https://github.com/uBlockOrigin/uAssets/issues/33993
 ! https://github.com/uBlockOrigin/uAssets/issues/34059
-||steamcommunity.$doc,to=~steamcommunity.com|~steamcommunity.ai|~steamcommunity.gg|~steamcommunity.rocks|~steamcommunity.tips
+||steamcommunity.$doc,to=~steamcommunity.com|~steamcommunity.ai|~steamcommunity.cl|~steamcommunity.gg|~steamcommunity.rocks|~steamcommunity.tips
 
 ! pubg
 ||register-turnamen.free.nf^$all
@@ -5753,7 +5806,8 @@ rapidkil.com.au##+js(aost, XMLHttpRequest, /wp-content)
 ! https://www.reddit.com/r/antivirus/comments/1re2ox3/im_kinda_dumb_with_technology_in_general_should_i/
 ||kexornero.co.in^$all
 ! https://github.com/uBlockOrigin/uAssets/issues/33755
-/^https?:\/\/[a-z0-9]{10,}\.[a-z]{9,}\.co\.in\//$all,to=co.in|~unitybank.co.in
+! https://github.com/uBlockOrigin/uAssets/issues/35295
+! /^https?:\/\/[a-z0-9]{10,}\.[a-z]{9,}\.co\.in\//$all,to=co.in|~unitybank.co.in
 ! https://www.reddit.com/r/antivirus/comments/1rg9tbc/wife_computer_suddenly/
 ||vironexta.com^$all
 ! https://www.youtube.com/watch?v=lyIlrDQs1YQ
@@ -5864,6 +5918,9 @@ rapidkil.com.au##+js(aost, XMLHttpRequest, /wp-content)
 
 ! https://www.reddit.com/r/Scams/comments/1iyqpsn/new_digital_fearscam_unlocked_zoom_phishing/
 ||zoom.us*web.us^$doc
+! https://www.reddit.com/r/Scams/comments/1xogded/job_scam_using_webzoomus/
+||webzoom.us^$all
+||us13webzoom.us^$all
 
 ! https://www.reddit.com/r/phishing/comments/1j2yegj/finally_got_one/
 ||e-zpass.com-$doc
@@ -6836,6 +6893,8 @@ top##body > center + .A + .post
 
 ! https://github.com/AdguardTeam/AdguardFilters/issues/238513
 ||luhxepremiumbags.com^$all
+! https://github.com/AdguardTeam/AdguardFilters/issues/246379
+||luhxetravelbag.co^$all
 
 ! https://github.com/uBlockOrigin/uAssets/issues/34150
 ! https://www.virustotal.com/gui/file/99989e96c1043349a4127d8a2f942bcae693fbaa0b05fc694ee53347d996114b
@@ -6894,6 +6953,7 @@ top##body > center + .A + .post
 
 ! https://github.com/uBlockOrigin/uAssets/issues/34648
 ||koboldcpp.com^$all
+||koboldcpp.cc^$all
 
 ! https://github.com/uBlockOrigin/uAssets/issues/34589
 msm-wroclaw.pl##+js(noeval-if, _0x)
@@ -6928,4 +6988,24 @@ msm-wroclaw.pl##+js(noeval-if, _0x)
 
 ! https://github.com/uBlockOrigin/uAssets/issues/35101
 ||gusdocment.top^$all
+
+! https://disconinja.hatenablog.com/entry/2026/11/03/230647
+||rivo.vin/rivo-stealer/
+||rivo.vin/vi|
+
+! https://github.com/uBlockOrigin/uAssets/issues/35202
+! https://www.virustotal.com/gui/file/a216debace43f80a4d28d73c4e1c8b492669f2107c6ebb2eebcfb1ab2b3ec16d
+||wlygrowth.com^$all
+||ludashisafe.com^$all
+
+! https://www.reddit.com/r/Scams/comments/1xp6ej8/in_beware_of_this_crypto_scam_gtagrokcom/
+||gtagrok.com^$all
+
+! https://www.reddit.com/r/Scams/comments/1xo5pr0/heads_up_fake_aldi_website_phishing_scam_spotted/
+||pondmart.shop^$all
+
+! https://github.com/hagezi/dns-blocklists/issues/12288
+||4kwallpapers.top^$all
+||pcsofts.site^$all
+||gover.top^$all
 

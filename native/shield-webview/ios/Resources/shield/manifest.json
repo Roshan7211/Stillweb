@@ -1,51 +1,51 @@
 {
   "schema": 1,
-  "version": "2026-11-01T23:14:23Z",
+  "version": "2026-11-13T22:31:55Z",
   "android": null,
   "ios": {
     "rules": [
       {
-        "count": 123513,
+        "count": 124686,
         "file": "ios/rules-0.json",
-        "sha256": "8c196819725fdb7313d527117165abbf3214af1e3693282804aab779ebc88aa1",
-        "bytes": 13608046
+        "sha256": "5938b8f3ea16de4c8b9248f0b5176ef947d727436e8b99fb8265fbde9dc69d7e",
+        "bytes": 13723137
       },
       {
-        "count": 55007,
+        "count": 55054,
         "file": "ios/rules-1.json",
-        "sha256": "b40e424c494ce1e3a6a19981613041d3641055bf6cd63232199faa91adbf8c75",
-        "bytes": 6989543
+        "sha256": "5568c28f1b02f30ce62cd8be4fed41580e23abea798ac99f79b46a4787c71108",
+        "bytes": 6990306
       },
       {
         "file": "ios/servers-0.json",
-        "count": 114904,
-        "sha256": "d8fca8592c2a2e01831008237232e2a2fffb0b6d33f331fb833433e0794f6a6f",
-        "bytes": 17362329
+        "count": 118556,
+        "sha256": "9e314aea44267776b6a07da8299ccc317999d7334a46b8f72a6fdfdb9c40c878",
+        "bytes": 17905816
       }
     ],
     "scriptlets": {
       "file": "ios/scriptlets.json",
-      "sha256": "aaebfcb1a45c44a0e0e3a1d4f295c39b0f70643bb950cbb1abc519b9a2fcb4ea",
-      "bytes": 5222400
+      "sha256": "128444d525cef32caa7abf4daf88daeb0ea0aa35ebccb828a28623afc95c0127",
+      "bytes": 5241498
     },
     "calm": [
       {
-        "count": 4416,
+        "count": 4420,
         "file": "ios/calm-0.json",
-        "sha256": "20596abb053d250a2680d2e834804d102382c1ec8c0c4f9b4173a6a8e7740957",
-        "bytes": 560453
+        "sha256": "3f4e90f843021cfd61bdcffb80350fd0c401a6bc6bccdf82dcdebe088e6bce84",
+        "bytes": 561067
       },
       {
-        "count": 46218,
+        "count": 46257,
         "file": "ios/calm-1.json",
-        "sha256": "27d4d3af58ccbe86a6c957db9b9f7a549816cf3479e095eb921b7a202f5d8225",
-        "bytes": 5648496
+        "sha256": "06fa68d2248557a772c403b4fa7b5de08ca17d8e528d97759dbb57a9098774aa",
+        "bytes": 5654725
       }
     ],
     "adHosts": {
       "file": "ios/ad-hosts.txt",
-      "sha256": "a547a10ee0afff054df126882fb63bb6f16aaab5997b6e548aa1480129706935",
-      "bytes": 4348422
+      "sha256": "d0dd5c4ce802d220fe155322d46e36544905c42862ac8ca5050d49671622949a",
+      "bytes": 4449994
     }
   },
   "desktop": null
