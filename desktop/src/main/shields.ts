@@ -208,6 +208,24 @@ export function markWatching(contents: WebContents): void {
   pageState(contents).watching = true;
 }
 
+/**
+ * Another site, for pop-ups: one that is neither the same site nor the same name under
+ * another ending. Film sites keep their name and change the ending to stay reachable
+ * (hdhub4u.fr opens its full site at new14.hdhub4u.cl); advertisers never share it.
+ */
+function otherSite(url: string, pageUrl: string): boolean {
+  if (!shieldEngine.isThirdParty(url, pageUrl)) return false;
+  const name = (u: string) => {
+    const labels = (hostOf(u) ?? '').split('.');
+    if (labels.length < 2) return '';
+    // The ending is one label (.fr) or two with a short one before the last (.co.uk).
+    const ending = labels.length > 2 && labels[labels.length - 2].length <= 3 && labels[labels.length - 1].length === 2 ? 2 : 1;
+    return labels[labels.length - 1 - ending] ?? '';
+  };
+  const a = name(url);
+  return !a || a !== name(pageUrl);
+}
+
 /** How long after a window opens its first addresses are still checked (see `PopupGuard`). */
 const GUARD_MS = 6000;
 
@@ -254,7 +272,7 @@ export function popupDecision(opener: WebContents, url: string, sizedWindow = fa
 
   if (web && shieldEngine.check(url, state.url, 'document').action !== 'allow') return stopPopup(opener, url, 'matches a filter'), null;
   if (!byUser && shieldEngine.options.blockPopups) return stopPopup(opener, url, 'no click'), null;
-  if (strict && web && shieldEngine.isThirdParty(url, state.url)) return stopPopup(opener, url, state.watching ? 'another site, while watching' : 'a tab to another site, not from a link'), null;
+  if (strict && web && otherSite(url, state.url)) return stopPopup(opener, url, state.watching ? 'another site, while watching' : 'a tab to another site, not from a link'), null;
   return guard(strict);
 }
 
@@ -267,7 +285,7 @@ export function guardedNavigationBlocked(guard: PopupGuard, opened: WebContents,
   // Once the user has done something in the new window it is theirs.
   if (pageState(opened).lastGesture > 0) return false;
   const filtered = shieldEngine.check(url, guard.openerUrl, 'document').action !== 'allow';
-  const offSite = guard.strict && shieldEngine.isThirdParty(url, guard.openerUrl);
+  const offSite = guard.strict && otherSite(url, guard.openerUrl);
   if (!filtered && !offSite) return false;
   const opener = [...openers].find((contents) => contents.id === guard.openerId);
   stopPopup(opener, url, filtered ? 'matches a filter, after opening' : 'another site, after opening');

@@ -157,6 +157,13 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     return labels.takeLast(keep).joinToString(".")
   }
 
+  /**
+   * A host's site name, its site without the ending (hdhub4u for new14.hdhub4u.cl). Film
+   * sites keep the name and change the ending to stay reachable; for pop-ups, a window to the
+   * same name under another ending is the site's own (its "View full site" button).
+   */
+  private fun siteNameOf(host: String): String = siteOf(host).substringBefore('.')
+
   /** Site where the user started media; autoplay stays allowed there until leaving it. */
   @Volatile private var mediaAllowedHost: String? = null
   private var extraScripts = mutableListOf<ScriptHandler>()
@@ -815,27 +822,42 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       val url = request.url.toString()
       debug("override main=${request.isForMainFrame} gesture=${request.hasGesture()} redirect=${request.isRedirect} $url")
       if (!request.isForMainFrame) return false
-      when (request.url.scheme?.lowercase()) {
+      // A tap on a real link (its address is the hit test's), as opposed to a script that ran
+      // on a tap anywhere: video players and pop-under scripts send the tab to advertisers,
+      // the Play Store or other apps from taps on the video.
+      val hit = view.hitTestResult
+      val onLink = request.hasGesture() && !request.isRedirect &&
+        (hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE || hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)
+      val scheme = request.url.scheme?.lowercase()
+      when (scheme) {
         "http", "https" -> Unit
         "about", "data", "blob", "javascript" -> return false
         else -> {
-          // intent:, market:, mailto:, tel: ... only when the user actually tapped something.
-          if (request.hasGesture()) {
+          // Calls, mail and texts after any tap (sites use buttons for them); other apps
+          // (intent:, market:, ...) only from a tapped link; each asks first.
+          val everyday = scheme == "tel" || scheme == "mailto" || scheme == "sms"
+          if (onLink || (everyday && request.hasGesture())) {
             onExternalLink(mapOf("url" to url))
           } else if (shieldsActive) {
             countBlocked(url)
+            onPopupBlocked(mapOf("url" to url, "kind" to "redirect"))
           }
           return true
         }
       }
 
-      // Redirect blocking: script-initiated navigations to filtered destinations.
-      if (shieldsActive && !request.hasGesture() && !request.isRedirect &&
-        ShieldEngine.check(url, pageUrl, "document") != Verdict.Allow
-      ) {
-        countBlocked(url)
-        onPopupBlocked(mapOf("url" to url, "kind" to "redirect"))
-        return true
+      // Redirect ads: the page (a script, or a server it went through) sending the tab to an
+      // address the filters block, or to the Play Store, is stopped and the page stays, as on
+      // iOS and the desktop. A tapped link to that site still goes there.
+      if (shieldsActive) {
+        val target = hostOf(url)?.let(::siteOf)
+        val linkToTarget = onLink && hit.extra?.let(::hostOf)?.let(::siteOf).let { it == null || it == target }
+        val store = hostOf(url) == "play.google.com" && request.url.path.orEmpty().startsWith("/store")
+        if (!linkToTarget && (store || ShieldEngine.check(url, pageUrl, "document") != Verdict.Allow)) {
+          countBlocked(url)
+          onPopupBlocked(mapOf("url" to url, "kind" to "redirect"))
+          return true
+        }
       }
 
       // A server sending us from https back to http on the same host: respect it, don't loop.
@@ -964,9 +986,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       // site don't either. "Blocked a pop-up" offers to open it anyway.
       val hit = view.hitTestResult
       val onLink = hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE || hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
-      val linkSite = if (onLink) hit.extra?.let(::hostOf)?.let(::siteOf) else null
+      val linkSite = if (onLink) hit.extra?.let(::hostOf)?.let(::siteNameOf) else null
       val strict = ShieldEngine.blockPopups && shieldsActive && (watchedOnPage || !isDialog)
-      val openerSite = hostOf(pageUrl)?.let(::siteOf)
+      val openerSite = hostOf(pageUrl)?.let(::siteNameOf)
       // Capture the target URL with a throwaway WebView, then let JS open it as a new tab.
       val probe = WebView(view.context)
       profileName()?.let { WebViewCompat.setProfile(probe, it) }
@@ -979,7 +1001,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
             handled = true
             val target = request.url.toString()
             debug("popup target $target")
-            val targetSite = hostOf(target)?.let(::siteOf)
+            val targetSite = hostOf(target)?.let(::siteNameOf)
             val offSite = strict && targetSite != null && openerSite != null && targetSite != openerSite &&
               !(onLink && (linkSite == null || linkSite == targetSite))
             val isAd = offSite || (shieldsActive && ShieldEngine.check(target, pageUrl, "document") != Verdict.Allow)

@@ -2244,11 +2244,20 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     let scheme = target?.scheme?.lowercased() ?? ""
     guard let host = target?.host?.lowercased(), !host.isEmpty else { return watching && (scheme.isEmpty || scheme == "about") }
     guard scheme == "http" || scheme == "https" else { return false }
-    // The site's own windows, and those of the frame that opened it (a sign-in button's frame).
-    let site = Self.site(of: host)
+    // The site's own windows (also under another ending), and those of the frame that opened
+    // it (a sign-in button's frame).
+    let name = Self.siteName(of: host)
     // (WebKit has been seen to leave sourceFrame nil despite its type: read it as optional.)
     let frameHost = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host.lowercased() ?? ""
-    return site != Self.site(of: page) && (frameHost.isEmpty || site != Self.site(of: frameHost))
+    return name != Self.siteName(of: page) && (frameHost.isEmpty || name != Self.siteName(of: frameHost))
+  }
+
+  /// A host's site name, its site without the ending (hdhub4u for new14.hdhub4u.cl). Film
+  /// sites keep the name and change the ending to stay reachable; for pop-ups, a window to the
+  /// same name under another ending is the site's own (its "View full site" button).
+  static func siteName(of host: String) -> String {
+    let site = Self.site(of: host)
+    return String(site.split(separator: ".").first ?? Substring(site))
   }
 
   /// A host's site: its last two labels, or three under endings like co.uk and com.au.
@@ -2306,7 +2315,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     let target = action.request.url
     guard target?.host?.isEmpty ?? true, ["", "about"].contains(target?.scheme?.lowercased() ?? "") else { return nil }
     let frameHost = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host.lowercased() ?? ""
-    let sites = Set([opener.url?.host?.lowercased() ?? "", frameHost].filter { !$0.isEmpty }.map(Self.site(of:)))
+    let sites = Set([opener.url?.host?.lowercased() ?? "", frameHost].filter { !$0.isEmpty }.map(Self.siteName(of:)))
     guard !sites.isEmpty else { return nil }
     let held = HeldWindow(sites: sites) { [weak self] url in
       guard let self else { return }
@@ -2682,7 +2691,7 @@ private final class HeldWindow: NSObject, WKNavigationDelegate {
     let web = scheme == "http" || scheme == "https"
     // After the tab opened, until the tab's own view takes over: like any page of it.
     if settled { return decisionHandler(web ? ShieldWebView.allowWithoutAppLink : .cancel) }
-    if web, !host.isEmpty, sites.contains(ShieldWebView.site(of: host)), !ShieldEngine.shared.isAdHost(host) {
+    if web, !host.isEmpty, sites.contains(ShieldWebView.siteName(of: host)), !ShieldEngine.shared.isAdHost(host) {
       decisionHandler(ShieldWebView.allowWithoutAppLink)
       settle(url)
       return
