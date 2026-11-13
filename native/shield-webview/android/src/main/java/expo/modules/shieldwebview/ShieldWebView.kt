@@ -259,6 +259,14 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
           "incognito" to incognito
         )
       )
+      // The navigation became a download: the page on screen stays, and so does its address
+      // (the bar showed the file's while it was being fetched).
+      main.post {
+        stayOnPage()
+        loading = false
+        progress = 100
+        emitNavigationState()
+      }
     }
 
     wv.setOnLongClickListener { onLongPress(wv) }
@@ -476,9 +484,25 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       main.post { webView?.settings?.mediaPlaybackRequiresUserGesture = true }
     }
     if (url == pageUrl) return
+    leftPage = LeftPage(pageUrl, blockedOnPage.get(), watchedOnPage)
     pageUrl = url
     watchedOnPage = false
     if (blockedOnPage.getAndSet(0) != 0) queueBlockedEvent()
+  }
+
+  /** The page before the current navigation, for when that navigation becomes a download. */
+  private class LeftPage(val url: String, val blocked: Int, val watched: Boolean)
+  private var leftPage: LeftPage? = null
+
+  /** A navigation that became a download leaves the page on screen as it was. */
+  private fun stayOnPage() {
+    val shown = webView?.url ?: return
+    val left = leftPage?.takeIf { it.url == shown } ?: return
+    pageUrl = left.url
+    shieldsActive = ShieldEngine.shieldsEnabledFor(hostOf(left.url))
+    watchedOnPage = left.watched
+    blockedOnPage.set(left.blocked)
+    queueBlockedEvent()
   }
 
   private fun countBlocked(url: String? = null) {
