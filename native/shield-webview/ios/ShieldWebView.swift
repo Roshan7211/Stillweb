@@ -149,6 +149,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
   private var pendingUpgradeURL: URL?
   private var downloadProgress: [ObjectIdentifier: NSKeyValueObservation] = [:]
   private var downloadPaths: [ObjectIdentifier: String] = [:]
+  /// Files downloads are being written to, across all tabs (main thread only).
+  private static var reservedDownloadPaths = Set<String>()
   private static var httpOnlyHosts = Set<String>()
 
   /// Web views WebKit asked for when a page opened a window, kept until the app shows them
@@ -2634,12 +2636,15 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     var n = 1
     let base = destination.deletingPathExtension().lastPathComponent
     let ext = destination.pathExtension
-    while fm.fileExists(atPath: destination.path) {
+    // Also names other downloads still being written chose (their files don't exist yet), so
+    // the same file downloaded twice at once gets "(1)" instead of failing.
+    while fm.fileExists(atPath: destination.path) || Self.reservedDownloadPaths.contains(destination.path) {
       destination = dir.appendingPathComponent(ext.isEmpty ? "\(base) (\(n))" : "\(base) (\(n)).\(ext)")
       n += 1
     }
     let key = ObjectIdentifier(download)
     let path = destination.path
+    Self.reservedDownloadPaths.insert(path)
     downloadPaths[key] = path
     let total = response.expectedContentLength
     ShieldEngine.shared.updateDownload(path: path, status: "running", bytes: 0, total: max(total, 0))
@@ -2674,6 +2679,7 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     let key = ObjectIdentifier(download)
     downloadProgress.removeValue(forKey: key)
     guard let path = downloadPaths.removeValue(forKey: key) else { return }
+    Self.reservedDownloadPaths.remove(path)
     let bytes = download.progress.completedUnitCount
     ShieldEngine.shared.updateDownload(path: path, status: status, bytes: bytes, total: bytes)
   }
