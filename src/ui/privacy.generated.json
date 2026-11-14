@@ -1,0 +1,313 @@
+[
+ {
+  "type": "title",
+  "parts": [
+   {
+    "text": "Stillweb Privacy Policy"
+   }
+  ]
+ },
+ {
+  "type": "meta",
+  "parts": [
+   {
+    "text": "Effective 14 November 2026"
+   }
+  ]
+ },
+ {
+  "type": "summary",
+  "parts": [
+   {
+    "text": ""
+   },
+   {
+    "text": "In short:",
+    "bold": true
+   },
+   {
+    "text": " Stillweb does not collect, receive, sell or share any personal data. There are no accounts, no analytics, no advertising and no tracking. Everything Stillweb remembers stays on your device."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "What stays on your device"
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "To work as a browser, Stillweb keeps the following "
+   },
+   {
+    "text": "only on your device",
+    "italic": true
+   },
+   {
+    "text": ": open tabs, browsing history, bookmarks, your downloads list, your settings (including sites where you turned protection off and changes you made to sites) and your privacy report (how many ads and trackers were blocked, on which sites and where they came from). Websites may also store cookies and site data in the browser, as in any browser; with Stillweb Plus profiles, each profile keeps its own."
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "You can delete this at any time with "
+   },
+   {
+    "text": "Settings › Clear browsing data now",
+    "italic": true
+   },
+   {
+    "text": ", or turn on "
+   },
+   {
+    "text": "Clear data on exit",
+    "italic": true
+   },
+   {
+    "text": " to start fresh each time. Deleting the app removes everything."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "Private tabs"
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "Pages opened in private tabs are never saved to history. Their cookies and site data are deleted when you close your last private tab, and again whenever the app starts. While private tabs are open, they are hidden in the app switcher (and, on Android, from screenshots). The privacy report counts blocked items in private tabs but never records which sites you visited in them."
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "With the Stillweb Plus private vault, bookmarks (and, on iPhone, downloads) you save from private tabs are kept on your device behind Face ID, Touch ID or your passcode, and are not shown in your normal lists or the Files app."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "Connections Stillweb makes"
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Websites you visit.",
+    "bold": true
+   },
+   {
+    "text": " Pages load directly from the sites you open. Stillweb blocks known ads and trackers, but each website's own privacy policy applies to what it collects."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Your search engine.",
+    "bold": true
+   },
+   {
+    "text": " Searches typed in the address bar go to the search engine you choose (Google by default; you can switch to a private search engine such as DuckDuckGo in Settings). While you type in a normal tab, what you have typed so far is sent to the same search engine to suggest searches, without cookies or identifiers (not with a custom search engine). Private tabs never send it. Suggestions from your bookmarks and history are found on your device."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Filter list updates.",
+    "bold": true
+   },
+   {
+    "text": " About once a day Stillweb downloads updated blocking lists as plain files from our update server. Like any web request this reveals your IP address to the hosting provider; the request contains no identifiers, and we do not collect or keep anything about you."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Purchases (Stillweb Plus).",
+    "bold": true
+   },
+   {
+    "text": " Purchases and subscriptions are handled entirely by Apple on iPhone and iPad, and by Google Play on Android. Stillweb checks on your device, through the store, whether Plus is active; we never receive your name, payment details, Apple Account or Google Account, and there is no Stillweb account."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Android only:",
+    "bold": true
+   },
+   {
+    "text": " the system WebView's Safe Browsing protection checks pages against a list of known dangerous sites using shortened, hashed web addresses. Android WebView usage statistics are switched off."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "Signals to websites"
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "Stillweb sends the "
+   },
+   {
+    "text": "Global Privacy Control",
+    "href": "https://globalprivacycontrol.org"
+   },
+   {
+    "text": " signal with every page, telling sites you do not want your personal data sold or shared. It blocks cross-site cookies by default and upgrades connections to HTTPS when sites support it. With Calm Mode (Stillweb Plus) on, Stillweb answers cookie pop-ups for you by rejecting optional cookies; this runs on your device."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "Permissions"
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Face ID, Touch ID or fingerprint",
+    "bold": true
+   },
+   {
+    "text": " (optional): used only to unlock private tabs and the private vault. The check is done by your device's operating system; Stillweb never receives biometric data."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Camera, microphone and location",
+    "bold": true
+   },
+   {
+    "text": ": asked for only when a website you visit wants them (for example a video call, voice search or a map), and given only to that website. Stillweb itself never uses them."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Photos",
+    "bold": true
+   },
+   {
+    "text": " (iPhone, add only): used only when you choose to save an image from a website to your photo library."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Notifications",
+    "bold": true
+   },
+   {
+    "text": " (Android, optional): used only to show playback controls while music or video plays in the background. Private tabs show \"Private tab\" instead of what is playing."
+   }
+  ]
+ },
+ {
+  "type": "item",
+  "parts": [
+   {
+    "text": "Files",
+    "bold": true
+   },
+   {
+    "text": ": only the files you choose when a website asks you to upload something, and the files you choose to download."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "Children"
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "Stillweb is not directed at children under 13 and collects no personal data from anyone."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "Changes"
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "If this policy changes, the new version will be posted on this page with a new effective date."
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "parts": [
+   {
+    "text": "Contact"
+   }
+  ]
+ },
+ {
+  "type": "paragraph",
+  "parts": [
+   {
+    "text": "Questions about privacy: "
+   },
+   {
+    "text": "privacy@stillweb.app",
+    "href": "mailto:privacy@stillweb.app"
+   }
+  ]
+ }
+]

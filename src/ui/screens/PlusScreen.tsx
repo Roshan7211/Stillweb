@@ -3,11 +3,11 @@ import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, Style
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ShieldEngine } from '../../../native/shield-webview';
-import { PRIVACY_POLICY_URL } from '../../blocking/config';
 import { PLUS_PRODUCTS, usePlus } from '../../plus/plus';
 import { formatPrice, hasTrial, planTerms, planTitle } from '../../plus/pricing';
 import { Icon, IconButton, type IconName } from '../components/primitives';
 import type { Theme } from '../theme';
+import PrivacyPolicyScreen from './PrivacyPolicyScreen';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
 
@@ -82,6 +82,8 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
    * Apple's Manage subscription switches between them.)
    */
   const [changing, setChanging] = useState(false);
+  /** The privacy policy, shown as a page of the app (iOS: required beside the plans). */
+  const [showPolicy, setShowPolicy] = useState(false);
 
   const { productsState, loadProducts } = plus;
   useEffect(() => {
@@ -137,6 +139,8 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
       setBusy(null);
     }
   };
+
+  if (showPolicy) return <PrivacyPolicyScreen theme={theme} onBack={() => setShowPolicy(false)} onOpen={onOpen} />;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
@@ -282,11 +286,9 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
               <Text style={[styles.footerLink, { color: theme.muted }]}>Terms of Use</Text>
             </Pressable>
           ) : null}
-          {PRIVACY_POLICY_URL ? (
-            <Pressable onPress={() => onOpen(PRIVACY_POLICY_URL as string)} accessibilityRole="link" hitSlop={8}>
-              <Text style={[styles.footerLink, { color: theme.muted }]}>Privacy Policy</Text>
-            </Pressable>
-          ) : null}
+          <Pressable onPress={() => setShowPolicy(true)} accessibilityRole="button" hitSlop={8}>
+            <Text style={[styles.footerLink, { color: theme.muted }]}>Privacy Policy</Text>
+          </Pressable>
         </View>
         ) : null}
       </ScrollView>

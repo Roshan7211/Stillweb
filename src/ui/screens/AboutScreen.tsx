@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react';
 import { BackHandler, Image, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PRIVACY_POLICY_URL } from '../../blocking/config';
 import catalog from '../../blocking/filter-catalog.json';
 import { READABILITY_VERSION } from '../../browser/readability.generated';
 import { Group, Icon, Row, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
+import PrivacyPolicyScreen from './PrivacyPolicyScreen';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
 
@@ -32,19 +32,23 @@ const SOFTWARE = [
 ];
 
 export default function AboutScreen({ theme, onBack, onOpen }: Props) {
-  // About › Open-source licenses › one notice or license text.
-  const [page, setPage] = useState<'about' | 'licenses' | { title: string; text: string }>('about');
+  // About › Privacy policy, or About › Open-source licenses › one notice or license text.
+  const [page, setPage] = useState<'about' | 'privacy' | 'licenses' | { title: string; text: string }>('about');
 
-  // Android back steps out of the license pages before it closes About.
-  const inLicenses = page !== 'about';
+  // Android back steps out of these pages before it closes About.
+  const inSubpage = page !== 'about';
   useEffect(() => {
-    if (!inLicenses) return;
+    if (!inSubpage) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setPage((p) => (p === 'licenses' ? 'about' : 'licenses'));
+      setPage((p) => (p === 'licenses' || p === 'privacy' ? 'about' : 'licenses'));
       return true;
     });
     return () => sub.remove();
-  }, [inLicenses]);
+  }, [inSubpage]);
+
+  if (page === 'privacy') {
+    return <PrivacyPolicyScreen theme={theme} onBack={() => setPage('about')} onOpen={onOpen} />;
+  }
 
   if (page === 'licenses') {
     const { components, texts } = loadLicenses();
@@ -116,9 +120,13 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
             <Text style={[styles.bulletText, { color: theme.text }]}>{line}</Text>
           </View>
         ))}
-        {PRIVACY_POLICY_URL ? (
-          <Row title="Privacy policy" icon="external-link" theme={theme} onPress={() => onOpen(PRIVACY_POLICY_URL as string)} />
-        ) : null}
+        <Row
+          title="Privacy policy"
+          icon="file-text"
+          theme={theme}
+          onPress={() => setPage('privacy')}
+          right={<Icon name="chevron-right" size={20} color={theme.muted} />}
+        />
         </Group>
 
         <SectionTitle theme={theme}>Blocking lists</SectionTitle>
