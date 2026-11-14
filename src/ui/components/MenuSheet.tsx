@@ -32,6 +32,8 @@ type Props = {
   /** The current site is shown as its desktop website. */
   desktop: boolean;
   showQuit: boolean;
+  /** The private vault is turned on in Settings. */
+  showVault: boolean;
   clearsOnQuit: boolean;
   /**
    * Android's single bottom bar: forward (and back, for the long reach) live in the menu. On
@@ -50,6 +52,7 @@ export default function MenuSheet({
   readerActive,
   desktop,
   showQuit,
+  showVault,
   clearsOnQuit,
   navigation,
   onAction,
@@ -64,28 +67,30 @@ export default function MenuSheet({
 
   return (
     <Sheet visible={visible} onClose={onClose} theme={theme}>
-      <View style={styles.quick}>
-        {quick.map((q) => {
-          const color = q.active ? theme.accent : theme.text;
-          return (
-            <Pressable
-              key={q.action}
-              disabled={!hasPage}
-              onPress={() => onAction(q.action)}
-              accessibilityRole="button"
-              accessibilityLabel={q.label}
-              style={({ pressed }) => [
-                styles.quickButton,
-                { backgroundColor: theme.background, opacity: !hasPage ? 0.35 : pressed ? 0.6 : 1 },
-              ]}>
-              <Icon name={q.icon} size={22} color={color} />
-              <Text style={[styles.quickLabel, { color }]} numberOfLines={1}>
-                {q.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* Page actions only when there's a page: a new tab has nothing to bookmark, read, find or share. */}
+      {hasPage ? (
+        <View style={styles.quick}>
+          {quick.map((q) => {
+            const color = q.active ? theme.accent : theme.text;
+            return (
+              <Pressable
+                key={q.action}
+                onPress={() => onAction(q.action)}
+                accessibilityRole="button"
+                accessibilityLabel={q.label}
+                style={({ pressed }) => [
+                  styles.quickButton,
+                  { backgroundColor: theme.background, opacity: pressed ? 0.6 : 1 },
+                ]}>
+                <Icon name={q.icon} size={22} color={color} />
+                <Text style={[styles.quickLabel, { color }]} numberOfLines={1}>
+                  {q.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       <ScrollView>
         {navigation && hasPage ? (
           <View style={styles.nav}>
@@ -117,7 +122,7 @@ export default function MenuSheet({
               theme={theme}
               onPress={() => onAction('desktop')}
             />
-            <Row title="Hide an element" icon="crosshair" theme={theme} onPress={() => onAction('hideElement')} />
+            <Row title="Hide something on the page" icon="crosshair" theme={theme} onPress={() => onAction('hideElement')} />
           </>
         ) : null}
         <Row title="New tab" icon="plus" theme={theme} onPress={() => onAction('newTab')} />
@@ -125,7 +130,7 @@ export default function MenuSheet({
         <Row title="Bookmarks" icon="bookmark" theme={theme} onPress={() => onAction('bookmarks')} />
         <Row title="History" icon="clock" theme={theme} onPress={() => onAction('history')} />
         <Row title="Downloads" icon="download" theme={theme} onPress={() => onAction('downloads')} />
-        <Row title="Private vault" icon="lock" theme={theme} onPress={() => onAction('vault')} />
+        {showVault ? <Row title="Private vault" icon="lock" theme={theme} onPress={() => onAction('vault')} /> : null}
         <Row title="Settings" icon="settings" theme={theme} onPress={() => onAction('settings')} />
         {showQuit ? (
           <Row

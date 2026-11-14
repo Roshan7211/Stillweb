@@ -26,7 +26,7 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string; needsProfile
   {
     icon: 'crosshair',
     title: 'Fix-it tools',
-    body: 'Hide anything on a page with a tap, and turn JavaScript off for sites that misbehave.',
+    body: 'Hide anything on a page with a tap, and stop pop-ups and moving content on sites that misbehave.',
   },
   {
     icon: 'users',
@@ -45,7 +45,7 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string; needsProfile
   {
     icon: 'droplet',
     title: 'Make it yours',
-    body: 'Seven accent colors and four app icons.',
+    body: Platform.OS === 'ios' ? 'Seven accent colors and four app icons.' : 'Seven accent colors.',
   },
   {
     icon: 'bar-chart-2',
@@ -243,7 +243,8 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
               <Text style={[styles.footerLink, { color: theme.muted }]}>Terms of Use</Text>
             </Pressable>
           ) : null}
-          {PRIVACY_POLICY_URL ? (
+          {/* Apple requires the privacy policy beside Terms of Use where subscriptions are sold; elsewhere it's in About. */}
+          {Platform.OS === 'ios' && PRIVACY_POLICY_URL ? (
             <Pressable onPress={() => onOpen(PRIVACY_POLICY_URL as string)} accessibilityRole="link" hitSlop={8}>
               <Text style={[styles.footerLink, { color: theme.muted }]}>Privacy Policy</Text>
             </Pressable>

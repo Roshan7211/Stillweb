@@ -108,6 +108,30 @@ export function SectionTitle({ children, theme }: { children: ReactNode; theme: 
   return <Text style={[styles.section, { color: theme.muted }]}>{children}</Text>;
 }
 
+/** A rounded box in the theme's surface color that holds one section's rows. */
+export function Group({ theme, children, style }: { theme: Theme; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return <View style={[styles.group, { backgroundColor: theme.surface }, style]}>{children}</View>;
+}
+
+/**
+ * One row's part of a box, for long lists that render row by row: the first and last rows of a
+ * run get the rounded corners.
+ */
+export function groupItemStyle(theme: Theme, first: boolean, last: boolean): ViewStyle {
+  const radius = 16;
+  return {
+    marginHorizontal: 16,
+    backgroundColor: theme.surface,
+    overflow: 'hidden',
+    borderTopLeftRadius: first ? radius : 0,
+    borderTopRightRadius: first ? radius : 0,
+    borderBottomLeftRadius: last ? radius : 0,
+    borderBottomRightRadius: last ? radius : 0,
+    paddingTop: first ? 4 : 0,
+    paddingBottom: last ? 4 : 0,
+  };
+}
+
 export function Row({
   title,
   subtitle,
@@ -210,10 +234,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 6,
+    paddingHorizontal: 28,
+    paddingTop: 22,
+    paddingBottom: 8,
   },
+  group: { marginHorizontal: 16, borderRadius: 16, overflow: 'hidden', paddingVertical: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 12, minHeight: 52 },
   rowText: { flex: 1 },
   rowTitle: { fontSize: 16 },

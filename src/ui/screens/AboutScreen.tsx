@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PRIVACY_POLICY_URL } from '../../blocking/config';
 import catalog from '../../blocking/filter-catalog.json';
 import { READABILITY_VERSION } from '../../browser/readability.generated';
-import { Row, ScreenHeader, SectionTitle } from '../components/primitives';
+import { Group, Icon, Row, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
@@ -56,13 +56,17 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
             Stillweb includes the following software and data, used under their licenses.
           </Text>
           <SectionTitle theme={theme}>Components</SectionTitle>
-          {components.map((c) => (
-            <Row key={c.name} title={c.name} subtitle={c.license} theme={theme} onPress={() => setPage({ title: c.name, text: c.text })} />
-          ))}
+          <Group theme={theme}>
+            {components.map((c) => (
+              <Row key={c.name} title={c.name} subtitle={c.license} theme={theme} onPress={() => setPage({ title: c.name, text: c.text })} />
+            ))}
+          </Group>
           <SectionTitle theme={theme}>License texts</SectionTitle>
-          {Object.entries(texts).map(([id, text]) => (
-            <Row key={id} title={id} theme={theme} onPress={() => setPage({ title: id, text })} />
-          ))}
+          <Group theme={theme}>
+            {Object.entries(texts).map(([id, text]) => (
+              <Row key={id} title={id} theme={theme} onPress={() => setPage({ title: id, text })} />
+            ))}
+          </Group>
         </ScrollView>
       </SafeAreaView>
     );
@@ -99,6 +103,7 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
         </View>
 
         <SectionTitle theme={theme}>Your privacy</SectionTitle>
+        <Group theme={theme}>
         {[
           'No accounts, analytics, ads or tracking. Nothing about you is collected or sent to us.',
           'History, bookmarks and settings stay on this device. Clear them any time in Settings.',
@@ -114,12 +119,14 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
         {PRIVACY_POLICY_URL ? (
           <Row title="Privacy policy" icon="external-link" theme={theme} onPress={() => onOpen(PRIVACY_POLICY_URL as string)} />
         ) : null}
+        </Group>
 
-        <SectionTitle theme={theme}>Filter lists</SectionTitle>
+        <SectionTitle theme={theme}>Blocking lists</SectionTitle>
         <Text style={[styles.body, styles.pad, { color: theme.muted }]}>
           Ad and tracker blocking uses these community-maintained lists, used under their licenses. Thank you to
           their authors.
         </Text>
+        <Group theme={theme}>
         {lists.map((list) => (
           <Row
             key={list.id}
@@ -132,22 +139,31 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
         ))}
         <Row
           title={catalog.resources.title}
-          subtitle={`Used for pop-up and inline ad defusing · License: ${catalog.resources.license}`}
+          subtitle={`Used to stop pop-ups and ads inside pages · License: ${catalog.resources.license}`}
           theme={theme}
           icon="external-link"
           onPress={() => onOpen(catalog.resources.licenseUrl)}
         />
+        </Group>
 
         <SectionTitle theme={theme}>Open-source software</SectionTitle>
+        <Group theme={theme}>
         {SOFTWARE.map((s) => (
           <Row key={s.title} title={s.title} subtitle={`License: ${s.license}`} theme={theme} icon="external-link" onPress={() => onOpen(s.homepage)} />
         ))}
 
-        <Row title="Open-source licenses" subtitle="Full notices and license texts" theme={theme} onPress={() => setPage('licenses')} />
+        <Row
+          title="Open-source licenses"
+          subtitle="Full notices and license texts"
+          theme={theme}
+          onPress={() => setPage('licenses')}
+          right={<Icon name="chevron-right" size={20} color={theme.muted} />}
+        />
+        </Group>
 
         <Text style={[styles.body, styles.pad, { color: theme.muted, marginTop: 16 }]}>
-          GPLv3, CC BY-SA 3.0 and CC BY 3.0 licensed filter data is distributed unmodified apart from automated format
-          conversion; the source of every list is linked above.
+          The blocking lists are shared under the GPLv3, CC BY-SA 3.0 and CC BY 3.0 licenses. Stillweb only changes them
+          into its own format; where each list comes from is linked above.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -161,8 +177,8 @@ const styles = StyleSheet.create({
   logo: { width: 72, height: 72, borderRadius: 16, borderCurve: 'continuous', marginBottom: 6 },
   name: { fontSize: 24, fontWeight: '700' },
   body: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
-  pad: { paddingHorizontal: 16, textAlign: 'left' },
-  bullet: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 4 },
+  pad: { paddingHorizontal: 28, paddingBottom: 8, textAlign: 'left' },
+  bullet: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 6 },
   bulletText: { flex: 1, fontSize: 15, lineHeight: 21 },
   licenseText: { padding: 16, paddingBottom: 40 },
   mono: { fontSize: 12, lineHeight: 17, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },

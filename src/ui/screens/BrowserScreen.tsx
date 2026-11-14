@@ -1144,6 +1144,7 @@ export default function BrowserScreen() {
         readerActive={!!activeTab?.reader}
         desktop={!!activeTab && !!settings.siteFixes[siteKey(activeTab.url)]?.desktop}
         showQuit={Platform.OS === 'android'}
+        showVault={settings.vault}
         clearsOnQuit={settings.clearDataOnExit}
         navigation={
           single && Platform.OS === 'android'

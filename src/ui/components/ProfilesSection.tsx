@@ -6,7 +6,7 @@ import { DEFAULT_PROFILE_NAME, MAX_PROFILE_NAME, MAX_PROFILES, newProfileId, pro
 import { useSettings } from '../../browser/settings';
 import { useTabs } from '../../browser/tabs';
 import type { Theme } from '../theme';
-import { IconButton, Row, SectionTitle } from './primitives';
+import { Group, IconButton, Row, SectionTitle } from './primitives';
 
 /** Web views of closed tabs are gone by then, so their profile's data store can be deleted. */
 const DELETE_DELAY_MS = 1500;
@@ -64,7 +64,7 @@ export default function ProfilesSection({ theme, unlocked, onOpenPlus }: Props) 
     ]);
 
   const editor = (
-    <View style={[styles.editor, { backgroundColor: theme.surface }]}>
+    <View style={[styles.editor, { backgroundColor: theme.background }]}>
       <TextInput
         value={name}
         onChangeText={setName}
@@ -92,7 +92,8 @@ export default function ProfilesSection({ theme, unlocked, onOpenPlus }: Props) 
       <Text style={[styles.note, { color: theme.muted }]}>
         Keep work and personal browsing apart. Each profile has its own tabs, logins, cookies and site data. Tap a profile to rename it.
       </Text>
-      <Row title={DEFAULT_PROFILE_NAME} subtitle={`Default · ${countLabel(null)}`} icon="user" theme={theme} />
+      <Group theme={theme}>
+        <Row title={DEFAULT_PROFILE_NAME} subtitle={`Default · ${countLabel(null)}`} icon="user" theme={theme} />
       {profiles.map((p) =>
         editing === p.id ? (
           <View key={p.id}>{editor}</View>
@@ -113,12 +114,13 @@ export default function ProfilesSection({ theme, unlocked, onOpenPlus }: Props) 
       ) : profiles.length < MAX_PROFILES ? (
         <Row title="Add a profile" icon="plus" theme={theme} onPress={() => startEditing('new', '')} />
       ) : null}
+      </Group>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  note: { fontSize: 13, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 6 },
+  note: { fontSize: 13, lineHeight: 18, paddingHorizontal: 28, paddingBottom: 8 },
   editor: {
     flexDirection: 'row',
     alignItems: 'center',

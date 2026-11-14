@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { dayKey, lastDays, topEntries, usePrivacyStats } from '../../browser/privacyStats';
 import { usePlus } from '../../plus/plus';
-import { Icon, ScreenHeader, SectionTitle } from '../components/primitives';
+import { Group, Icon, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onUpgrade: () => void };
@@ -99,7 +99,8 @@ export default function PrivacyReportScreen({ theme, onBack, onUpgrade }: Props)
           />
         ) : (
           <>
-            {/* Hero number for the range, with today beside it. */}
+            {/* Hero number for the range, with today beside it, and the chart: one box. */}
+            <Group theme={theme} style={styles.summary}>
             <View style={styles.hero}>
               <Text style={[styles.heroValue, { color: theme.text }]}>{number(total)}</Text>
               <Text style={[styles.heroLabel, { color: theme.muted }]}>
@@ -143,13 +144,14 @@ export default function PrivacyReportScreen({ theme, onBack, onUpgrade }: Props)
                 ))}
               </View>
             </View>
+            </Group>
 
             {!hasAny ? (
               <Text style={[styles.empty, { color: theme.muted }]}>Nothing blocked yet. Browse a little and come back.</Text>
             ) : plus.unlocked ? (
               <>
                 <RankedList theme={theme} title="Sites with the most blocking" rows={topSites} />
-                <RankedList theme={theme} title="Most blocked domains" rows={topDomains} />
+                <RankedList theme={theme} title="Trackers blocked most" rows={topDomains} />
               </>
             ) : (
               <UpgradeCard
@@ -164,9 +166,9 @@ export default function PrivacyReportScreen({ theme, onBack, onUpgrade }: Props)
 
         <Text style={[styles.note, { color: theme.muted }]}>
           {Platform.OS === 'ios'
-            ? 'Counts are estimates on iPhone and iPad: iOS doesn’t tell apps about each blocked request. '
+            ? 'On iPhone and iPad these numbers are estimates. '
             : ''}
-          Private tabs add to the totals only; their sites and domains are never recorded. Clearing browsing data
+          Private tabs add to the totals only; the sites they visit are never recorded. Clearing browsing data
           clears this report.
         </Text>
       </ScrollView>
@@ -180,19 +182,21 @@ function RankedList({ theme, title, rows }: { theme: Theme; title: string; rows:
   return (
     <View>
       <SectionTitle theme={theme}>{title}</SectionTitle>
-      {rows.map(([name, count]) => (
+      <Group theme={theme}>
+        {rows.map(([name, count]) => (
         <View key={name} style={styles.rankRow} accessible accessibilityLabel={`${name}: ${number(count)} blocked`}>
           <View style={styles.rankText}>
             <Text style={[styles.rankName, { color: theme.text }]} numberOfLines={1}>
               {name}
             </Text>
-            <View style={[styles.rankTrack, { backgroundColor: theme.surface }]}>
+            <View style={[styles.rankTrack, { backgroundColor: theme.background }]}>
               <View style={[styles.rankFill, { width: `${(count / top) * 100}%`, backgroundColor: theme.chart }]} />
             </View>
           </View>
           <Text style={[styles.rankCount, { color: theme.muted }]}>{number(count)}</Text>
         </View>
-      ))}
+        ))}
+      </Group>
     </View>
   );
 }
@@ -224,11 +228,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   segmentText: { fontWeight: '600' },
-  hero: { paddingHorizontal: 20, paddingTop: 24, gap: 2 },
+  summary: { marginTop: 16, paddingBottom: 16 },
+  hero: { paddingHorizontal: 16, paddingTop: 12, gap: 2 },
   heroValue: { fontSize: 44, fontWeight: '700' },
   heroLabel: { fontSize: 15 },
   today: { fontSize: 13, marginTop: 6 },
-  chart: { paddingHorizontal: 16, paddingTop: 20 },
+  chart: { paddingHorizontal: 12, paddingTop: 20 },
   readout: { fontSize: 14, fontWeight: '500', marginBottom: 10, paddingHorizontal: 4 },
   plot: { height: CHART_HEIGHT, flexDirection: 'row', alignItems: 'flex-end' },
   // 2px of background between bars.
@@ -249,5 +254,5 @@ const styles = StyleSheet.create({
   upgradeBody: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   upgradeButton: { marginTop: 6, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 },
   upgradeButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 15 },
-  note: { fontSize: 12, lineHeight: 17, paddingHorizontal: 20, paddingTop: 24 },
+  note: { fontSize: 12, lineHeight: 17, paddingHorizontal: 28, paddingTop: 24 },
 });

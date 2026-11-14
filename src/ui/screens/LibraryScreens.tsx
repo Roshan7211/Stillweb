@@ -7,7 +7,7 @@ import { useLibrary } from '../../browser/library';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { formatBytes, fraction, nextRate, progressText, type Rate } from '../../browser/downloadProgress';
 import { displayUrl } from '../../browser/url';
-import { Icon, IconButton, Row, ScreenHeader } from '../components/primitives';
+import { groupItemStyle, Icon, IconButton, Row, ScreenHeader } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
@@ -24,8 +24,10 @@ export function BookmarksScreen({ theme, onBack, onOpen }: Props) {
       <FlatList
         data={bookmarks}
         keyExtractor={(b) => b.id}
+        contentContainerStyle={styles.list}
         ListEmptyComponent={<Empty theme={theme} text="Bookmarks you add from the menu appear here." />}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
+          <View style={groupItemStyle(theme, index === 0, index === bookmarks.length - 1)}>
           <Row
             title={item.title}
             subtitle={displayUrl(item.url)}
@@ -34,6 +36,7 @@ export function BookmarksScreen({ theme, onBack, onOpen }: Props) {
             onPress={() => onOpen(item.url)}
             right={<IconButton name="trash-2" label="Delete bookmark" color={theme.muted} size={18} onPress={() => removeBookmark(item.id)} />}
           />
+          </View>
         )}
       />
     </SafeAreaView>
@@ -95,11 +98,13 @@ export function HistoryScreen({ theme, onBack, onOpen }: Props) {
       <FlatList
         data={rows}
         keyExtractor={(r, i) => (r.kind === 'day' ? `d-${r.label}` : `h-${r.visitedAt}-${i}`)}
+        contentContainerStyle={styles.historyList}
         ListEmptyComponent={<Empty theme={theme} text="Pages you visit appear here. Private tabs are never saved." />}
-        renderItem={({ item }) =>
+        renderItem={({ item, index }) =>
           item.kind === 'day' ? (
             <Text style={[styles.day, { color: theme.muted }]}>{item.label}</Text>
           ) : (
+            <View style={groupItemStyle(theme, rows[index - 1]?.kind !== 'item', rows[index + 1]?.kind !== 'item')}>
             <Row
               title={item.title}
               subtitle={displayUrl(item.url)}
@@ -107,6 +112,7 @@ export function HistoryScreen({ theme, onBack, onOpen }: Props) {
               onPress={() => onOpen(item.url)}
               right={<IconButton name="x" label="Remove from history" color={theme.muted} size={18} onPress={() => removeHistory(item.url)} />}
             />
+            </View>
           )
         }
       />
@@ -215,7 +221,7 @@ function DownloadRow({
       disabled={s?.status !== 'done'}
       accessibilityRole={s?.status === 'done' ? 'button' : undefined}
       accessibilityLabel={`${title}, ${percent ? `${percent}, ` : ''}${detail}`}
-      style={({ pressed }) => [styles.download, pressed && { backgroundColor: theme.surface }]}>
+      style={({ pressed }) => [styles.download, pressed && { backgroundColor: theme.accentSoft }]}>
       <Icon name={s?.status === 'failed' ? 'alert-circle' : s?.status === 'missing' ? 'file-minus' : active ? 'download' : 'file'} size={20} color={active ? theme.accent : theme.muted} />
       <View style={styles.downloadText}>
         <View style={styles.downloadTitleRow}>
@@ -326,7 +332,9 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
             }
           />
         }
-        renderItem={({ item }) => (
+        contentContainerStyle={styles.list}
+        renderItem={({ item, index }) => (
+          <View style={groupItemStyle(theme, index === 0, index === downloads.length - 1)}>
           <DownloadRow
             theme={theme}
             title={item.fileName}
@@ -337,6 +345,7 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
             onOpen={() => open(item)}
             onRemove={() => removeDownload(item.id)}
           />
+          </View>
         )}
       />
     </SafeAreaView>
@@ -346,7 +355,9 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   empty: { textAlign: 'center', marginTop: 60, marginHorizontal: 32, fontSize: 15, lineHeight: 21 },
-  day: { fontSize: 13, fontWeight: '600', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
+  list: { paddingTop: 16, paddingBottom: 32 },
+  historyList: { paddingBottom: 32 },
+  day: { fontSize: 13, fontWeight: '600', paddingHorizontal: 28, paddingTop: 20, paddingBottom: 8 },
   download: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingLeft: 16, paddingRight: 4, paddingVertical: 12, minHeight: 64 },
   downloadText: { flex: 1, gap: 6 },
   downloadTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },

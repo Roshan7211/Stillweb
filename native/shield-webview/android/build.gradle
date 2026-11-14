@@ -11,6 +11,8 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    // Keep rules for the app's R8 shrinking (release builds).
+    consumerProguardFiles "proguard-rules.pro"
   }
   sourceSets {
     main {

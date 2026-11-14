@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ShieldEngine } from '../../../native/shield-webview';
 import { useLibrary, type DownloadRecord } from '../../browser/library';
 import { displayUrl } from '../../browser/url';
-import { Icon, IconButton, Row, ScreenHeader, SectionTitle } from '../components/primitives';
+import { Group, Icon, IconButton, Row, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
@@ -75,7 +75,8 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
         <ScrollView contentContainerStyle={styles.content}>
           <SectionTitle theme={theme}>Bookmarks</SectionTitle>
           {vaultBookmarks.length ? (
-            vaultBookmarks.map((b) => (
+            <Group theme={theme}>
+              {vaultBookmarks.map((b) => (
               <Row
                 key={b.id}
                 title={b.title}
@@ -85,7 +86,8 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
                 onPress={() => onOpen(b.url)}
                 right={<IconButton name="trash-2" label="Delete bookmark" color={theme.muted} size={18} onPress={() => removeBookmark(b.id)} />}
               />
-            ))
+              ))}
+            </Group>
           ) : (
             <Text style={[styles.empty, { color: theme.muted }]}>Bookmarks you add in a private tab are kept here.</Text>
           )}
@@ -93,7 +95,8 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
             <>
               <SectionTitle theme={theme}>Downloads</SectionTitle>
               {vaultDownloads.length ? (
-                vaultDownloads.map((d) => (
+                <Group theme={theme}>
+                  {vaultDownloads.map((d) => (
                   <Row
                     key={d.id}
                     title={d.fileName}
@@ -103,7 +106,8 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
                     onPress={() => openDownload(d)}
                     right={<IconButton name="trash-2" label="Delete file" color={theme.muted} size={18} onPress={() => deleteDownload(d)} />}
                   />
-                ))
+                  ))}
+                </Group>
               ) : (
                 <Text style={[styles.empty, { color: theme.muted }]}>
                   Files you download in a private tab are kept here, out of the Files app.
@@ -147,7 +151,7 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { paddingBottom: 40 },
-  empty: { fontSize: 14, lineHeight: 20, paddingHorizontal: 16, paddingVertical: 8 },
+  empty: { fontSize: 14, lineHeight: 20, paddingHorizontal: 28, paddingVertical: 8 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   badge: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 20, fontWeight: '700', textAlign: 'center' },

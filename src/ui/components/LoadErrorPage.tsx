@@ -53,11 +53,6 @@ export default function LoadErrorPage({ theme, error, canGoBack, onRetry, onBack
         ) : null}
       </View>
 
-      {/* For support and the curious: what the system reported. */}
-      <Text style={[styles.detail, { color: theme.muted }]} selectable>
-        {error.url ? `${error.url}\n` : ''}Error {error.code}
-        {error.description ? ` · ${error.description}` : ''}
-      </Text>
     </ScrollView>
   );
 }
@@ -71,5 +66,4 @@ const styles = StyleSheet.create({
   button: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 },
   primaryText: { color: '#FFFFFF', fontWeight: '600', fontSize: 15 },
   secondaryText: { fontWeight: '600', fontSize: 15 },
-  detail: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 28, opacity: 0.8 },
 });

@@ -23,7 +23,7 @@
     {
       "id": "adguard-dns",
       "title": "AdGuard DNS filter",
-      "purpose": "Ad and tracker domains",
+      "purpose": "Ad and tracker sites",
       "url": "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt",
       "homepage": "https://github.com/AdguardTeam/AdGuardSDNSFilter",
       "license": "GPLv3",
@@ -68,7 +68,7 @@
     {
       "id": "ubo-quick-fixes",
       "title": "uBlock filters – Quick fixes",
-      "purpose": "Fast-moving fixes",
+      "purpose": "Quick fixes for new ads",
       "url": "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt",
       "homepage": "https://github.com/uBlockOrigin/uAssets",
       "license": "GPLv3",

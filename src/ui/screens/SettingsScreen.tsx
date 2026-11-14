@@ -13,7 +13,7 @@ import { hasRemoteSuggestions } from '../../browser/suggest';
 import { SEARCH_ENGINES } from '../../browser/url';
 import { usePlus } from '../../plus/plus';
 import { fromPerMonth } from '../../plus/pricing';
-import { Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
+import { Group, Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
 import ProfilesSection from '../components/ProfilesSection';
 import { ACCENTS, type AccentId, type Theme } from '../theme';
 
@@ -27,7 +27,7 @@ type Props = {
 };
 
 function formatVersion(v: string | null | undefined): string {
-  if (!v) return 'not loaded';
+  if (!v) return '';
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? v : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
@@ -87,13 +87,11 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
       const result = await checkForFilterUpdate({ force: true });
       setUpdateMessage(
         result.status === 'updated'
-          ? 'Filters updated.'
-          : result.status === 'up-to-date'
-            ? 'Filters are up to date.'
-            : 'No update server is configured; using the filters built into the app.',
+          ? 'Updated just now.'
+          : 'Already up to date.',
       );
-    } catch (e) {
-      setUpdateMessage(`Update failed: ${e instanceof Error ? e.message : String(e)}`);
+    } catch {
+      setUpdateMessage('Couldn’t check for updates. Try again later.');
     } finally {
       setUpdating(false);
     }
@@ -170,359 +168,383 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
           }
         }}>
         {plus.supported ? (
-          <Row
-            title="Stillweb Plus"
-            subtitle={
-              plus.entitlement
-                ? 'Active. Thank you for supporting Stillweb'
-                : fromPrice
-                  ? `Get more out of Stillweb, from ${fromPrice} a month`
-                  : 'Get more out of Stillweb'
-            }
-            icon="star"
-            theme={theme}
-            onPress={onOpenPlus}
-            right={<Icon name="chevron-right" size={20} color={theme.muted} />}
-          />
+          <Group theme={theme} style={styles.firstGroup}>
+            <Row
+              title="Stillweb Plus"
+              subtitle={
+                plus.entitlement
+                  ? 'Active. Thank you for supporting Stillweb'
+                  : fromPrice
+                    ? `Get more out of Stillweb, from ${fromPrice} a month`
+                    : 'Get more out of Stillweb'
+              }
+              icon="star"
+              theme={theme}
+              onPress={onOpenPlus}
+              right={<Icon name="chevron-right" size={20} color={theme.muted} />}
+            />
+          </Group>
         ) : null}
 
         <SectionTitle theme={theme}>Protection</SectionTitle>
-        <SwitchRow
-          title="Block ads and trackers"
-          subtitle={`${(status?.totalBlocked ?? 0).toLocaleString()} blocked so far`}
-          value={shields.enabled}
-          onValueChange={(v) => update({ shields: { enabled: v } })}
-          theme={theme}
-        />
-        <SwitchRow
-          title={plus.unlocked ? 'Calm Mode' : 'Calm Mode · Plus'}
-          subtitle="Rejects cookie pop-ups and hides newsletter pop-ups, chat bubbles, floating videos and other annoyances. Applies to pages you open next"
-          value={shields.calmMode && plus.unlocked}
-          onValueChange={(v) => (plus.unlocked ? update({ shields: { calmMode: v } }) : onOpenPlus())}
-          theme={theme}
-          disabled={disabled}
-        />
-        <Row
-          title="Privacy report"
-          subtitle="What was blocked, day by day"
-          icon="bar-chart-2"
-          theme={theme}
-          onPress={onOpenReport}
-          right={<Icon name="chevron-right" size={20} color={theme.muted} />}
-        />
+        <Group theme={theme}>
+          <SwitchRow
+            title="Block ads and trackers"
+            subtitle={`${(status?.totalBlocked ?? 0).toLocaleString()} blocked so far`}
+            value={shields.enabled}
+            onValueChange={(v) => update({ shields: { enabled: v } })}
+            theme={theme}
+          />
+          <SwitchRow
+            title={plus.unlocked ? 'Calm Mode' : 'Calm Mode · Plus'}
+            subtitle="Rejects cookie pop-ups and hides chat bubbles, floating videos and more"
+            value={shields.calmMode && plus.unlocked}
+            onValueChange={(v) => (plus.unlocked ? update({ shields: { calmMode: v } }) : onOpenPlus())}
+            theme={theme}
+            disabled={disabled}
+          />
+          <Row
+            title="Privacy report"
+            subtitle="What was blocked, day by day"
+            icon="bar-chart-2"
+            theme={theme}
+            onPress={onOpenReport}
+            right={<Icon name="chevron-right" size={20} color={theme.muted} />}
+          />
+        </Group>
+
         {settings.disabledSites.length ? (
           <>
-            <Text style={[styles.subhead, { color: theme.muted }]}>Turned off for these sites</Text>
-            {settings.disabledSites.map((site) => (
-              <Row
-                key={site}
-                title={site}
-                theme={theme}
-                icon="shield-off"
-                right={
-                  <IconButton
-                    name="x"
-                    label={`Turn protection back on for ${site}`}
-                    size={18}
-                    color={theme.muted}
-                    onPress={() => setSiteShields(site, true)}
-                  />
-                }
-              />
-            ))}
+            <SectionTitle theme={theme}>Turned off for these sites</SectionTitle>
+            <Group theme={theme}>
+              {settings.disabledSites.map((site) => (
+                <Row
+                  key={site}
+                  title={site}
+                  theme={theme}
+                  icon="shield-off"
+                  right={
+                    <IconButton
+                      name="x"
+                      label={`Turn protection back on for ${site}`}
+                      size={18}
+                      color={theme.muted}
+                      onPress={() => setSiteShields(site, true)}
+                    />
+                  }
+                />
+              ))}
+            </Group>
           </>
         ) : null}
 
         {Object.keys(settings.siteFixes).length ? (
           <>
-            <Text style={[styles.subhead, { color: theme.muted }]}>Site changes</Text>
-            {Object.entries(settings.siteFixes).map(([site, fix]) => (
-              <Row
-                key={site}
-                title={site}
-                subtitle={[
-                  fix.desktop ? 'Desktop website' : null,
-                  fix.noScript ? 'JavaScript off' : null,
-                  fix.hidden?.length ? `${fix.hidden.length} hidden element${fix.hidden.length === 1 ? '' : 's'}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                theme={theme}
-                icon="tool"
-                right={
-                  <IconButton name="x" label={`Undo changes for ${site}`} size={18} color={theme.muted} onPress={() => setSiteFix(site, null)} />
-                }
-              />
-            ))}
+            <SectionTitle theme={theme}>Site changes</SectionTitle>
+            <Group theme={theme}>
+              {Object.entries(settings.siteFixes).map(([site, fix]) => (
+                <Row
+                  key={site}
+                  title={site}
+                  subtitle={[
+                    fix.desktop ? 'Desktop website' : null,
+                    fix.noScript ? 'Interactive content off' : null,
+                    fix.hidden?.length ? `${fix.hidden.length} hidden ${fix.hidden.length === 1 ? 'item' : 'items'}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  theme={theme}
+                  icon="tool"
+                  right={
+                    <IconButton name="x" label={`Undo changes for ${site}`} size={18} color={theme.muted} onPress={() => setSiteFix(site, null)} />
+                  }
+                />
+              ))}
+            </Group>
           </>
         ) : null}
 
         <SectionTitle theme={theme}>Search</SectionTitle>
-        <Row
-          title="Search engine"
-          subtitle={engineLabel}
-          icon="search"
-          theme={theme}
-          onPress={() => setShowEngines((v) => !v)}
-          right={<Icon name={showEngines ? 'chevron-up' : 'chevron-down'} size={20} color={theme.muted} />}
-        />
-        {showEngines ? (
-          <>
-            {SEARCH_ENGINES.map((engine) => (
+        <Group theme={theme}>
+          <Row
+            title="Search engine"
+            subtitle={engineLabel}
+            icon="search"
+            theme={theme}
+            onPress={() => setShowEngines((v) => !v)}
+            right={<Icon name={showEngines ? 'chevron-up' : 'chevron-down'} size={20} color={theme.muted} />}
+          />
+          {showEngines ? (
+            <>
+              {SEARCH_ENGINES.map((engine) => (
+                <Row
+                  key={engine.id}
+                  title={engine.label}
+                  theme={theme}
+                  onPress={() => update({ searchEngine: engine.id })}
+                  right={settings.searchEngine === engine.id ? <Icon name="check" size={20} color={theme.accent} /> : null}
+                />
+              ))}
               <Row
-                key={engine.id}
-                title={engine.label}
+                title="Custom"
+                subtitle="Your own search site: put %s where the search words go"
                 theme={theme}
-                onPress={() => update({ searchEngine: engine.id })}
-                right={settings.searchEngine === engine.id ? <Icon name="check" size={20} color={theme.accent} /> : null}
+                onPress={() => update({ searchEngine: 'custom' })}
+                right={settings.searchEngine === 'custom' ? <Icon name="check" size={20} color={theme.accent} /> : null}
               />
-            ))}
-            <Row
-              title="Custom"
-              subtitle="Any search address with %s for the query"
-              theme={theme}
-              onPress={() => update({ searchEngine: 'custom' })}
-              right={settings.searchEngine === 'custom' ? <Icon name="check" size={20} color={theme.accent} /> : null}
-            />
-            {settings.searchEngine === 'custom' ? (
-              <TextInput
-                style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-                value={settings.customSearchTemplate}
-                onChangeText={(t) => update({ customSearchTemplate: t })}
-                placeholder="https://example.com/search?q=%s"
-                placeholderTextColor={theme.muted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-              />
-            ) : null}
-          </>
-        ) : null}
+              {settings.searchEngine === 'custom' ? (
+                <TextInput
+                  style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                  value={settings.customSearchTemplate}
+                  onChangeText={(t) => update({ customSearchTemplate: t })}
+                  placeholder="https://example.com/search?q=%s"
+                  placeholderTextColor={theme.muted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                />
+              ) : null}
+            </>
+          ) : null}
 
-        <SwitchRow
-          title="Search engine suggestions"
-          subtitle={
-            hasRemoteSuggestions(settings.searchEngine)
-              ? `Suggests searches and sites as you type, from ${engineLabel}. Never in private tabs`
-              : `Not available for ${engineLabel}; history and bookmarks are still suggested`
-          }
-          value={settings.searchSuggestions}
-          onValueChange={(v) => update({ searchSuggestions: v })}
-          theme={theme}
-          disabled={!hasRemoteSuggestions(settings.searchEngine)}
-        />
+          <SwitchRow
+            title="Search engine suggestions"
+            subtitle={
+              hasRemoteSuggestions(settings.searchEngine)
+                ? `Suggests searches and sites as you type, from ${engineLabel}. Never in private tabs`
+                : `Not available for ${engineLabel}; history and bookmarks are still suggested`
+            }
+            value={settings.searchSuggestions}
+            onValueChange={(v) => update({ searchSuggestions: v })}
+            theme={theme}
+            disabled={!hasRemoteSuggestions(settings.searchEngine)}
+          />
+        </Group>
 
         <SectionTitle theme={theme}>Media</SectionTitle>
-        <SwitchRow
-          title="Play in background"
-          subtitle="Keep music and videos playing when you leave the app or lock the screen"
-          value={shields.backgroundPlay}
-          onValueChange={(v) => update({ shields: { backgroundPlay: v } })}
-          theme={theme}
-        />
+        <Group theme={theme}>
+          <SwitchRow
+            title="Play in background"
+            subtitle="Keep music and videos playing when you leave the app or lock the screen"
+            value={shields.backgroundPlay}
+            onValueChange={(v) => update({ shields: { backgroundPlay: v } })}
+            theme={theme}
+          />
+        </Group>
 
         <SectionTitle theme={theme}>Look</SectionTitle>
-        <View style={styles.segment}>
-          {(['system', 'light', 'dark'] as const).map((mode) => (
-            <Text
-              key={mode}
-              onPress={() => update({ theme: mode })}
-              accessibilityRole="button"
-              accessibilityState={{ selected: settings.theme === mode }}
-              style={[
-                styles.segmentItem,
-                {
-                  color: settings.theme === mode ? '#FFFFFF' : theme.text,
-                  backgroundColor: settings.theme === mode ? theme.accent : theme.surface,
-                },
-              ]}>
-              {mode === 'system' ? 'Automatic' : mode === 'light' ? 'Light' : 'Dark'}
-            </Text>
-          ))}
-        </View>
-
-        <Text style={[styles.subhead, { color: theme.muted }]}>Accent color{plus.unlocked ? '' : ' · Plus'}</Text>
-        <View style={styles.swatches}>
-          {(Object.keys(ACCENTS) as AccentId[]).map((id) => {
-            const selected = (plus.unlocked ? settings.accent : 'blue') === id;
-            return (
-              <Pressable
-                key={id}
-                onPress={() => (plus.unlocked ? update({ accent: id }) : onOpenPlus())}
+        <Group theme={theme}>
+          <Text style={[styles.subhead, { color: theme.muted }]}>Appearance</Text>
+          <View style={styles.segment}>
+            {(['system', 'light', 'dark'] as const).map((mode) => (
+              <Text
+                key={mode}
+                onPress={() => update({ theme: mode })}
                 accessibilityRole="button"
-                accessibilityLabel={ACCENTS[id].label}
-                accessibilityState={{ selected }}
+                accessibilityState={{ selected: settings.theme === mode }}
                 style={[
-                  styles.swatch,
-                  { backgroundColor: ACCENTS[id][theme.dark ? 'dark' : 'light'].accent, borderColor: selected ? theme.text : 'transparent' },
+                  styles.segmentItem,
+                  {
+                    color: settings.theme === mode ? '#FFFFFF' : theme.text,
+                    backgroundColor: settings.theme === mode ? theme.accent : theme.background,
+                  },
                 ]}>
-                {selected ? <Icon name="check" size={18} color="#FFFFFF" /> : null}
-              </Pressable>
-            );
-          })}
-        </View>
-        {Platform.OS === 'ios' ? <AppIconPicker theme={theme} unlocked={plus.unlocked} onLocked={onOpenPlus} /> : null}
+                {mode === 'system' ? 'Automatic' : mode === 'light' ? 'Light' : 'Dark'}
+              </Text>
+            ))}
+          </View>
 
-        <Text style={[styles.subhead, { color: theme.muted }]}>Address bar</Text>
-        <View style={styles.segment}>
-          {(['single', 'bottom', 'top'] as const).map((position) => (
-            <Text
-              key={position}
-              onPress={() => update({ addressBarPosition: position })}
-              accessibilityRole="button"
-              accessibilityState={{ selected: settings.addressBarPosition === position }}
-              style={[
-                styles.segmentItem,
-                {
-                  color: settings.addressBarPosition === position ? '#FFFFFF' : theme.text,
-                  backgroundColor: settings.addressBarPosition === position ? theme.accent : theme.surface,
-                },
-              ]}>
-              {position === 'single' ? 'Single bar' : position === 'bottom' ? 'Bottom' : 'Top'}
-            </Text>
-          ))}
-        </View>
+          <Text style={[styles.subhead, { color: theme.muted }]}>Accent color{plus.unlocked ? '' : ' · Plus'}</Text>
+          <View style={styles.swatches}>
+            {(Object.keys(ACCENTS) as AccentId[]).map((id) => {
+              const selected = (plus.unlocked ? settings.accent : 'blue') === id;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => (plus.unlocked ? update({ accent: id }) : onOpenPlus())}
+                  accessibilityRole="button"
+                  accessibilityLabel={ACCENTS[id].label}
+                  accessibilityState={{ selected }}
+                  style={[
+                    styles.swatch,
+                    { backgroundColor: ACCENTS[id][theme.dark ? 'dark' : 'light'].accent, borderColor: selected ? theme.text : 'transparent' },
+                  ]}>
+                  {selected ? <Icon name="check" size={18} color="#FFFFFF" /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+          {Platform.OS === 'ios' ? <AppIconPicker theme={theme} unlocked={plus.unlocked} onLocked={onOpenPlus} /> : null}
+
+          <Text style={[styles.subhead, { color: theme.muted }]}>Address bar</Text>
+          <View style={[styles.segment, styles.lastInGroup]}>
+            {(['single', 'bottom', 'top'] as const).map((position) => (
+              <Text
+                key={position}
+                onPress={() => update({ addressBarPosition: position })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: settings.addressBarPosition === position }}
+                style={[
+                  styles.segmentItem,
+                  {
+                    color: settings.addressBarPosition === position ? '#FFFFFF' : theme.text,
+                    backgroundColor: settings.addressBarPosition === position ? theme.accent : theme.background,
+                  },
+                ]}>
+                {position === 'single' ? 'Single bar' : position === 'bottom' ? 'Bottom' : 'Top'}
+              </Text>
+            ))}
+          </View>
+        </Group>
 
         <SectionTitle theme={theme}>Privacy</SectionTitle>
-        <SwitchRow
-          title="Clear data on exit"
-          subtitle="Start fresh every time: closes tabs and deletes cookies, cache and history"
-          value={settings.clearDataOnExit}
-          onValueChange={(v) => update({ clearDataOnExit: v })}
-          theme={theme}
-        />
-        <SwitchRow
-          title="Lock private tabs"
-          subtitle={Platform.OS === 'ios' ? 'Use Face ID or Touch ID to open private tabs' : 'Use your fingerprint or screen lock to open private tabs'}
-          value={settings.lockPrivateTabs}
-          onValueChange={toggleLock}
-          theme={theme}
-        />
-        <SwitchRow
-          title={plus.unlocked ? 'Private vault' : 'Private vault · Plus'}
-          subtitle={
-            Platform.OS === 'ios'
-              ? 'Bookmarks and downloads from private tabs are kept in a vault locked with Face ID'
-              : 'Bookmarks from private tabs are kept in a vault locked with your screen lock'
-          }
-          value={settings.vault && plus.unlocked}
-          onValueChange={(v) => (plus.unlocked ? update({ vault: v }) : onOpenPlus())}
-          theme={theme}
-        />
-        <Row title="Clear browsing data now" icon="trash-2" theme={theme} danger onPress={clearAll} />
+        <Group theme={theme}>
+          <SwitchRow
+            title="Clear data on exit"
+            subtitle="Start fresh every time: closes tabs and deletes cookies, cache and history"
+            value={settings.clearDataOnExit}
+            onValueChange={(v) => update({ clearDataOnExit: v })}
+            theme={theme}
+          />
+          <SwitchRow
+            title="Lock private tabs"
+            subtitle={Platform.OS === 'ios' ? 'Use Face ID or Touch ID to open private tabs' : 'Use your fingerprint or screen lock to open private tabs'}
+            value={settings.lockPrivateTabs}
+            onValueChange={toggleLock}
+            theme={theme}
+          />
+          <SwitchRow
+            title={plus.unlocked ? 'Private vault' : 'Private vault · Plus'}
+            subtitle={
+              Platform.OS === 'ios'
+                ? 'Bookmarks and downloads from private tabs are kept in a vault locked with Face ID'
+                : 'Bookmarks from private tabs are kept in a vault locked with your screen lock'
+            }
+            value={settings.vault && plus.unlocked}
+            onValueChange={(v) => (plus.unlocked ? update({ vault: v }) : onOpenPlus())}
+            theme={theme}
+          />
+          <Row title="Clear browsing data now" icon="trash-2" theme={theme} danger onPress={clearAll} />
+        </Group>
 
         <ProfilesSection theme={theme} unlocked={plus.unlocked} onOpenPlus={onOpenPlus} />
 
         {Platform.OS === 'android' ? (
           <>
             <SectionTitle theme={theme}>Default browser</SectionTitle>
-            <Row
-              title="Open links with this browser"
-              subtitle="Choose it as your default browser in system settings"
-              icon="globe"
-              theme={theme}
-              onPress={() =>
-                Linking.sendIntent('android.settings.MANAGE_DEFAULT_APPS_SETTINGS').catch(() => Linking.openSettings())
-              }
-            />
+            <Group theme={theme}>
+              <Row
+                title="Open links with this browser"
+                subtitle="Choose it as your default browser in system settings"
+                icon="globe"
+                theme={theme}
+                onPress={() =>
+                  Linking.sendIntent('android.settings.MANAGE_DEFAULT_APPS_SETTINGS').catch(() => Linking.openSettings())
+                }
+              />
+            </Group>
           </>
         ) : null}
 
         <SectionTitle theme={theme}>More</SectionTitle>
-        <Row
-          title="Advanced settings"
-          icon="sliders"
-          theme={theme}
-          onPress={() => setShowAdvanced((v) => !v)}
-          right={<Icon name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={20} color={theme.muted} />}
-        />
-        {showAdvanced ? (
-          <>
-            <SwitchRow
-              title="Hide cookie banners"
-              subtitle={Platform.OS === 'ios' ? 'Included in the built-in filters on this device' : undefined}
-              value={shields.hideCookieBanners}
-              onValueChange={(v) => update({ shields: { hideCookieBanners: v } })}
-              theme={theme}
-              disabled={Platform.OS === 'ios' || disabled}
-            />
-            <SwitchRow
-              title="Block pop-ups and redirects"
-              value={shields.blockPopups}
-              onValueChange={(v) => update({ shields: { blockPopups: v } })}
-              theme={theme}
-              disabled={disabled}
-            />
-            <SwitchRow
-              title="Always use secure connections"
-              subtitle="Upgrades sites to HTTPS when they support it"
-              value={shields.httpsUpgrade}
-              onValueChange={(v) => update({ shields: { httpsUpgrade: v } })}
-              theme={theme}
-            />
-            {Platform.OS === 'android' ? (
-              <>
+        <Group theme={theme}>
+          <Row
+            title="Advanced settings"
+            icon="sliders"
+            theme={theme}
+            onPress={() => setShowAdvanced((v) => !v)}
+            right={<Icon name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={20} color={theme.muted} />}
+          />
+          {showAdvanced ? (
+            <>
+              {/* On iOS cookie banners are always hidden by the built-in lists, so there's nothing to choose. */}
+              {Platform.OS === 'android' ? (
                 <SwitchRow
-                  title="Hide empty ad spaces"
-                  value={shields.cosmeticFiltering}
-                  onValueChange={(v) => update({ shields: { cosmeticFiltering: v } })}
+                  title="Hide cookie banners"
+                  value={shields.hideCookieBanners}
+                  onValueChange={(v) => update({ shields: { hideCookieBanners: v } })}
                   theme={theme}
                   disabled={disabled}
                 />
-                <SwitchRow
-                  title="Block cross-site cookies"
-                  subtitle="Stops sites tracking you across other sites. Applies to new tabs"
-                  value={shields.blockThirdPartyCookies}
-                  onValueChange={(v) => update({ shields: { blockThirdPartyCookies: v } })}
-                  theme={theme}
-                />
-              </>
-            ) : null}
-            <SwitchRow
-              title="Dark pages"
-              subtitle={
-                Platform.OS === 'ios'
-                  ? 'Show the dark version of websites that have one while the app is dark'
-                  : 'Darken websites that have no dark theme while the app is dark'
-              }
-              value={settings.darkPages}
-              onValueChange={(v) => update({ darkPages: v })}
-              theme={theme}
-            />
-            <Row
-              title={Platform.OS === 'ios' ? 'Page zoom' : 'Text size'}
-              subtitle={`${settings.textZoom}%`}
-              theme={theme}
-              right={
-                <View style={styles.stepper}>
-                  <IconButton name="minus" label="Smaller text" color={theme.text} onPress={() => update({ textZoom: Math.max(70, settings.textZoom - 10) })} />
-                  <IconButton name="plus" label="Larger text" color={theme.text} onPress={() => update({ textZoom: Math.min(200, settings.textZoom + 10) })} />
-                </View>
-              }
-            />
-            <Row
-              title={`Filters from ${formatVersion(status?.version)}`}
-              subtitle={
-                status?.lastError
-                  ? `Problem: ${status.lastError}`
-                  : `${status?.source === 'downloaded' ? 'Downloaded update' : 'Built into the app'}${FILTER_MANIFEST_URL ? ' · updates daily' : ''}`
-              }
-              icon="layers"
-              theme={theme}
-            />
-            {/* Only with an update server: otherwise the filters built into the app are used. */}
-            {FILTER_MANIFEST_URL ? (
-              <Row
-                title={updating ? 'Checking for updates…' : 'Check for filter updates'}
-                subtitle={updateMessage || undefined}
-                icon="refresh-cw"
+              ) : null}
+              <SwitchRow
+                title="Block pop-ups and redirects"
+                value={shields.blockPopups}
+                onValueChange={(v) => update({ shields: { blockPopups: v } })}
                 theme={theme}
-                onPress={updating ? undefined : checkUpdates}
+                disabled={disabled}
               />
-            ) : null}
-          </>
-        ) : null}
-        <Row title="About and licenses" icon="info" theme={theme} onPress={onOpenAbout} />
+              <SwitchRow
+                title="Always use secure connections"
+                subtitle="Opens the secure version of a site whenever there is one"
+                value={shields.httpsUpgrade}
+                onValueChange={(v) => update({ shields: { httpsUpgrade: v } })}
+                theme={theme}
+              />
+              {Platform.OS === 'android' ? (
+                <>
+                  <SwitchRow
+                    title="Hide empty ad spaces"
+                    value={shields.cosmeticFiltering}
+                    onValueChange={(v) => update({ shields: { cosmeticFiltering: v } })}
+                    theme={theme}
+                    disabled={disabled}
+                  />
+                  <SwitchRow
+                    title="Block cross-site cookies"
+                    subtitle="Stops sites tracking you across other sites. Applies to new tabs"
+                    value={shields.blockThirdPartyCookies}
+                    onValueChange={(v) => update({ shields: { blockThirdPartyCookies: v } })}
+                    theme={theme}
+                  />
+                </>
+              ) : null}
+              <SwitchRow
+                title="Dark pages"
+                subtitle={
+                  Platform.OS === 'ios'
+                    ? 'Show the dark version of websites that have one while the app is dark'
+                    : 'Darken websites that have no dark theme while the app is dark'
+                }
+                value={settings.darkPages}
+                onValueChange={(v) => update({ darkPages: v })}
+                theme={theme}
+              />
+              <Row
+                title={Platform.OS === 'ios' ? 'Page zoom' : 'Text size'}
+                subtitle={`${settings.textZoom}%`}
+                theme={theme}
+                right={
+                  <View style={styles.stepper}>
+                    <IconButton name="minus" label="Smaller text" color={theme.text} onPress={() => update({ textZoom: Math.max(70, settings.textZoom - 10) })} />
+                    <IconButton name="plus" label="Larger text" color={theme.text} onPress={() => update({ textZoom: Math.min(200, settings.textZoom + 10) })} />
+                  </View>
+                }
+              />
+              <Row
+                title="Blocking lists"
+                subtitle={
+                  status?.lastError
+                    ? 'The last update didn’t work. Blocking still uses the lists you have.'
+                    : `${status?.version ? `Updated ${formatVersion(status.version)}` : 'Built into the app'}${FILTER_MANIFEST_URL ? ' · updates daily' : ''}`
+                }
+                icon="layers"
+                theme={theme}
+              />
+              {/* Only with an update server: otherwise the lists built into the app are used. */}
+              {FILTER_MANIFEST_URL ? (
+                <Row
+                  title={updating ? 'Checking for updates…' : 'Check for updates now'}
+                  subtitle={updateMessage || undefined}
+                  icon="refresh-cw"
+                  theme={theme}
+                  onPress={updating ? undefined : checkUpdates}
+                />
+              ) : null}
+            </>
+          ) : null}
+          <Row title="About and licenses" icon="info" theme={theme} onPress={onOpenAbout} />
+        </Group>
       </ScrollView>
     </SafeAreaView>
   );
@@ -579,14 +601,16 @@ function AppIconPicker({ theme, unlocked, onLocked }: { theme: Theme; unlocked: 
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
-  swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
   icons: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingHorizontal: 16, paddingVertical: 10 },
   iconChoice: { alignItems: 'center', gap: 6 },
   iconImage: { width: 56, height: 56, borderRadius: 13, borderWidth: 2.5 },
   iconLabel: { fontSize: 12 },
   content: { paddingBottom: 40 },
-  subhead: { fontSize: 13, paddingHorizontal: 16, paddingTop: 10 },
+  firstGroup: { marginTop: 16 },
+  lastInGroup: { paddingBottom: 12 },
+  subhead: { fontSize: 13, paddingHorizontal: 16, paddingTop: 12 },
   input: { marginHorizontal: 16, marginBottom: 8, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 12, height: 44, fontSize: 15 },
   segment: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
   segmentItem: { flex: 1, textAlign: 'center', paddingVertical: 10, borderRadius: 10, overflow: 'hidden', fontWeight: '600' },

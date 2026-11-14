@@ -5,7 +5,7 @@ import { useSettings } from '../../browser/settings';
 import { usePlus } from '../../plus/plus';
 import { siteKey } from '../../browser/url';
 import type { Theme } from '../theme';
-import { Icon, IconButton, Row, Sheet, SwitchRow } from './primitives';
+import { Group, Icon, IconButton, Row, Sheet, SwitchRow } from './primitives';
 
 type Props = {
   visible: boolean;
@@ -82,8 +82,9 @@ export default function ShieldPanel({
       <Text style={[styles.note, { color: theme.muted }]}>
         If this site doesn’t work properly, turn protection off. It’s remembered for {site || 'this site'}.
       </Text>
+      {/* Boxes match the counters above: the sheet is the surface, so they use the page background. */}
       {site ? (
-        <>
+        <Group theme={theme} style={[styles.box, { backgroundColor: theme.background }]}>
           <SwitchRow
             title="Desktop website"
             value={!!fix.desktop}
@@ -94,8 +95,8 @@ export default function ShieldPanel({
             theme={theme}
           />
           <SwitchRow
-            title={plus.unlocked ? 'JavaScript' : 'JavaScript · Plus'}
-            subtitle="Turn off for a site that keeps showing pop-ups or won't stop moving"
+            title={plus.unlocked ? 'Interactive content' : 'Interactive content · Plus'}
+            subtitle="Turn off if this site keeps showing pop-ups or won't stop moving"
             value={plus.unlocked ? !fix.noScript : true}
             onValueChange={(v) => {
               if (!plus.unlocked) return onOpenPlus();
@@ -106,14 +107,14 @@ export default function ShieldPanel({
           />
           {hiddenCount > 0 && plus.unlocked ? (
             <Row
-              title={`${hiddenCount} hidden element${hiddenCount === 1 ? '' : 's'}`}
-              subtitle="Elements you hid on this site"
+              title={`${hiddenCount} hidden ${hiddenCount === 1 ? 'item' : 'items'}`}
+              subtitle="Things you hid on this site"
               icon="eye-off"
               theme={theme}
               right={
                 <IconButton
                   name="rotate-ccw"
-                  label="Show hidden elements again"
+                  label="Show hidden items again"
                   color={theme.accent}
                   onPress={() => {
                     setSiteFix(site, { hidden: [] });
@@ -123,10 +124,12 @@ export default function ShieldPanel({
               }
             />
           ) : null}
-        </>
+        </Group>
       ) : null}
-      <Row title="Privacy report" icon="bar-chart-2" theme={theme} onPress={onOpenReport} />
-      <Row title="Settings" icon="sliders" theme={theme} onPress={onOpenSettings} />
+      <Group theme={theme} style={[styles.box, { backgroundColor: theme.background }]}>
+        <Row title="Privacy report" icon="bar-chart-2" theme={theme} onPress={onOpenReport} />
+        <Row title="Settings" icon="sliders" theme={theme} onPress={onOpenSettings} />
+      </Group>
     </Sheet>
   );
 }
@@ -139,4 +142,5 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 24, fontWeight: '700' },
   statLabel: { fontSize: 13, marginTop: 2 },
   note: { fontSize: 13, paddingHorizontal: 18, paddingVertical: 8, lineHeight: 18 },
+  box: { marginBottom: 10 },
 });
