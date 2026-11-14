@@ -30,6 +30,9 @@ internal object SleepTimer {
 
   fun unregister(view: ShieldWebView) = synchronized(views) { views.remove(view) }
 
+  /** Every open tab (for settings that reach the pages already open). */
+  fun liveViews(): List<ShieldWebView> = synchronized(views) { views.toList() }
+
   /** Pauses everything after [seconds]; null or 0 cancels. */
   fun set(seconds: Double?) {
     main.post {

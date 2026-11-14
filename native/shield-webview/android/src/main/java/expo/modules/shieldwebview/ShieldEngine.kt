@@ -240,7 +240,12 @@ internal object ShieldEngine {
     (options["backgroundPlay"] as? Boolean)?.let {
       val changed = it != backgroundPlay
       backgroundPlay = it
-      if (changed) main.post { if (it) MediaPlaybackController.backgroundPlayEnabled() else MediaPlaybackController.stop(pause = false) }
+      if (changed) {
+        main.post {
+          SleepTimer.liveViews().forEach { view -> view.backgroundPlayChanged(it) }
+          if (it) MediaPlaybackController.backgroundPlayEnabled() else MediaPlaybackController.stop(pause = false)
+        }
+      }
     }
     (options["calmMode"] as? Boolean)?.let {
       if (it != calmMode) {

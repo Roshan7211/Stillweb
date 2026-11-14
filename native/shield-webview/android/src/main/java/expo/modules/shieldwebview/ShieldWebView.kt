@@ -56,6 +56,9 @@ internal class BrowserWebView(context: Context, private val keepVisible: () -> B
       super.onWindowVisibilityChanged(View.VISIBLE)
       return
     }
+    // Leaving the app (or the screen going off) without background play, a Stillweb Plus
+    // feature: media stops here, rather than relying on each site to pause itself when hidden.
+    if (visibility != View.VISIBLE && !ShieldEngine.backgroundPlay) evaluateJavascript(SleepTimer.PAUSE_SCRIPT, null)
     super.onWindowVisibilityChanged(visibility)
   }
 }
@@ -167,6 +170,8 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   /** Site where the user started media; autoplay stays allowed there until leaving it. */
   @Volatile private var mediaAllowedHost: String? = null
   private var extraScripts = mutableListOf<ScriptHandler>()
+  /** background-play.js for the tab's next pages, while background play is on. */
+  private var backgroundScript: ScriptHandler? = null
 
   // ---------------------------------------------------------------------------
   // Props & lifecycle
@@ -187,6 +192,8 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
 
   fun destroy() {
     SleepTimer.unregister(this)
+    backgroundScript?.remove()
+    backgroundScript = null
     MediaPlaybackController.onViewDestroyed(this)
     extraScripts.forEach { it.remove() }
     extraScripts.clear()
@@ -285,8 +292,9 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
 
   /** Background play: reports audible media to [MediaPlaybackController] and relays its commands. */
   private fun installMediaBridge(wv: WebView) {
-    if (!ShieldEngine.backgroundPlay ||
-      !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
+    // Installed whatever the setting, so switching background play on (or buying Plus) works
+    // in tabs that are already open; with it off, the reports are ignored.
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
       !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
     ) {
       return
@@ -294,7 +302,7 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     WebViewCompat.addWebMessageListener(wv, MEDIA_BRIDGE_NAME, setOf("*")) { _, message, sourceOrigin, _, replyProxy ->
       val data = runCatching { JSONObject(message.data ?: "{}") }.getOrNull() ?: return@addWebMessageListener
       val playing = data.optBoolean("playing")
-      if (playing) {
+      if (playing && ShieldEngine.backgroundPlay) {
         watchedOnPage = true
         requestNotificationPermissionOnce()
         // Media already started here (which needed a tap), so let the site continue on its own:
@@ -306,8 +314,10 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
       }
       MediaPlaybackController.onMediaState(this, replyProxy, data, title, sourceOrigin.host.orEmpty().removePrefix("www."))
     }
-    extraScripts += WebViewCompat.addDocumentStartJavaScript(wv, CosmeticScripts.script(context, "background-play.js"), setOf("*"))
     extraScripts += WebViewCompat.addDocumentStartJavaScript(wv, CosmeticScripts.script(context, "media.js"), setOf("*"))
+    if (ShieldEngine.backgroundPlay) {
+      backgroundScript = WebViewCompat.addDocumentStartJavaScript(wv, CosmeticScripts.script(context, "background-play.js"), setOf("*"))
+    }
   }
 
   /** Android 13+: the playback notification needs permission; ask once, the first time media plays. */
@@ -409,6 +419,24 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
   }
   fun stopLoading() = webView?.stopLoading()
   fun clearHistory() = webView?.clearHistory()
+
+  /**
+   * Background play switched on or off (or Plus started/ended). On: the open page gets the
+   * script now, and the tab's next pages at load. Off: next pages go without it, and leaving
+   * the app pauses media (BrowserWebView).
+   */
+  fun backgroundPlayChanged(on: Boolean) {
+    val wv = webView ?: return
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+    if (on && backgroundScript == null) {
+      val source = CosmeticScripts.script(context, "background-play.js")
+      backgroundScript = WebViewCompat.addDocumentStartJavaScript(wv, source, setOf("*"))
+      wv.evaluateJavascript(source, null)
+    } else if (!on) {
+      backgroundScript?.remove()
+      backgroundScript = null
+    }
+  }
 
   /** Sleep timer: pause everything playing in this tab. */
   fun pauseMedia() {
