@@ -4,12 +4,9 @@ import { Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Tex
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ShieldEngine, type EngineStatus } from '../../../native/shield-webview';
-import { FILTER_MANIFEST_URL } from '../../blocking/config';
-import { checkForFilterUpdate } from '../../blocking/filterUpdater';
 import { useLibraryActions } from '../../browser/library';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { useSettings } from '../../browser/settings';
-import { hasRemoteSuggestions } from '../../browser/suggest';
 import { SEARCH_ENGINES } from '../../browser/url';
 import { usePlus } from '../../plus/plus';
 import { fromPerMonth } from '../../plus/pricing';
@@ -26,19 +23,12 @@ type Props = {
   onClearedData: () => void;
 };
 
-function formatVersion(v: string | null | undefined): string {
-  if (!v) return '';
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-
 // Where the screen was left for one of its own pages (About, the report, the test…): coming back
 // from there shows the same place again. Leaving Settings itself starts over.
-const place = { y: 0, advanced: false };
+const place = { y: 0 };
 /** Settings was left altogether (also by the system's back key): next time it starts at the top. */
 export function forgetSettingsPlace() {
   place.y = 0;
-  place.advanced = false;
 }
 
 export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus, onOpenReport, onClearedData }: Props) {
@@ -47,17 +37,11 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
   const stats = usePrivacyStatsActions();
   const plus = usePlus();
   const [status, setStatus] = useState<EngineStatus | null>(null);
-  const [updating, setUpdating] = useState(false);
-  const [updateMessage, setUpdateMessage] = useState('');
   const [showEngines, setShowEngines] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(place.advanced);
   const scroll = useRef<ScrollView>(null);
   const restored = useRef(false);
   // Where the screen starts, fixed when it opens (it must not follow the scrolling).
   const [startAt] = useState(() => (place.y > 0 ? { x: 0, y: place.y } : undefined));
-  useEffect(() => {
-    place.advanced = showAdvanced;
-  }, [showAdvanced]);
   const leave = () => {
     forgetSettingsPlace();
     onBack();
@@ -79,23 +63,6 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
   }, []);
 
   const shields = settings.shields;
-
-  const checkUpdates = async () => {
-    setUpdating(true);
-    setUpdateMessage('');
-    try {
-      const result = await checkForFilterUpdate({ force: true });
-      setUpdateMessage(
-        result.status === 'updated'
-          ? 'Updated just now.'
-          : 'Already up to date.',
-      );
-    } catch {
-      setUpdateMessage('Couldn’t check for updates. Try again later.');
-    } finally {
-      setUpdating(false);
-    }
-  };
 
   const toggleLock = async (value: boolean) => {
     if (value) {
@@ -307,27 +274,15 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
             </>
           ) : null}
 
-          <SwitchRow
-            title="Search engine suggestions"
-            subtitle={
-              hasRemoteSuggestions(settings.searchEngine)
-                ? `Suggests searches and sites as you type, from ${engineLabel}. Never in private tabs`
-                : `Not available for ${engineLabel}; history and bookmarks are still suggested`
-            }
-            value={settings.searchSuggestions}
-            onValueChange={(v) => update({ searchSuggestions: v })}
-            theme={theme}
-            disabled={!hasRemoteSuggestions(settings.searchEngine)}
-          />
         </Group>
 
         <SectionTitle theme={theme}>Media</SectionTitle>
         <Group theme={theme}>
           <SwitchRow
-            title="Play in background"
+            title={plus.unlocked ? 'Play in background' : 'Play in background · Plus'}
             subtitle="Keep music and videos playing when you leave the app or lock the screen"
-            value={shields.backgroundPlay}
-            onValueChange={(v) => update({ shields: { backgroundPlay: v } })}
+            value={shields.backgroundPlay && plus.unlocked}
+            onValueChange={(v) => (plus.unlocked ? update({ shields: { backgroundPlay: v } }) : onOpenPlus())}
             theme={theme}
           />
         </Group>
@@ -446,103 +401,9 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
           </>
         ) : null}
 
+        {/* The options that were under Advanced settings stay at their defaults (see FIXED in settings.tsx). */}
         <SectionTitle theme={theme}>More</SectionTitle>
         <Group theme={theme}>
-          <Row
-            title="Advanced settings"
-            icon="sliders"
-            theme={theme}
-            onPress={() => setShowAdvanced((v) => !v)}
-            right={<Icon name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={20} color={theme.muted} />}
-          />
-          {showAdvanced ? (
-            <>
-              {/* On iOS cookie banners are always hidden by the built-in lists, so there's nothing to choose. */}
-              {Platform.OS === 'android' ? (
-                <SwitchRow
-                  title="Hide cookie banners"
-                  value={shields.hideCookieBanners}
-                  onValueChange={(v) => update({ shields: { hideCookieBanners: v } })}
-                  theme={theme}
-                  disabled={disabled}
-                />
-              ) : null}
-              <SwitchRow
-                title="Block pop-ups and redirects"
-                value={shields.blockPopups}
-                onValueChange={(v) => update({ shields: { blockPopups: v } })}
-                theme={theme}
-                disabled={disabled}
-              />
-              <SwitchRow
-                title="Always use secure connections"
-                subtitle="Opens the secure version of a site whenever there is one"
-                value={shields.httpsUpgrade}
-                onValueChange={(v) => update({ shields: { httpsUpgrade: v } })}
-                theme={theme}
-              />
-              {Platform.OS === 'android' ? (
-                <>
-                  <SwitchRow
-                    title="Hide empty ad spaces"
-                    value={shields.cosmeticFiltering}
-                    onValueChange={(v) => update({ shields: { cosmeticFiltering: v } })}
-                    theme={theme}
-                    disabled={disabled}
-                  />
-                  <SwitchRow
-                    title="Block cross-site cookies"
-                    subtitle="Stops sites tracking you across other sites. Applies to new tabs"
-                    value={shields.blockThirdPartyCookies}
-                    onValueChange={(v) => update({ shields: { blockThirdPartyCookies: v } })}
-                    theme={theme}
-                  />
-                </>
-              ) : null}
-              <SwitchRow
-                title="Dark pages"
-                subtitle={
-                  Platform.OS === 'ios'
-                    ? 'Show the dark version of websites that have one while the app is dark'
-                    : 'Darken websites that have no dark theme while the app is dark'
-                }
-                value={settings.darkPages}
-                onValueChange={(v) => update({ darkPages: v })}
-                theme={theme}
-              />
-              <Row
-                title={Platform.OS === 'ios' ? 'Page zoom' : 'Text size'}
-                subtitle={`${settings.textZoom}%`}
-                theme={theme}
-                right={
-                  <View style={styles.stepper}>
-                    <IconButton name="minus" label="Smaller text" color={theme.text} onPress={() => update({ textZoom: Math.max(70, settings.textZoom - 10) })} />
-                    <IconButton name="plus" label="Larger text" color={theme.text} onPress={() => update({ textZoom: Math.min(200, settings.textZoom + 10) })} />
-                  </View>
-                }
-              />
-              <Row
-                title="Blocking lists"
-                subtitle={
-                  status?.lastError
-                    ? 'The last update didn’t work. Blocking still uses the lists you have.'
-                    : `${status?.version ? `Updated ${formatVersion(status.version)}` : 'Built into the app'}${FILTER_MANIFEST_URL ? ' · updates daily' : ''}`
-                }
-                icon="layers"
-                theme={theme}
-              />
-              {/* Only with an update server: otherwise the lists built into the app are used. */}
-              {FILTER_MANIFEST_URL ? (
-                <Row
-                  title={updating ? 'Checking for updates…' : 'Check for updates now'}
-                  subtitle={updateMessage || undefined}
-                  icon="refresh-cw"
-                  theme={theme}
-                  onPress={updating ? undefined : checkUpdates}
-                />
-              ) : null}
-            </>
-          ) : null}
           <Row title="About and licenses" icon="info" theme={theme} onPress={onOpenAbout} />
         </Group>
       </ScrollView>

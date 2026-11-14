@@ -86,6 +86,23 @@ export const DEFAULT_SETTINGS: Settings = {
   profiles: [],
 };
 
+/**
+ * Settings that are no longer shown (they were in Advanced settings, plus search suggestions):
+ * always their defaults, also for installs that had changed them.
+ */
+const FIXED: Pick<Settings, 'darkPages' | 'textZoom' | 'searchSuggestions'> = {
+  darkPages: DEFAULT_SETTINGS.darkPages,
+  textZoom: DEFAULT_SETTINGS.textZoom,
+  searchSuggestions: DEFAULT_SETTINGS.searchSuggestions,
+};
+const FIXED_SHIELDS: Pick<ShieldSettings, 'httpsUpgrade' | 'blockPopups' | 'cosmeticFiltering' | 'blockThirdPartyCookies' | 'hideCookieBanners'> = {
+  httpsUpgrade: DEFAULT_SETTINGS.shields.httpsUpgrade,
+  blockPopups: DEFAULT_SETTINGS.shields.blockPopups,
+  cosmeticFiltering: DEFAULT_SETTINGS.shields.cosmeticFiltering,
+  blockThirdPartyCookies: DEFAULT_SETTINGS.shields.blockThirdPartyCookies,
+  hideCookieBanners: DEFAULT_SETTINGS.shields.hideCookieBanners,
+};
+
 const STORAGE_KEY = 'settings.v1';
 const COOKIE_LIST_ID = 'easylist-cookie';
 
@@ -101,8 +118,8 @@ type SettingsContextValue = {
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 function pushToNative(next: Settings, prev: Settings | null) {
-  // Calm Mode depends on Plus too; App sends it (see PlusFeatureSync).
-  const { hideCookieBanners, calmMode: _calmMode, ...options } = next.shields;
+  // Calm Mode and background play depend on Plus too; App sends them.
+  const { hideCookieBanners, calmMode: _calmMode, backgroundPlay: _backgroundPlay, ...options } = next.shields;
   ShieldEngine.setOptions(options);
   ShieldEngine.setDisabledSites(next.disabledSites);
   if (Platform.OS === 'android' && (!prev || prev.shields.hideCookieBanners !== hideCookieBanners)) {
@@ -131,7 +148,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setSettings({
           ...DEFAULT_SETTINGS,
           ...saved,
-          shields: { ...DEFAULT_SETTINGS.shields, ...saved.shields },
+          ...FIXED,
+          shields: { ...DEFAULT_SETTINGS.shields, ...saved.shields, ...FIXED_SHIELDS },
         });
       })
       .catch(() => {})

@@ -28,7 +28,6 @@ import { rateScript, stopAtEndDoneScript, stopAtEndScript, type SleepChoice } fr
 import { pickerBiggerScript, pickerCancelScript, pickerFinishScript, pickerStartScript } from '../../browser/picker';
 import { refreshBlockedTotal } from '../../browser/blockedTotal';
 import { isDarkColour, pageLookScript, parsePageLook } from '../../browser/pageTheme';
-import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { readerScript, readerThemeScript } from '../../browser/reader';
 import { useSettings } from '../../browser/settings';
 import { useSearchSuggestions } from '../../browser/suggest';
@@ -76,9 +75,8 @@ export default function BrowserScreen() {
   const profiles = plus.unlocked && ShieldEngine.profilesSupported === true ? settings.profiles : NO_PROFILES;
   const insets = useSafeAreaInsets();
   const tabsApi = useTabs();
-  const { tabs, activeTab, liveIds, restored, openTab, closeTab, closeAll, navigate, updateTab } = tabsApi;
+  const { tabs, activeTab, liveIds, restored, openTab, closeTab, navigate, updateTab } = tabsApi;
   const library = useLibrary();
-  const stats = usePrivacyStatsActions();
 
   const refs = useRef(new Map<string, ShieldWebViewRef>());
   const [overlay, setOverlay] = useState<Overlay>('none');
@@ -579,25 +577,12 @@ export default function BrowserScreen() {
     }
   };
 
-  const quit = async () => {
-    if (settings.clearDataOnExit) {
-      await ShieldEngine.clearBrowsingData().catch(() => {});
-      library.clearHistory();
-      stats.clear();
-      closeAll(true);
-      closeAll(false);
-    }
-    BackHandler.exitApp();
-  };
-
   const onMenu = async (action: MenuAction) => {
     // iOS shows one sheet at a time: what opens from the menu waits until it has closed.
     const afterMenu = Platform.OS === 'ios' && menuOpen ? 350 : 0;
     setMenuOpen(false);
     const url = activeTab?.url ?? '';
     switch (action) {
-      case 'newTab':
-        return newTab(false);
       case 'newPrivateTab':
         return newTab(true);
       case 'bookmarks':
@@ -628,16 +613,6 @@ export default function BrowserScreen() {
         }, Platform.OS === 'ios' ? 350 : 0);
         return;
       }
-      case 'desktop': {
-        const site = siteKey(url);
-        if (!site) return;
-        const desktop = !settings.siteFixes[site]?.desktop;
-        setSiteFix(site, { desktop });
-        showToast(desktop ? 'Showing the desktop website' : 'Showing the mobile website');
-        // After the native side has the new setting.
-        setTimeout(() => activeRef()?.reload(), 100);
-        return;
-      }
       case 'hideElement':
         if (!plus.unlocked) return openPlus('none');
         setTimeout(startPicking, Platform.OS === 'ios' ? 350 : 0);
@@ -656,8 +631,6 @@ export default function BrowserScreen() {
           Share.share(Platform.OS === 'ios' ? { url } : { message: url }).catch(() => showToast('Couldn’t open sharing'));
         }, afterMenu);
         return;
-      case 'quit':
-        return quit();
     }
   };
 
@@ -1142,10 +1115,7 @@ export default function BrowserScreen() {
         hasPage={hasPage}
         bookmarked={!!activeTab && library.isBookmarked(activeTab.url)}
         readerActive={!!activeTab?.reader}
-        desktop={!!activeTab && !!settings.siteFixes[siteKey(activeTab.url)]?.desktop}
-        showQuit={Platform.OS === 'android'}
         showVault={settings.vault}
-        clearsOnQuit={settings.clearDataOnExit}
         navigation={
           single && Platform.OS === 'android'
             ? {

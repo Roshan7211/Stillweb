@@ -4,7 +4,6 @@ import type { Theme } from '../theme';
 import { Icon, Row, Sheet, type IconName } from './primitives';
 
 export type MenuAction =
-  | 'newTab'
   | 'newPrivateTab'
   | 'bookmarks'
   | 'history'
@@ -15,10 +14,8 @@ export type MenuAction =
   | 'find'
   | 'share'
   | 'listen'
-  | 'desktop'
   | 'hideElement'
   | 'vault'
-  | 'quit'
   | 'back'
   | 'forward';
 
@@ -29,12 +26,8 @@ type Props = {
   hasPage: boolean;
   bookmarked: boolean;
   readerActive: boolean;
-  /** The current site is shown as its desktop website. */
-  desktop: boolean;
-  showQuit: boolean;
   /** The private vault is turned on in Settings. */
   showVault: boolean;
-  clearsOnQuit: boolean;
   /**
    * Android's single bottom bar: forward (and back, for the long reach) live in the menu. On
    * iOS the bar has back, and swiping from the screen's edges goes back and forward.
@@ -50,10 +43,7 @@ export default function MenuSheet({
   hasPage,
   bookmarked,
   readerActive,
-  desktop,
-  showQuit,
   showVault,
-  clearsOnQuit,
   navigation,
   onAction,
 }: Props) {
@@ -114,33 +104,14 @@ export default function MenuSheet({
             })}
           </View>
         ) : null}
-        {hasPage ? (
-          <>
-            <Row
-              title={desktop ? 'Mobile website' : 'Desktop website'}
-              icon={desktop ? 'smartphone' : 'monitor'}
-              theme={theme}
-              onPress={() => onAction('desktop')}
-            />
-            <Row title="Hide something on the page" icon="crosshair" theme={theme} onPress={() => onAction('hideElement')} />
-          </>
-        ) : null}
-        <Row title="New tab" icon="plus" theme={theme} onPress={() => onAction('newTab')} />
+        {/* Desktop website is in the shield panel; new tabs come from the bar or the tab switcher. */}
+        {hasPage ? <Row title="Hide something on the page" icon="crosshair" theme={theme} onPress={() => onAction('hideElement')} /> : null}
         <Row title="New private tab" icon="eye-off" theme={theme} onPress={() => onAction('newPrivateTab')} />
         <Row title="Bookmarks" icon="bookmark" theme={theme} onPress={() => onAction('bookmarks')} />
         <Row title="History" icon="clock" theme={theme} onPress={() => onAction('history')} />
         <Row title="Downloads" icon="download" theme={theme} onPress={() => onAction('downloads')} />
         {showVault ? <Row title="Private vault" icon="lock" theme={theme} onPress={() => onAction('vault')} /> : null}
         <Row title="Settings" icon="settings" theme={theme} onPress={() => onAction('settings')} />
-        {showQuit ? (
-          <Row
-            title={clearsOnQuit ? 'Quit and clear data' : 'Quit'}
-            icon="power"
-            theme={theme}
-            danger={clearsOnQuit}
-            onPress={() => onAction('quit')}
-          />
-        ) : null}
       </ScrollView>
     </Sheet>
   );

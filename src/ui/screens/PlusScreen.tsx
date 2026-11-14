@@ -14,6 +14,11 @@ type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void }
 /** What Plus includes today. Only features that exist are listed (App Store rule 3.1.2). */
 const PLUS_FEATURES: { icon: IconName; title: string; body: string; needsProfiles?: boolean }[] = [
   {
+    icon: 'play-circle',
+    title: 'Play in background',
+    body: 'Music and videos keep playing when you leave the app or lock the screen.',
+  },
+  {
     icon: 'sun',
     title: 'Calm Mode',
     body: 'Cookie pop-ups rejected for you, and newsletter pop-ups, chat bubbles and floating videos hidden.',
