@@ -66,6 +66,7 @@
     },
     "android": {
       "package": "app.stillweb.browser",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -112,6 +113,7 @@
       ],
       "expo-font",
       "./plugins/with-alternate-icons",
+      "./plugins/with-release-signing",
       [
         "expo-splash-screen",
         {

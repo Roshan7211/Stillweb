@@ -65,3 +65,6 @@ __pycache__/
 # Desktop app: bundled code and installers (desktop/resources is kept)
 desktop/build/
 desktop/dist/
+
+# Play upload key (never commit)
+/android-signing
