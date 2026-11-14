@@ -22,6 +22,8 @@ type Props = {
   onOpenPlus: () => void;
   onOpenReport: () => void;
   onClearedData: () => void;
+  /** The lock was just turned on with Face ID / fingerprint: open private tabs stay unlocked. */
+  onPrivateUnlocked?: () => void;
 };
 
 // Where the screen was left for one of its own pages (About, the report, the test…): coming back
@@ -32,7 +34,7 @@ export function forgetSettingsPlace() {
   place.y = 0;
 }
 
-export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus, onOpenReport, onClearedData }: Props) {
+export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus, onOpenReport, onClearedData, onPrivateUnlocked }: Props) {
   const { settings, update, setSiteShields, setSiteFix } = useSettings();
   const library = useLibraryActions();
   const stats = usePrivacyStatsActions();
@@ -73,11 +75,18 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
           LocalAuthentication.isEnrolledAsync(),
         ]);
         if (!hardware || !enrolled) {
-          Alert.alert('Set up a screen lock first', 'Add a fingerprint, face or PIN in your device settings to lock private tabs.');
+          Alert.alert(
+            Platform.OS === 'ios' ? 'Set a passcode first' : 'Set up a screen lock first',
+            Platform.OS === 'ios'
+              ? 'Turn on Face ID or a passcode in the Settings app to lock private tabs.'
+              : 'Add a fingerprint, face or PIN in your device settings to lock private tabs.',
+          );
           return;
         }
         const result = await authenticate('Lock private tabs');
         if (!result.success) return;
+        // Just confirmed: tabs open now don't ask again until the app leaves the screen.
+        onPrivateUnlocked?.();
       } catch {
         Alert.alert(
           'Couldn’t turn on the lock',

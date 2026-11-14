@@ -248,6 +248,9 @@ final class ShieldEngine {
 
   private var inBackground = false
 
+  /// Posted on the main queue when background play is switched on or off (or Plus starts/ends).
+  static let backgroundPlayChanged = Notification.Name("StillwebBackgroundPlayChanged")
+
   /// On screen: the playback category, like Safari (pages' sound plays with the silent switch on,
   /// other apps' audio pauses for it). With background play (a Plus feature) it stays so in the
   /// background, which lets web audio continue there (UIBackgroundModes audio). Without it, each
@@ -486,6 +489,8 @@ final class ShieldEngine {
     if let v = options["backgroundPlay"] as? Bool, v != backgroundPlay {
       backgroundPlay = v
       configureAudioSession()
+      // Open pages get it now (their scripts only change on the next page load).
+      NotificationCenter.default.post(name: Self.backgroundPlayChanged, object: nil)
     }
     if let v = options["calmMode"] as? Bool { calmMode = v }
     if let v = options["vault"] as? Bool { vault = v }

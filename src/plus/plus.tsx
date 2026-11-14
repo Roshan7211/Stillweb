@@ -44,8 +44,8 @@ type PlusValue = {
   sandbox: boolean;
   loadProducts: () => void;
   purchase: (productId: string) => Promise<PurchaseResult>;
-  /** Restore Purchases; resolves with whether Plus is now active. */
-  restore: () => Promise<boolean>;
+  /** Restore Purchases; resolves with whether Plus is now active, or null when it was cancelled. */
+  restore: () => Promise<boolean | null>;
   manageSubscription: () => void;
   redeemCode: () => void;
 };
@@ -135,7 +135,14 @@ export function PlusProvider({ children }: { children: ReactNode }) {
 
   const restore = useCallback(async () => {
     if (!PlusStore) return false;
-    const list = await PlusStore.restore();
+    let list: PlusEntitlement[];
+    try {
+      list = await PlusStore.restore();
+    } catch (e) {
+      // The Apple Account sign-in was closed: nothing to say.
+      if ((e as { code?: string })?.code === 'E_CANCELLED') return null;
+      throw e;
+    }
     apply(list);
     return pickEntitlement(list) !== null;
   }, [apply]);

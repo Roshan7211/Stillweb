@@ -1433,7 +1433,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
       (UIApplication.willEnterForegroundNotification, "foreground"),
       (UIApplication.didBecomeActiveNotification, "active"),
     ]
-    appObservers = states.map { name, state in
+    // Background play switched on while a page is open: the page gets the script now rather
+    // than on its next load, so what's playing keeps going when the app is left.
+    let backgroundPlayObserver = center.addObserver(forName: ShieldEngine.backgroundPlayChanged, object: nil, queue: .main) {
+      [weak self] _ in self?.applyBackgroundPlayNow()
+    }
+    appObservers = [backgroundPlayObserver] + states.map { name, state in
       center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         self?.sendAppState(state)
         // Without background play (a Plus feature) media stops when the app leaves the screen.
@@ -1443,6 +1448,12 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
         if state == "foreground" || state == "active" { self?.reloadIfNeeded(returning: true) }
       }
     }
+  }
+
+  private func applyBackgroundPlayNow() {
+    guard ShieldEngine.shared.backgroundPlay, let webView else { return }
+    // The script defines __shieldAppState: it's already there when the page loaded with it.
+    webView.evaluateJavaScript("if (!window.__shieldAppState) {\n" + Self.backgroundPlayScript.source + "\n}")
   }
 
   /// `fresh`: the page committed while the app is in the background.

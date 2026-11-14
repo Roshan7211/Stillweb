@@ -129,12 +129,13 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
     setBusy('restore');
     try {
       const found = await plus.restore();
+      if (found === null) return; // cancelled
       Alert.alert(
         found ? 'Purchases restored' : 'Nothing to restore',
         found ? 'Stillweb Plus is active.' : `No Stillweb Plus purchase was found for this ${ACCOUNT}.`,
       );
     } catch (e) {
-      Alert.alert('Couldn’t restore purchases', e instanceof Error ? e.message : String(e));
+      Alert.alert('Couldn’t restore purchases', e instanceof Error && e.message ? e.message : 'Try again in a moment.');
     } finally {
       setBusy(null);
     }

@@ -31,6 +31,12 @@ const SOFTWARE = [
   { title: 'Feather icons', homepage: 'https://feathericons.com', license: 'MIT' },
 ];
 
+// This platform's lists. On iOS, lists marked iosHosts are used for their server rules (see
+// scripts/filters/build.mjs).
+const lists = catalog.lists.filter(
+  (l) => !('platforms' in l) || (l.platforms as string[]).includes(Platform.OS) || (Platform.OS === 'ios' && 'iosHosts' in l && l.iosHosts),
+);
+
 export default function AboutScreen({ theme, onBack, onOpen }: Props) {
   // About › Privacy policy, or About › Open-source licenses › one notice or license text.
   const [page, setPage] = useState<'about' | 'privacy' | 'licenses' | { title: string; text: string }>('about');
@@ -59,7 +65,43 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
           <Text style={[styles.body, styles.pad, { color: theme.muted, marginTop: 12 }]}>
             Stillweb includes the following software and data, used under their licenses.
           </Text>
-          <SectionTitle theme={theme}>Components</SectionTitle>
+          <SectionTitle theme={theme}>Blocking lists</SectionTitle>
+          <Text style={[styles.body, styles.pad, { color: theme.muted }]}>
+            Ad and tracker blocking uses these community-maintained lists, used under their licenses. Thank you to
+            their authors.
+          </Text>
+          <Group theme={theme}>
+          {lists.map((list) => (
+            <Row
+              key={list.id}
+              title={list.title}
+              subtitle={`${list.purpose} · License: ${list.license}`}
+              theme={theme}
+              icon="external-link"
+              onPress={() => onOpen(list.licenseUrl)}
+            />
+          ))}
+          <Row
+            title={catalog.resources.title}
+            subtitle={`Used to stop pop-ups and ads inside pages · License: ${catalog.resources.license}`}
+            theme={theme}
+            icon="external-link"
+            onPress={() => onOpen(catalog.resources.licenseUrl)}
+          />
+          </Group>
+
+          <SectionTitle theme={theme}>Open-source software</SectionTitle>
+          <Group theme={theme}>
+          {SOFTWARE.map((s) => (
+            <Row key={s.title} title={s.title} subtitle={`License: ${s.license}`} theme={theme} icon="external-link" onPress={() => onOpen(s.homepage)} />
+          ))}
+          </Group>
+
+          <Text style={[styles.body, styles.pad, { color: theme.muted, marginTop: 16 }]}>
+            The blocking lists are shared under the GPLv3, CC BY-SA 3.0 and CC BY 3.0 licenses. Stillweb only changes them
+            into its own format; where each list comes from is linked above.
+          </Text>
+          <SectionTitle theme={theme}>Included software</SectionTitle>
           <Group theme={theme}>
             {components.map((c) => (
               <Row key={c.name} title={c.name} subtitle={c.license} theme={theme} onPress={() => setPage({ title: c.name, text: c.text })} />
@@ -89,10 +131,6 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
     );
   }
 
-  // On iOS, lists marked iosHosts are used for their server rules (see scripts/filters/build.mjs).
-  const lists = catalog.lists.filter(
-    (l) => !('platforms' in l) || (l.platforms as string[]).includes(Platform.OS) || (Platform.OS === 'ios' && 'iosHosts' in l && l.iosHosts),
-  );
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <ScreenHeader title="About" onBack={onBack} theme={theme} />
@@ -129,50 +167,17 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
         />
         </Group>
 
-        <SectionTitle theme={theme}>Blocking lists</SectionTitle>
-        <Text style={[styles.body, styles.pad, { color: theme.muted }]}>
-          Ad and tracker blocking uses these community-maintained lists, used under their licenses. Thank you to
-          their authors.
-        </Text>
+        <SectionTitle theme={theme}>Credits</SectionTitle>
         <Group theme={theme}>
-        {lists.map((list) => (
           <Row
-            key={list.id}
-            title={list.title}
-            subtitle={`${list.purpose} · License: ${list.license}`}
+            title="Open-source licenses"
+            subtitle="Blocking lists and software Stillweb uses"
+            icon="award"
             theme={theme}
-            icon="external-link"
-            onPress={() => onOpen(list.licenseUrl)}
+            onPress={() => setPage('licenses')}
+            right={<Icon name="chevron-right" size={20} color={theme.muted} />}
           />
-        ))}
-        <Row
-          title={catalog.resources.title}
-          subtitle={`Used to stop pop-ups and ads inside pages · License: ${catalog.resources.license}`}
-          theme={theme}
-          icon="external-link"
-          onPress={() => onOpen(catalog.resources.licenseUrl)}
-        />
         </Group>
-
-        <SectionTitle theme={theme}>Open-source software</SectionTitle>
-        <Group theme={theme}>
-        {SOFTWARE.map((s) => (
-          <Row key={s.title} title={s.title} subtitle={`License: ${s.license}`} theme={theme} icon="external-link" onPress={() => onOpen(s.homepage)} />
-        ))}
-
-        <Row
-          title="Open-source licenses"
-          subtitle="Full notices and license texts"
-          theme={theme}
-          onPress={() => setPage('licenses')}
-          right={<Icon name="chevron-right" size={20} color={theme.muted} />}
-        />
-        </Group>
-
-        <Text style={[styles.body, styles.pad, { color: theme.muted, marginTop: 16 }]}>
-          The blocking lists are shared under the GPLv3, CC BY-SA 3.0 and CC BY 3.0 licenses. Stillweb only changes them
-          into its own format; where each list comes from is linked above.
-        </Text>
       </ScrollView>
     </SafeAreaView>
   );

@@ -72,6 +72,9 @@ public class PlusStoreModule: Module {
           @unknown default:
             promise.resolve(await Self.outcome("cancelled"))
           }
+        } catch StoreKitError.userCancelled {
+          // Closed the Apple Account sign-in: not an error.
+          promise.resolve(await Self.outcome("cancelled"))
         } catch {
           promise.reject("E_PURCHASE", "The purchase couldn't be completed. Check your connection and try again.")
         }
@@ -90,6 +93,9 @@ public class PlusStoreModule: Module {
         do {
           try await AppStore.sync()
           promise.resolve(await Self.entitlements())
+        } catch StoreKitError.userCancelled {
+          // Closed the Apple Account sign-in: the app says nothing.
+          promise.reject("E_CANCELLED", "Cancelled.")
         } catch {
           promise.reject("E_RESTORE", "The App Store couldn't be reached. Check your connection and try again.")
         }

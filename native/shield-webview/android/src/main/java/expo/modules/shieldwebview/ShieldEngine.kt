@@ -238,8 +238,9 @@ internal object ShieldEngine {
     (options["cosmeticFiltering"] as? Boolean)?.let { cosmeticFiltering = it }
     (options["blockThirdPartyCookies"] as? Boolean)?.let { blockThirdPartyCookies = it }
     (options["backgroundPlay"] as? Boolean)?.let {
-      if (it != backgroundPlay && !it) main.post { MediaPlaybackController.stop(pause = false) }
+      val changed = it != backgroundPlay
       backgroundPlay = it
+      if (changed) main.post { if (it) MediaPlaybackController.backgroundPlayEnabled() else MediaPlaybackController.stop(pause = false) }
     }
     (options["calmMode"] as? Boolean)?.let {
       if (it != calmMode) {

@@ -489,7 +489,8 @@ export default function BrowserScreen() {
 
   const openInCurrent = (url: string) => {
     setOverlay('none');
-    if (activeTab && !privateLocked) navigate(activeTab.id, url);
+    // A locked private tab isn't used for it; any other tab is.
+    if (activeTab && !(activeTab.incognito && privateLocked)) navigate(activeTab.id, url);
     else openTab(url);
   };
 
@@ -1208,6 +1209,7 @@ export default function BrowserScreen() {
               onOpenPlus={() => openPlus('settings')}
               onOpenReport={() => openReport('settings')}
               onClearedData={refreshBlockedTotal}
+              onPrivateUnlocked={() => setPrivateUnlocked(true)}
             />
           ) : overlay === 'about' ? (
             <AboutScreen

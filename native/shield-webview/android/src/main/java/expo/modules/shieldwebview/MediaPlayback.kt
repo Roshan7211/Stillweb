@@ -80,8 +80,29 @@ internal object MediaPlaybackController {
 
   fun isSessionView(v: ShieldWebView): Boolean = state != null && view?.get() === v
 
+  /**
+   * The last report that came while background play was off. The page only reports when
+   * something changes, so switching background play on (or buying Plus) mid-video replays it.
+   */
+  private var ignored: (() -> Unit)? = null
+
+  /** Background play was just switched on: what's already playing gets its session now. */
+  fun backgroundPlayEnabled() {
+    val replay = ignored ?: return
+    ignored = null
+    replay()
+  }
+
   fun onMediaState(v: ShieldWebView, replyProxy: JavaScriptReplyProxy, data: JSONObject, pageTitle: String, host: String) {
-    if (!ShieldEngine.backgroundPlay) return
+    if (!ShieldEngine.backgroundPlay) {
+      // Only something playing needs a session the moment background play is switched on.
+      val page = WeakReference(v)
+      ignored = if (data.optBoolean("playing")) {
+        { page.get()?.let { onMediaState(it, replyProxy, data, pageTitle, host) } }
+      } else null
+      return
+    }
+    ignored = null
     val playing = data.optBoolean("playing")
     val active = data.optBoolean("active")
     val isCurrent = view?.get() === v
