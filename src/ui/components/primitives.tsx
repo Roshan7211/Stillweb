@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Dimensions, Easing, Modal, Pressable, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Theme } from '../theme';
@@ -48,11 +48,22 @@ export function IconButton({
   );
 }
 
-/** Bottom sheet built on Modal; content scrolls itself if it needs to. */
+/** The system's Reduce Motion setting: animations become plain fades or none. */
+let reduceMotion = false;
+AccessibilityInfo.isReduceMotionEnabled()
+  .then((value) => {
+    reduceMotion = value;
+  })
+  .catch(() => {});
+AccessibilityInfo.addEventListener('reduceMotionChanged', (value) => {
+  reduceMotion = value;
+});
+
 /** A screen that comes in with a short fade, settling into place (the tab switcher, Settings…). */
 export function Appear({ style, children }: { style?: StyleProp<ViewStyle>; children: ReactNode }) {
-  const [progress] = useState(() => new Animated.Value(0));
+  const [progress] = useState(() => new Animated.Value(reduceMotion ? 1 : 0));
   useEffect(() => {
+    if (reduceMotion) return;
     Animated.timing(progress, { toValue: 1, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [progress]);
   const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [1.04, 1] });
@@ -71,12 +82,44 @@ export function Sheet({
   children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  // Like the system's sheets: the backdrop fades in while the sheet slides up, and both go
+  // the same way when it closes (the Modal stays until then). With Reduce Motion, a fade.
+  const [mounted, setMounted] = useState(visible);
+  if (visible && !mounted) setMounted(true);
+  const [progress] = useState(() => new Animated.Value(0));
+  const [height, setHeight] = useState(() => Dimensions.get('window').height);
+  useEffect(() => {
+    if (!mounted) return;
+    progress.stopAnimation();
+    const opening = visible;
+    Animated.timing(progress, {
+      toValue: opening ? 1 : 0,
+      duration: opening ? 280 : 220,
+      easing: opening ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished && !opening) setMounted(false);
+    });
+  }, [visible, mounted, progress]);
+  const slide = reduceMotion ? 0 : height;
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
-      <View style={[styles.sheet, { backgroundColor: theme.surface, paddingBottom: insets.bottom + 12 }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        {children}
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: progress }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+      </Animated.View>
+      <View style={styles.sheetHolder} pointerEvents="box-none">
+        <Animated.View
+          onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
+          style={[
+            styles.sheet,
+            { backgroundColor: theme.surface, paddingBottom: insets.bottom + 12 },
+            reduceMotion
+              ? { opacity: progress }
+              : { transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [slide, 0] }) }] },
+          ]}>
+          <View style={[styles.grabber, { backgroundColor: theme.border }]} />
+          {children}
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -223,7 +266,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   badgeText: { fontSize: 11, fontWeight: '700' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  backdrop: { backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheetHolder: { flex: 1, justifyContent: 'flex-end' },
   // Centred at a phone-like width on big screens (iPad), like the system's own sheets.
   sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 8, maxHeight: '85%', width: '100%', maxWidth: 640, alignSelf: 'center' },
   grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginBottom: 8 },

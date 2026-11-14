@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 import { displayUrl } from '../../browser/url';
@@ -16,7 +17,10 @@ type Props = {
 };
 
 /** Long-press menu for links and images. */
-export default function ContextMenuSheet({ target, theme, onClose, onAction }: Props) {
+export default function ContextMenuSheet({ target: current, theme, onClose, onAction }: Props) {
+  // The last link stays in the sheet while it slides away (the menu is closed by clearing it).
+  const [target, setTarget] = useState(current);
+  if (current && current !== target) setTarget(current);
   const run = (action: ContextAction) => {
     if (target) onAction(action, target);
     onClose();
@@ -25,7 +29,7 @@ export default function ContextMenuSheet({ target, theme, onClose, onAction }: P
   const image = target?.image ?? '';
 
   return (
-    <Sheet visible={!!target} onClose={onClose} theme={theme}>
+    <Sheet visible={!!current} onClose={onClose} theme={theme}>
       <Text style={[styles.title, { color: theme.muted }]} numberOfLines={2}>
         {displayUrl(link || image)}
       </Text>
