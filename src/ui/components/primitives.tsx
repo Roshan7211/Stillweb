@@ -132,6 +132,12 @@ export function groupItemStyle(theme: Theme, first: boolean, last: boolean): Vie
   };
 }
 
+/**
+ * Content screens (settings, lists, reports) at a comfortable reading width on big screens
+ * (iPad, landscape), centred; phones are narrower than this anyway.
+ */
+export const readable: ViewStyle = { width: '100%', maxWidth: 720, alignSelf: 'center' };
+
 export function Row({
   title,
   subtitle,
@@ -218,7 +224,8 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 11, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
-  sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 8, maxHeight: '85%' },
+  // Centred at a phone-like width on big screens (iPad), like the system's own sheets.
+  sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 8, maxHeight: '85%', width: '100%', maxWidth: 640, alignSelf: 'center' },
   grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginBottom: 8 },
   header: {
     flexDirection: 'row',

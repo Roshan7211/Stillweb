@@ -7,7 +7,7 @@ import { ShieldEngine } from '../../../native/shield-webview';
 import { useLibrary, type DownloadRecord } from '../../browser/library';
 import { displayUrl } from '../../browser/url';
 import { authenticate as authenticateWithDevice } from '../authenticate';
-import { Group, Icon, IconButton, Row, ScreenHeader, SectionTitle } from '../components/primitives';
+import { Group, Icon, IconButton, readable, Row, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
@@ -73,7 +73,7 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <ScreenHeader title="Private vault" onBack={onBack} theme={theme} />
       {lock === 'open' ? (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[readable, styles.content]}>
           <SectionTitle theme={theme}>Bookmarks</SectionTitle>
           {vaultBookmarks.length ? (
             <Group theme={theme}>

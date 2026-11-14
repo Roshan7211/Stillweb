@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ShieldEngine } from '../../../native/shield-webview';
 import { PLUS_PRODUCTS, usePlus } from '../../plus/plus';
 import { formatPrice, hasTrial, planTerms, planTitle } from '../../plus/pricing';
-import { Icon, IconButton, type IconName } from '../components/primitives';
+import { Icon, IconButton, type IconName, readable } from '../components/primitives';
 import type { Theme } from '../theme';
 import PrivacyPolicyScreen from './PrivacyPolicyScreen';
 
@@ -147,7 +147,7 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
       <View style={styles.close}>
         <IconButton name="x" label="Close" color={theme.text} onPress={onBack} />
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[readable, styles.content]}>
         <Image source={LOGO} style={styles.logo} accessibilityIgnoresInvertColors accessible={false} />
         <Text style={[styles.title, { color: theme.text }]}>Stillweb Plus</Text>
         <Text style={[styles.subtitle, { color: theme.muted }]}>More from your browser. Ad blocking always stays free.</Text>

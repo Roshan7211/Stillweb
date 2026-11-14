@@ -10,7 +10,7 @@ import { useSettings } from '../../browser/settings';
 import { SEARCH_ENGINES } from '../../browser/url';
 import { usePlus } from '../../plus/plus';
 import { fromPerMonth } from '../../plus/pricing';
-import { Group, Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
+import { Group, Icon, IconButton, readable, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
 import { authenticate } from '../authenticate';
 import ProfilesSection from '../components/ProfilesSection';
 import { ACCENTS, type AccentId, type Theme } from '../theme';
@@ -121,7 +121,7 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
       <ScreenHeader title="Settings" onBack={leave} theme={theme} />
       <ScrollView
         ref={scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[readable, styles.content]}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={64}
         onScroll={(e) => {

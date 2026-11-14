@@ -45,7 +45,7 @@ public class PlusStoreModule: Module {
           }
           promise.resolve(described)
         } catch {
-          promise.reject("E_PRODUCTS", error.localizedDescription)
+          promise.reject("E_PRODUCTS", "The App Store couldn't be reached. Check your connection.")
         }
       }
     }
@@ -73,7 +73,7 @@ public class PlusStoreModule: Module {
             promise.resolve(await Self.outcome("cancelled"))
           }
         } catch {
-          promise.reject("E_PURCHASE", error.localizedDescription)
+          promise.reject("E_PURCHASE", "The purchase couldn't be completed. Check your connection and try again.")
         }
       }
     }
@@ -91,7 +91,7 @@ public class PlusStoreModule: Module {
           try await AppStore.sync()
           promise.resolve(await Self.entitlements())
         } catch {
-          promise.reject("E_RESTORE", error.localizedDescription)
+          promise.reject("E_RESTORE", "The App Store couldn't be reached. Check your connection and try again.")
         }
       }
     }
@@ -119,7 +119,7 @@ public class PlusStoreModule: Module {
           try await AppStore.presentOfferCodeRedeemSheet(in: scene)
           promise.resolve(true)
         } catch {
-          promise.reject("E_REDEEM", error.localizedDescription)
+          promise.reject("E_REDEEM", "The code screen couldn't be opened. Try again in a moment.")
         }
       }
     }

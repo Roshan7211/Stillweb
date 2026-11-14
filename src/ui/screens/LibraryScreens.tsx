@@ -7,7 +7,7 @@ import { useLibrary } from '../../browser/library';
 import { usePrivacyStatsActions } from '../../browser/privacyStats';
 import { formatBytes, fraction, nextRate, progressText, type Rate } from '../../browser/downloadProgress';
 import { displayUrl } from '../../browser/url';
-import { groupItemStyle, Icon, IconButton, Row, ScreenHeader } from '../components/primitives';
+import { groupItemStyle, Icon, IconButton, readable, Row, ScreenHeader } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onOpen: (url: string) => void };
@@ -24,7 +24,7 @@ export function BookmarksScreen({ theme, onBack, onOpen }: Props) {
       <FlatList
         data={bookmarks}
         keyExtractor={(b) => b.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[readable, styles.list]}
         ListEmptyComponent={<Empty theme={theme} text="Bookmarks you add from the menu appear here." />}
         renderItem={({ item, index }) => (
           <View style={groupItemStyle(theme, index === 0, index === bookmarks.length - 1)}>
@@ -98,7 +98,7 @@ export function HistoryScreen({ theme, onBack, onOpen }: Props) {
       <FlatList
         data={rows}
         keyExtractor={(r, i) => (r.kind === 'day' ? `d-${r.label}` : `h-${r.visitedAt}-${i}`)}
-        contentContainerStyle={styles.historyList}
+        contentContainerStyle={[readable, styles.historyList]}
         ListEmptyComponent={<Empty theme={theme} text="Pages you visit appear here. Private tabs are never saved." />}
         renderItem={({ item, index }) =>
           item.kind === 'day' ? (
@@ -332,7 +332,7 @@ export function DownloadsScreen({ theme, onBack }: Omit<Props, 'onOpen'>) {
             }
           />
         }
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[readable, styles.list]}
         renderItem={({ item, index }) => (
           <View style={groupItemStyle(theme, index === 0, index === downloads.length - 1)}>
           <DownloadRow

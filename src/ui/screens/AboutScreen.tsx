@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import catalog from '../../blocking/filter-catalog.json';
 import { READABILITY_VERSION } from '../../browser/readability.generated';
-import { Group, Icon, Row, ScreenHeader, SectionTitle } from '../components/primitives';
+import { Group, Icon, readable, Row, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 import PrivacyPolicyScreen from './PrivacyPolicyScreen';
 
@@ -55,7 +55,7 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
         <ScreenHeader title="Open-source licenses" onBack={() => setPage('about')} theme={theme} />
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[readable, styles.content]}>
           <Text style={[styles.body, styles.pad, { color: theme.muted, marginTop: 12 }]}>
             Stillweb includes the following software and data, used under their licenses.
           </Text>
@@ -96,7 +96,7 @@ export default function AboutScreen({ theme, onBack, onOpen }: Props) {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <ScreenHeader title="About" onBack={onBack} theme={theme} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[readable, styles.content]}>
         <View style={styles.hero}>
           <Image source={LOGO} style={styles.logo} accessible={false} />
           <Text style={[styles.name, { color: theme.text }]}>{Constants.expoConfig?.name ?? 'Browser'}</Text>

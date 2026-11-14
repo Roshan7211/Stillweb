@@ -41,7 +41,7 @@ profiles, each profile keeps its own.</p>
 <h2>Private tabs</h2>
 <p>Pages opened in private tabs are never saved to history. Their cookies and site data are deleted when you
 close your last private tab, and again whenever the app starts. While private tabs are open, they are hidden in
-the app switcher (and, on Android, from screenshots). The privacy report counts blocked items in private tabs
+the app switcher<span class="android"> (and, on Android, from screenshots)</span>. The privacy report counts blocked items in private tabs
 but never records which sites you visited in them.</p>
 <p>With the Stillweb Plus private vault, bookmarks (and, on iPhone, downloads) you save from private tabs are
 kept on your device behind Face ID, Touch ID or your passcode, and are not shown in your normal lists or the
@@ -58,11 +58,11 @@ Files app.</p>
   <li><strong>Filter list updates.</strong> About once a day Stillweb downloads updated blocking lists as plain
     files from our update server. Like any web request this reveals your IP address to the hosting provider;
     the request contains no identifiers, and we do not collect or keep anything about you.</li>
-  <li><strong>Purchases (Stillweb Plus).</strong> Purchases and subscriptions are handled entirely by Apple on
-    iPhone and iPad, and by Google Play on Android. Stillweb checks on your device, through the store, whether
-    Plus is active; we never receive your name, payment details, Apple Account or Google Account, and there is no
-    Stillweb account.</li>
-  <li><strong>Android only:</strong> the system WebView's Safe Browsing protection checks pages against a list of
+  <li><strong>Purchases (Stillweb Plus).</strong> Purchases and subscriptions are handled entirely by the app store
+    you got Stillweb from (Apple<span class="android"> or Google Play</span>). Stillweb checks on your device,
+    through the store, whether Plus is active; we never receive your name, payment details or store account, and
+    there is no Stillweb account.</li>
+  <li class="android"><strong>Android only:</strong> the system WebView's Safe Browsing protection checks pages against a list of
     known dangerous sites using shortened, hashed web addresses. Android WebView usage statistics are switched
     off.</li>
 </ul>
@@ -81,7 +81,7 @@ cookie pop-ups for you by rejecting optional cookies; this runs on your device.<
     example a video call, voice search or a map), and given only to that website. Stillweb itself never uses them.</li>
   <li><strong>Photos</strong> (iPhone, add only): used only when you choose to save an image from a website to your
     photo library.</li>
-  <li><strong>Notifications</strong> (Android, optional): used only to show playback controls while music or
+  <li class="android"><strong>Notifications</strong> (Android, optional): used only to show playback controls while music or
     video plays in the background. Private tabs show "Private tab" instead of what is playing.</li>
   <li><strong>Files</strong>: only the files you choose when a website asks you to upload something, and the files
     you choose to download.</li>

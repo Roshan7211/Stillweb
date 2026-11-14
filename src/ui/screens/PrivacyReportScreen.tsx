@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { dayKey, lastDays, topEntries, usePrivacyStats } from '../../browser/privacyStats';
 import { usePlus } from '../../plus/plus';
-import { Group, Icon, ScreenHeader, SectionTitle } from '../components/primitives';
+import { Group, Icon, readable, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 
 type Props = { theme: Theme; onBack: () => void; onUpgrade: () => void };
@@ -69,7 +69,7 @@ export default function PrivacyReportScreen({ theme, onBack, onUpgrade }: Props)
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <ScreenHeader title="Privacy report" onBack={onBack} theme={theme} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[readable, styles.content]}>
         <View style={styles.segment}>
           {RANGES.map((r) => {
             const active = r.id === range;

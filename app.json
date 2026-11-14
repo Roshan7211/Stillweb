@@ -24,7 +24,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoadsInWebContent": true,
           "NSAllowsLocalNetworking": true
-        }
+        },
+        "NSLocalNetworkUsageDescription": "Websites on your local network can be opened, for example your router's settings page."
       },
       "config": {
         "usesNonExemptEncryption": false

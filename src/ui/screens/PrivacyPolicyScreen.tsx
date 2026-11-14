@@ -1,14 +1,18 @@
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ScreenHeader } from '../components/primitives';
+import { readable, ScreenHeader } from '../components/primitives';
 import type { Theme } from '../theme';
 
-type Part = { text: string; bold?: boolean; italic?: boolean; href?: string };
-type Block = { type: 'title' | 'meta' | 'summary' | 'heading' | 'paragraph' | 'item'; parts: Part[] };
+type OS = 'android' | 'ios';
+type Part = { text: string; bold?: boolean; italic?: boolean; href?: string; platform?: OS };
+type Block = { type: 'title' | 'meta' | 'summary' | 'heading' | 'paragraph' | 'item'; parts: Part[]; platform?: OS };
 
 /** From site/privacy/index.html (npm run build:privacy): the app shows the same words as the website. */
-const POLICY: Block[] = require('../privacy.generated.json');
+const ALL: Block[] = require('../privacy.generated.json');
+/** Only this platform's parts: an iPhone app may not mention other platforms (App Store review). */
+const mine = (p?: OS) => !p || p === Platform.OS;
+const POLICY: Block[] = ALL.filter((b) => mine(b.platform)).map((b) => ({ ...b, parts: b.parts.filter((p) => mine(p.platform)) }));
 
 /**
  * The privacy policy as a page of the app, so it never opens the policy's web address. Email
@@ -40,7 +44,7 @@ export default function PrivacyPolicyScreen({
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <ScreenHeader title="Privacy policy" onBack={onBack} theme={theme} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[readable, styles.content]}>
         {POLICY.map((block, i) => {
           switch (block.type) {
             case 'title':

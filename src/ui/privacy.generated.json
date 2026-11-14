@@ -87,7 +87,14 @@
   "type": "paragraph",
   "parts": [
    {
-    "text": "Pages opened in private tabs are never saved to history. Their cookies and site data are deleted when you close your last private tab, and again whenever the app starts. While private tabs are open, they are hidden in the app switcher (and, on Android, from screenshots). The privacy report counts blocked items in private tabs but never records which sites you visited in them."
+    "text": "Pages opened in private tabs are never saved to history. Their cookies and site data are deleted when you close your last private tab, and again whenever the app starts. While private tabs are open, they are hidden in the app switcher"
+   },
+   {
+    "text": " (and, on Android, from screenshots)",
+    "platform": "android"
+   },
+   {
+    "text": ". The privacy report counts blocked items in private tabs but never records which sites you visited in them."
    }
   ]
  },
@@ -151,7 +158,14 @@
     "bold": true
    },
    {
-    "text": " Purchases and subscriptions are handled entirely by Apple on iPhone and iPad, and by Google Play on Android. Stillweb checks on your device, through the store, whether Plus is active; we never receive your name, payment details, Apple Account or Google Account, and there is no Stillweb account."
+    "text": " Purchases and subscriptions are handled entirely by the app store you got Stillweb from (Apple"
+   },
+   {
+    "text": " or Google Play",
+    "platform": "android"
+   },
+   {
+    "text": "). Stillweb checks on your device, through the store, whether Plus is active; we never receive your name, payment details or store account, and there is no Stillweb account."
    }
   ]
  },
@@ -165,7 +179,8 @@
    {
     "text": " the system WebView's Safe Browsing protection checks pages against a list of known dangerous sites using shortened, hashed web addresses. Android WebView usage statistics are switched off."
    }
-  ]
+  ],
+  "platform": "android"
  },
  {
   "type": "heading",
@@ -244,7 +259,8 @@
    {
     "text": " (Android, optional): used only to show playback controls while music or video plays in the background. Private tabs show \"Private tab\" instead of what is playing."
    }
-  ]
+  ],
+  "platform": "android"
  },
  {
   "type": "item",
