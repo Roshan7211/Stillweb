@@ -302,9 +302,11 @@ class ShieldWebView(context: Context, appContext: AppContext) : ExpoView(context
     WebViewCompat.addWebMessageListener(wv, MEDIA_BRIDGE_NAME, setOf("*")) { _, message, sourceOrigin, _, replyProxy ->
       val data = runCatching { JSONObject(message.data ?: "{}") }.getOrNull() ?: return@addWebMessageListener
       val playing = data.optBoolean("playing")
-      if (playing && ShieldEngine.backgroundPlay) {
+      if (playing) {
+        // A video is being watched: also makes pop-up blocking stricter on this page.
         watchedOnPage = true
-        requestNotificationPermissionOnce()
+        // Only background play shows playback controls in a notification.
+        if (ShieldEngine.backgroundPlay) requestNotificationPermissionOnce()
         // Media already started here (which needed a tap), so let the site continue on its own:
         // next track, autoplay of the next video, resuming after buffering, all without a tap.
         if (wv.settings.mediaPlaybackRequiresUserGesture) {

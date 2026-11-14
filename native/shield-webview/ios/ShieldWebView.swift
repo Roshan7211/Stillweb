@@ -1427,6 +1427,8 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     // page hears that the app is about to leave before WebKit pauses its video, so it knows
     // what was playing at that moment.
     let center = NotificationCenter.default
+    // (A tab gets one web view; should it ever get another, the old observers go first.)
+    appObservers.forEach(center.removeObserver)
     let states: [(Notification.Name, String)] = [
       (UIApplication.willResignActiveNotification, "inactive"),
       (UIApplication.didEnterBackgroundNotification, "background"),
