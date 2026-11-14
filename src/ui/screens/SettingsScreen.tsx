@@ -70,15 +70,12 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
   const toggleLock = async (value: boolean) => {
     if (value) {
       try {
-        const [hardware, enrolled] = await Promise.all([
-          LocalAuthentication.hasHardwareAsync(),
-          LocalAuthentication.isEnrolledAsync(),
-        ]);
-        if (!hardware || !enrolled) {
+        // A passcode or PIN is enough (Face ID or a fingerprint aren't needed), like the vault.
+        if ((await LocalAuthentication.getEnrolledLevelAsync()) === LocalAuthentication.SecurityLevel.NONE) {
           Alert.alert(
             Platform.OS === 'ios' ? 'Set a passcode first' : 'Set up a screen lock first',
             Platform.OS === 'ios'
-              ? 'Turn on Face ID or a passcode in the Settings app to lock private tabs.'
+              ? 'Set a passcode in the Settings app to lock private tabs.'
               : 'Add a fingerprint, face or PIN in your device settings to lock private tabs.',
           );
           return;
@@ -94,6 +91,17 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
             ? 'Face ID or the passcode isn’t available right now. Try again.'
             : 'Your fingerprint or screen lock isn’t available right now. Try again.',
         );
+        return;
+      }
+    } else {
+      // Turning it off takes the same confirmation, so someone else can't just switch it off
+      // to see the private tabs (as in Safari). Without a passcode any more, it simply goes off.
+      try {
+        if ((await LocalAuthentication.getEnrolledLevelAsync()) !== LocalAuthentication.SecurityLevel.NONE) {
+          const result = await authenticate('Turn off the lock for private tabs');
+          if (!result.success) return;
+        }
+      } catch {
         return;
       }
     }
