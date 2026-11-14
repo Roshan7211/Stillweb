@@ -1327,6 +1327,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     // Players start video right after the tap that opened them (a page load or app route
     // later); requiring a gesture for *every* play() leaves them black with a spinner.
     config.mediaTypesRequiringUserActionForPlayback = []
+    // Picture in picture keeps a video playing outside the app, which is background play (a
+    // Stillweb Plus feature): without it, media pauses as the app leaves the screen, so the
+    // button isn't offered at all rather than starting a window that stops at once.
+    config.allowsPictureInPictureMediaPlayback = ShieldEngine.shared.backgroundPlay
     config.preferences.javaScriptCanOpenWindowsAutomatically = false
     // Like Safari: element fullscreen on iPad only. On iPhone, players fall back to the
     // native video fullscreen, which rotates, supports picture in picture and keeps playing.
