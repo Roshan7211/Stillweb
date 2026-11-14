@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ShieldEngine } from '../../../native/shield-webview';
 import { useLibrary, type DownloadRecord } from '../../browser/library';
 import { displayUrl } from '../../browser/url';
+import { authenticate as authenticateWithDevice } from '../authenticate';
 import { Group, Icon, IconButton, Row, ScreenHeader, SectionTitle } from '../components/primitives';
 import type { Theme } from '../theme';
 
@@ -26,7 +27,7 @@ export default function VaultScreen({ theme, onBack, onOpen }: Props) {
         setLock('noPasscode');
         return;
       }
-      const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Open your private vault' });
+      const result = await authenticateWithDevice('Open your private vault');
       setLock(result.success ? 'open' : 'locked');
     } catch {
       setLock('locked');

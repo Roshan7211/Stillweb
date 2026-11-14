@@ -1,5 +1,4 @@
 import * as Clipboard from 'expo-clipboard';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { BlurView } from 'expo-blur';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { StatusBar } from 'expo-status-bar';
@@ -39,6 +38,7 @@ import AddressBar from '../components/AddressBar';
 import BrowserTabView, { type TabEnter, type ToastAction } from '../components/BrowserTabView';
 import type { BarTone } from '../components/AddressBar';
 import ContextMenuSheet, { type ContextAction, type ContextTarget } from '../components/ContextMenuSheet';
+import { authenticate } from '../authenticate';
 import { ErrorBoundary, ProblemScreen } from '../components/ErrorBoundary';
 import MenuSheet, { type MenuAction } from '../components/MenuSheet';
 import { Appear, Icon, IconButton } from '../components/primitives';
@@ -187,7 +187,7 @@ export default function BrowserScreen() {
   const unlockPrivate = useCallback(async (): Promise<boolean> => {
     if (!settings.lockPrivateTabs || privateUnlocked) return true;
     try {
-      const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Unlock private tabs' });
+      const result = await authenticate('Unlock private tabs');
       if (result.success) setPrivateUnlocked(true);
       return result.success;
     } catch {
@@ -584,7 +584,9 @@ export default function BrowserScreen() {
     const url = activeTab?.url ?? '';
     switch (action) {
       case 'newPrivateTab':
-        return newTab(true);
+        // The unlock prompt waits until the menu has closed (iOS).
+        setTimeout(() => newTab(true), afterMenu);
+        return;
       case 'bookmarks':
       case 'history':
       case 'downloads':
@@ -753,7 +755,10 @@ export default function BrowserScreen() {
       // iPhone, like Safari; Android keyboards compose words in the field, which a selected
       // completion would get in the way of.
       complete={Platform.OS === 'ios' ? (typed) => library.completeSite(typed, !incognito) : undefined}
-      onStartEditing={() => (incognito && privateLocked ? unlockPrivate() : startEditing())}
+      // Locked: unlock first, then carry on to typing.
+      onStartEditing={() =>
+        incognito && privateLocked ? unlockPrivate().then((ok) => ok && startEditing()) : startEditing()
+      }
       onEndEditing={() => setEditing(false)}
       onSubmit={submitAddress}
       onShieldPress={() => setShieldOpen(true)}

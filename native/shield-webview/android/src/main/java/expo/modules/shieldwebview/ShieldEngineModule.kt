@@ -168,6 +168,9 @@ class ShieldEngineModule : Module() {
       }
     }
 
+    /** iOS keeps its privacy blur off during the app's own unlock prompt; Android has no blur. */
+    Function("setAuthenticating") { _: Boolean -> }
+
     /** Keeps private tabs out of screenshots and the recent-apps preview. */
     AsyncFunction("setSecureWindow") { secure: Boolean ->
       appContext.currentActivity?.window?.let { window ->

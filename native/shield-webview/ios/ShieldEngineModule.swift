@@ -10,11 +10,19 @@ final class PrivacyCover {
   var enabled = false {
     didSet { if !enabled { hide() } }
   }
+  /// The app's own Face ID or passcode prompt is up. It makes the app inactive too, but that's
+  /// no reason to blur everything behind it (the locked screen is what shows there).
+  var authenticating = false
   private var covers: [UIView] = []
 
   private init() {
     let center = NotificationCenter.default
     center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+      guard self?.authenticating != true else { return }
+      self?.show()
+    }
+    // Leaving the app during the prompt: covered all the same before iOS takes its snapshot.
+    center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
       self?.show()
     }
     center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -200,6 +208,11 @@ public class ShieldEngineModule: Module {
     AsyncFunction("setSecureWindow") { (secure: Bool) in
       PrivacyCover.shared.enabled = secure
     }.runOnQueue(.main)
+
+    // Synchronous, so it's set before the prompt that follows makes the app inactive.
+    Function("setAuthenticating") { (on: Bool) in
+      DispatchQueue.main.async { PrivacyCover.shared.authenticating = on }
+    }
 
 
     AsyncFunction("openExternal") { (url: String, promise: Promise) in

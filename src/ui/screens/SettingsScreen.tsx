@@ -11,6 +11,7 @@ import { SEARCH_ENGINES } from '../../browser/url';
 import { usePlus } from '../../plus/plus';
 import { fromPerMonth } from '../../plus/pricing';
 import { Group, Icon, IconButton, Row, ScreenHeader, SectionTitle, SwitchRow } from '../components/primitives';
+import { authenticate } from '../authenticate';
 import ProfilesSection from '../components/ProfilesSection';
 import { ACCENTS, type AccentId, type Theme } from '../theme';
 
@@ -75,7 +76,7 @@ export default function SettingsScreen({ theme, onBack, onOpenAbout, onOpenPlus,
           Alert.alert('Set up a screen lock first', 'Add a fingerprint, face or PIN in your device settings to lock private tabs.');
           return;
         }
-        const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Lock private tabs' });
+        const result = await authenticate('Lock private tabs');
         if (!result.success) return;
       } catch {
         Alert.alert(
