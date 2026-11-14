@@ -1115,7 +1115,8 @@ export default function BrowserScreen() {
         hasPage={hasPage}
         bookmarked={!!activeTab && library.isBookmarked(activeTab.url)}
         readerActive={!!activeTab?.reader}
-        showVault={settings.vault}
+        // Also while it still holds something, so turning the vault off never strands what's in it.
+        showVault={settings.vault || library.vaultBookmarks.length > 0 || library.vaultDownloads.length > 0}
         navigation={
           single && Platform.OS === 'android'
             ? {

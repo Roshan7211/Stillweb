@@ -20,6 +20,11 @@ type PlusValue = {
    * yet (Android) its features aren't locked.
    */
   unlocked: boolean;
+  /**
+   * `unlocked` is known: the last saved state has been read or the store has answered. Before
+   * that, Plus features aren't switched off on the native side (they'd flicker at launch).
+   */
+  known: boolean;
   /** The active purchase (lifetime first, then the subscription that runs longest). */
   entitlement: PlusEntitlement | null;
   /**
@@ -60,6 +65,7 @@ export function PlusProvider({ children }: { children: ReactNode }) {
   const [alsoSubscribed, setAlsoSubscribed] = useState(false);
   // Last known state, so Plus screens don't flash locked at launch; StoreKit then confirms.
   const [cachedUnlocked, setCachedUnlocked] = useState(false);
+  const [cacheRead, setCacheRead] = useState(false);
   const [verified, setVerified] = useState(false);
   const [products, setProducts] = useState<PlusProduct[]>([]);
   const [missingProducts, setMissingProducts] = useState<string[]>([]);
@@ -81,7 +87,8 @@ export function PlusProvider({ children }: { children: ReactNode }) {
     if (!PlusStore) return;
     AsyncStorage.getItem(CACHE_KEY)
       .then((value) => setCachedUnlocked(value === '1'))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setCacheRead(true));
     const check = () => PlusStore?.getEntitlements().then(apply).catch(() => {});
     check();
     const sub = PlusStore.addListener('onEntitlementsChanged', ({ entitlements }) => apply(entitlements));
@@ -142,12 +149,14 @@ export function PlusProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unlocked = !supported || entitlement !== null || (!verified && cachedUnlocked);
+  const known = !supported || verified || cacheRead;
   const sandbox = PlusStore?.sandbox === true;
 
   const value = useMemo<PlusValue>(
     () => ({
       supported,
       unlocked,
+      known,
       entitlement,
       alsoSubscribed,
       products,
@@ -160,7 +169,7 @@ export function PlusProvider({ children }: { children: ReactNode }) {
       manageSubscription,
       redeemCode,
     }),
-    [supported, unlocked, entitlement, alsoSubscribed, products, missingProducts, productsState, sandbox, loadProducts, purchase, restore, manageSubscription, redeemCode],
+    [supported, unlocked, known, entitlement, alsoSubscribed, products, missingProducts, productsState, sandbox, loadProducts, purchase, restore, manageSubscription, redeemCode],
   );
   return <PlusContext.Provider value={value}>{children}</PlusContext.Provider>;
 }

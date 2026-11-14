@@ -231,15 +231,32 @@ final class ShieldEngine {
     calmMode = prefs["calmMode"] as? Bool ?? false
     vault = prefs["vault"] as? Bool ?? false
     configureAudioSession()
+    // Without background play the app's audio may only play while it's on screen (see below).
+    let center = NotificationCenter.default
+    center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+      self?.inBackground = true
+      self?.configureAudioSession()
+    }
+    center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+      self?.inBackground = false
+      self?.configureAudioSession()
+    }
     disabledSites = Set(defaults.stringArray(forKey: "shield.disabledSites") ?? [])
     totalBlocked = defaults.integer(forKey: "shield.totalBlocked")
     loadBest(completion: nil)
   }
 
-  /// Playback category lets web audio continue in the background (with UIBackgroundModes audio).
+  private var inBackground = false
+
+  /// On screen: the playback category, like Safari (pages' sound plays with the silent switch on,
+  /// other apps' audio pauses for it). With background play (a Plus feature) it stays so in the
+  /// background, which lets web audio continue there (UIBackgroundModes audio). Without it, each
+  /// tab pauses its media as the app leaves the screen (ShieldWebView's app state observers) and
+  /// the category becomes ambient, which can't play in the background: the lock screen's play
+  /// button can't start it again there.
   private func configureAudioSession() {
     let session = AVAudioSession.sharedInstance()
-    try? session.setCategory(backgroundPlay ? .playback : .ambient, mode: .default)
+    try? session.setCategory(backgroundPlay || !inBackground ? .playback : .ambient, mode: .default)
   }
 
   // MARK: - Private browsing

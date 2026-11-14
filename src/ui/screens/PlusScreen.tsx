@@ -242,19 +242,22 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
             <Text style={[styles.footerLink, { color: theme.accent }]}>Redeem Code</Text>
           </Pressable>
         </View>
+        {/* iOS only: Apple requires Terms of Use and the privacy policy where subscriptions are
+            sold. Elsewhere the privacy policy is in About and Google Play shows its own terms. */}
+        {Platform.OS === 'ios' ? (
         <View style={styles.footer}>
           {TERMS_URL ? (
             <Pressable onPress={() => onOpen(TERMS_URL)} accessibilityRole="link" hitSlop={8}>
               <Text style={[styles.footerLink, { color: theme.muted }]}>Terms of Use</Text>
             </Pressable>
           ) : null}
-          {/* Apple requires the privacy policy beside Terms of Use where subscriptions are sold; elsewhere it's in About. */}
-          {Platform.OS === 'ios' && PRIVACY_POLICY_URL ? (
+          {PRIVACY_POLICY_URL ? (
             <Pressable onPress={() => onOpen(PRIVACY_POLICY_URL as string)} accessibilityRole="link" hitSlop={8}>
               <Text style={[styles.footerLink, { color: theme.muted }]}>Privacy Policy</Text>
             </Pressable>
           ) : null}
         </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

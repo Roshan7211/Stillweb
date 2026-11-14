@@ -89,14 +89,19 @@ function Root() {
     hideSplash();
   }, [ready]);
 
-  // Plus features reach the native side only while Plus is active.
+  // Plus options reach the native side only while Plus is active, and only once both the
+  // settings and the Plus state are known: until then the native side keeps the options it saved
+  // last time, so nothing is switched off and on again at launch (that rebuilds every tab's scripts).
+  const synced = loaded && plus.known;
   const calmMode = settings.shields.calmMode && plus.unlocked;
   const vault = settings.vault && plus.unlocked;
   const backgroundPlay = settings.shields.backgroundPlay && plus.unlocked;
   useEffect(() => {
+    if (!synced) return;
     ShieldEngine.setOptions({ calmMode, vault, backgroundPlay });
-  }, [calmMode, vault, backgroundPlay]);
-  // Desktop website is free; JavaScript off and hidden elements are Plus.
+  }, [synced, calmMode, vault, backgroundPlay]);
+  // Desktop website is free; interactive content off and hidden items are Plus. Sent right
+  // away: the native side doesn't keep these between launches, and the first page needs them.
   const { siteFixes } = settings;
   useEffect(() => {
     const fixes = Object.fromEntries(

@@ -52,7 +52,6 @@ export default function LoadErrorPage({ theme, error, canGoBack, onRetry, onBack
           </Pressable>
         ) : null}
       </View>
-
     </ScrollView>
   );
 }

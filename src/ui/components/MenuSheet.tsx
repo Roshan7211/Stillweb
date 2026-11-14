@@ -26,7 +26,7 @@ type Props = {
   hasPage: boolean;
   bookmarked: boolean;
   readerActive: boolean;
-  /** The private vault is turned on in Settings. */
+  /** The private vault is turned on in Settings, or still has bookmarks or files in it. */
   showVault: boolean;
   /**
    * Android's single bottom bar: forward (and back, for the long reach) live in the menu. On

@@ -1432,6 +1432,10 @@ final class ShieldWebView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScrip
     appObservers = states.map { name, state in
       center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         self?.sendAppState(state)
+        // Without background play (a Plus feature) media stops when the app leaves the screen.
+        if state == "background" && !ShieldEngine.shared.backgroundPlay {
+          self?.webView?.pauseAllMediaPlayback(completionHandler: nil)
+        }
         if state == "foreground" || state == "active" { self?.reloadIfNeeded(returning: true) }
       }
     }
