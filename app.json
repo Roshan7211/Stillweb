@@ -66,7 +66,7 @@
     },
     "android": {
       "package": "app.stillweb.browser",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
         "foregroundImage": "./assets/android-icon-foreground.png",
