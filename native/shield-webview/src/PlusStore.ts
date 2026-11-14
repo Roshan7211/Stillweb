@@ -44,11 +44,11 @@ declare class PlusStoreModule extends NativeModule<PlusStoreEvents> {
   getProducts(ids: string[]): Promise<PlusProduct[]>;
   purchase(id: string): Promise<PurchaseOutcome>;
   getEntitlements(): Promise<PlusEntitlement[]>;
-  /** Syncs with the App Store ("Restore Purchases"); may ask the user to sign in. */
+  /** Asks the store again ("Restore Purchases"); on iOS it may ask the user to sign in. */
   restore(): Promise<PlusEntitlement[]>;
   showManageSubscriptions(): Promise<boolean>;
   presentOfferCodeRedeemSheet(): Promise<boolean>;
 }
 
-/** StoreKit purchases (iOS). Null where Stillweb Plus can't be bought (Android, for now). */
+/** Purchases with StoreKit (iOS) or Google Play Billing (Android). Null where neither exists. */
 export default requireOptionalNativeModule<PlusStoreModule>('PlusStore');

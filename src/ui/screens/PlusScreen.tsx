@@ -59,10 +59,14 @@ const PLUS_FEATURES: { icon: IconName; title: string; body: string; needsProfile
   },
 ];
 
-/** Apple's standard licence agreement, used as Stillweb's Terms of Use. */
 const LOGO = require('../../../assets/logo.png');
 
-const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+/** Apple's standard licence agreement, used as Stillweb's Terms of Use on iOS. */
+const TERMS_URL = Platform.OS === 'ios' ? 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/' : null;
+
+/** The account purchases are charged to and kept with. */
+const ACCOUNT = Platform.OS === 'ios' ? 'Apple Account' : 'Google Account';
+const MANAGE = Platform.OS === 'ios' ? 'Settings › Apple Account › Subscriptions' : 'Google Play › Payments and subscriptions';
 
 export default function PlusScreen({ theme, onBack, onOpen }: Props) {
   const plus = usePlus();
@@ -104,7 +108,7 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
       const found = await plus.restore();
       Alert.alert(
         found ? 'Purchases restored' : 'Nothing to restore',
-        found ? 'Stillweb Plus is active.' : 'No Stillweb Plus purchase was found for this Apple Account.',
+        found ? 'Stillweb Plus is active.' : `No Stillweb Plus purchase was found for this ${ACCOUNT}.`,
       );
     } catch (e) {
       Alert.alert('Couldn’t restore purchases', e instanceof Error ? e.message : String(e));
@@ -208,8 +212,8 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
             </Pressable>
             <Text style={[styles.legal, { color: theme.muted }]}>
               {chosen.type === 'lifetime'
-                ? 'One-time purchase, charged to your Apple Account.'
-                : `Payment is charged to your Apple Account${hasTrial(chosen) ? ' when the free trial ends' : ''}. The subscription renews automatically unless it’s cancelled at least 24 hours before the end of the current period. Manage or cancel it in Settings › Apple Account › Subscriptions.`}
+                ? `One-time purchase, charged to your ${ACCOUNT}.`
+                : `Payment is charged to your ${ACCOUNT}${hasTrial(chosen) ? ' when the free trial ends' : ''}. The subscription renews automatically unless it’s cancelled at least 24 hours before the end of the current period. Manage or cancel it in ${MANAGE}.`}
             </Text>
           </>
         ) : productsState === 'empty' || productsState === 'error' ? (
@@ -234,9 +238,11 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
           </Pressable>
         </View>
         <View style={styles.footer}>
-          <Pressable onPress={() => onOpen(TERMS_URL)} accessibilityRole="link" hitSlop={8}>
-            <Text style={[styles.footerLink, { color: theme.muted }]}>Terms of Use</Text>
-          </Pressable>
+          {TERMS_URL ? (
+            <Pressable onPress={() => onOpen(TERMS_URL)} accessibilityRole="link" hitSlop={8}>
+              <Text style={[styles.footerLink, { color: theme.muted }]}>Terms of Use</Text>
+            </Pressable>
+          ) : null}
           {PRIVACY_POLICY_URL ? (
             <Pressable onPress={() => onOpen(PRIVACY_POLICY_URL as string)} accessibilityRole="link" hitSlop={8}>
               <Text style={[styles.footerLink, { color: theme.muted }]}>Privacy Policy</Text>

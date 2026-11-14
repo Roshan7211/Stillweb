@@ -28,6 +28,8 @@ dependencies {
   implementation "androidx.webkit:webkit:1.14.0"
   implementation "androidx.core:core-ktx:1.16.0"
   implementation "androidx.media:media:1.7.0"
+  // Stillweb Plus purchases (PlusStoreModule).
+  implementation "com.android.billingclient:billing:9.1.0"
 }
 
 // libadblock_jni.so is produced by scripts/build-rust-android.sh (npm run build:rust:android).

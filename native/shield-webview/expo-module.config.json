@@ -13,7 +13,8 @@
   "android": {
     "modules": [
       "expo.modules.shieldwebview.ShieldWebViewModule",
-      "expo.modules.shieldwebview.ShieldEngineModule"
+      "expo.modules.shieldwebview.ShieldEngineModule",
+      "expo.modules.shieldwebview.PlusStoreModule"
     ]
   }
 }
