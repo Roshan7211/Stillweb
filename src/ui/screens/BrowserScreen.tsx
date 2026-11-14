@@ -80,6 +80,15 @@ export default function BrowserScreen() {
 
   const refs = useRef(new Map<string, ShieldWebViewRef>());
   const [overlay, setOverlay] = useState<Overlay>('none');
+  // The screen shown before this one. Going from one screen to another (Settings to Plus and
+  // back), the new one fades in over a solid backdrop, so the page underneath doesn't show
+  // through for a moment; from the browser it fades in over the page.
+  const [shownOverlay, setShownOverlay] = useState<Overlay>('none');
+  const [overlayFrom, setOverlayFrom] = useState<Overlay>('none');
+  if (overlay !== shownOverlay) {
+    setOverlayFrom(shownOverlay);
+    setShownOverlay(overlay);
+  }
   // Where the privacy report and Plus screens go back to (they open from several places).
   const [reportBack, setReportBack] = useState<Overlay>('none');
   const [plusBack, setPlusBack] = useState<Overlay>('none');
@@ -1164,6 +1173,9 @@ export default function BrowserScreen() {
         }}
       />
 
+      {overlay !== 'none' && overlayFrom !== 'none' ? (
+        <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: theme.background }]} />
+      ) : null}
       {overlay !== 'none' ? (
         <Appear key={overlay} style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: theme.background }]}>
           <ErrorBoundary
