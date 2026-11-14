@@ -77,6 +77,11 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
   const plus = usePlus();
   const [selected, setSelected] = useState<string>(PLUS_PRODUCTS.yearly);
   const [busy, setBusy] = useState<'purchase' | 'restore' | null>(null);
+  /**
+   * Android subscribers choosing another plan. (On iOS the plans are one subscription group:
+   * Apple's Manage subscription switches between them.)
+   */
+  const [changing, setChanging] = useState(false);
 
   const { productsState, loadProducts } = plus;
   useEffect(() => {
@@ -85,11 +90,17 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // TestFlight only: example plans while the real ones aren't available (buying is off).
-  const products = productsState === 'ready' ? plus.products : [];
+  const entitlement = plus.entitlement;
+  const isLifetime = entitlement?.productId === PLUS_PRODUCTS.lifetime;
+  const canChange = Platform.OS === 'android' && !!entitlement && !isLifetime;
+  const switching = changing && canChange;
+
+  const allProducts = productsState === 'ready' ? plus.products : [];
+  // Changing plans: the plan in use isn't offered again.
+  const products = switching ? allProducts.filter((p) => p.id !== entitlement?.productId) : allProducts;
   const chosen = products.find((p) => p.id === selected) ?? products[0];
-  const monthly = products.find((p) => p.id === PLUS_PRODUCTS.monthly);
-  const yearly = products.find((p) => p.id === PLUS_PRODUCTS.yearly);
+  const monthly = allProducts.find((p) => p.id === PLUS_PRODUCTS.monthly);
+  const yearly = allProducts.find((p) => p.id === PLUS_PRODUCTS.yearly);
   const yearlySaving = monthly && yearly ? Math.round((1 - yearly.price / (monthly.price * 12)) * 100) : 0;
 
   const buy = async () => {
@@ -98,7 +109,12 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
     const result = await plus.purchase(chosen.id);
     setBusy(null);
     if (result.status === 'purchased') {
-      Alert.alert('Welcome to Stillweb Plus', 'Thank you for supporting Stillweb.');
+      if (switching) {
+        setChanging(false);
+        Alert.alert('Plan changed', `You're now on the ${planTitle(chosen)} plan. Thank you for supporting Stillweb.`);
+      } else {
+        Alert.alert('Welcome to Stillweb Plus', 'Thank you for supporting Stillweb.');
+      }
     } else if (result.status === 'pending') {
       Alert.alert('Purchase pending', 'It finishes once it’s approved, for example by a parent with Ask to Buy.');
     } else if (result.status === 'error') {
@@ -122,9 +138,6 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
     }
   };
 
-  const entitlement = plus.entitlement;
-  const isLifetime = entitlement?.productId === PLUS_PRODUCTS.lifetime;
-
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.close}>
@@ -147,7 +160,7 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
           ))}
         </View>
 
-        {entitlement ? (
+        {entitlement && !switching ? (
           <View style={[styles.active, { backgroundColor: theme.surface }]}>
             <Icon name="check-circle" size={24} color={theme.accent} />
             <Text style={[styles.activeTitle, { color: theme.text }]}>You have Stillweb Plus</Text>
@@ -156,13 +169,20 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
                 ? 'Yours for life. Thank you!'
                 : entitlement.expiresAt
                   ? `Current period ends ${new Date(entitlement.expiresAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}.`
-                  : 'Thank you for supporting Stillweb.'}
+                  : entitlement.productId === PLUS_PRODUCTS.yearly || entitlement.productId === PLUS_PRODUCTS.monthly
+                    ? `${entitlement.productId === PLUS_PRODUCTS.yearly ? 'Yearly' : 'Monthly'} plan. Thank you for supporting Stillweb.`
+                    : 'Thank you for supporting Stillweb.'}
             </Text>
             {isLifetime && plus.alsoSubscribed ? (
               <Text style={[styles.activeBody, { color: theme.text }]}>
                 You also have a subscription. If it’s still set to renew, cancel it so you aren’t charged again:
                 Lifetime already covers you.
               </Text>
+            ) : null}
+            {canChange ? (
+              <Pressable onPress={() => setChanging(true)} accessibilityRole="button" hitSlop={8}>
+                <Text style={[styles.link, { color: theme.accent }]}>Change plan</Text>
+              </Pressable>
             ) : null}
             {!isLifetime || plus.alsoSubscribed ? (
               <Pressable onPress={plus.manageSubscription} accessibilityRole="button" hitSlop={8}>
@@ -211,10 +231,21 @@ export default function PlusScreen({ theme, onBack, onOpen }: Props) {
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <Text style={styles.ctaText}>
-                  {hasTrial(chosen) ? 'Start free trial' : chosen.type === 'lifetime' ? 'Buy Lifetime' : 'Subscribe'}
+                  {chosen.type === 'lifetime'
+                    ? 'Buy Lifetime'
+                    : switching
+                      ? `Switch to ${planTitle(chosen)}`
+                      : hasTrial(chosen)
+                        ? 'Start free trial'
+                        : 'Subscribe'}
                 </Text>
               )}
             </Pressable>
+            {switching ? (
+              <Pressable onPress={() => setChanging(false)} accessibilityRole="button" hitSlop={8} style={styles.keep}>
+                <Text style={[styles.link, { color: theme.accent }]}>Keep my current plan</Text>
+              </Pressable>
+            ) : null}
             <Text style={[styles.legal, { color: theme.muted }]}>
               {chosen.type === 'lifetime'
                 ? `One-time purchase, charged to your ${ACCOUNT}.`
@@ -291,6 +322,7 @@ const styles = StyleSheet.create({
   status: { marginTop: 32, alignItems: 'center', gap: 10 },
   statusText: { fontSize: 15, textAlign: 'center' },
   link: { fontSize: 15, fontWeight: '600', marginTop: 4 },
+  keep: { alignSelf: 'center', marginTop: 14 },
   footer: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 20 },
   footerLink: { fontSize: 14 },
 });

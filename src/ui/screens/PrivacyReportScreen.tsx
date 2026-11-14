@@ -151,7 +151,7 @@ export default function PrivacyReportScreen({ theme, onBack, onUpgrade }: Props)
             ) : plus.unlocked ? (
               <>
                 <RankedList theme={theme} title="Sites with the most blocking" rows={topSites} />
-                <RankedList theme={theme} title="Trackers blocked most" rows={topDomains} />
+                <RankedList theme={theme} title="Ad and tracker sources" rows={topDomains} />
               </>
             ) : (
               <UpgradeCard
