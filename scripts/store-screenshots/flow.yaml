@@ -1,0 +1,108 @@
+# App Store screenshots: the real app on an iPhone / iPad simulator (Maestro).
+# Screens are named <step>-<theme>; run.sh copies them out. Taps that may not match on a given
+# device are optional, so one miss doesn't cost the rest.
+appId: app.stillweb.browser
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Search or enter address"
+    timeout: 60000
+
+# Browse a news site so the blocked count isn't zero.
+- tapOn: "Search or enter address"
+- inputText: "https://www.bbc.com/news"
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 20000
+
+# A blank tab from the tab switcher.
+- tapOn:
+    text: "1 tab"
+    optional: true
+- tapOn:
+    text: "New tab"
+    optional: true
+# A new tab starts in the address field: leave it so the page shows.
+- tapOn:
+    text: "Cancel editing"
+    optional: true
+- waitForAnimationToEnd
+
+# Light (the app follows the simulator, which run.sh sets to light).
+- takeScreenshot: shots/01-newtab-light
+- tapOn: "Menu"
+- waitForAnimationToEnd
+- takeScreenshot: shots/02-menu-light
+- tapOn: "Settings"
+- waitForAnimationToEnd
+- takeScreenshot: shots/03-settings-top-light
+- scrollUntilVisible:
+    element: "Address bar"
+    direction: DOWN
+    optional: true
+- takeScreenshot: shots/04-settings-look-light
+- scrollUntilVisible:
+    element: "Private vault.*"
+    direction: DOWN
+    optional: true
+- takeScreenshot: shots/05-settings-privacy-light
+- scrollUntilVisible:
+    element: "Privacy report"
+    direction: UP
+    optional: true
+- tapOn: "Privacy report"
+- waitForAnimationToEnd
+- takeScreenshot: shots/06-report-light
+- tapOn:
+    text: "See Stillweb Plus"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: shots/07-plus-light
+- tapOn:
+    text: "Close"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    text: "Back"
+    optional: true
+- waitForAnimationToEnd
+
+# Dark, chosen in the app's own setting.
+- scrollUntilVisible:
+    element: "Dark"
+    direction: DOWN
+    optional: true
+- tapOn: "Dark"
+- waitForAnimationToEnd
+- takeScreenshot: shots/08-settings-look-dark
+- scrollUntilVisible:
+    element: "Privacy report"
+    direction: UP
+    optional: true
+- tapOn: "Privacy report"
+- waitForAnimationToEnd
+- takeScreenshot: shots/09-report-dark
+- tapOn:
+    text: "See Stillweb Plus"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: shots/10-plus-dark
+- tapOn:
+    text: "Close"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    text: "Back"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    text: "Back"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/11-newtab-dark
+- tapOn: "Menu"
+- waitForAnimationToEnd
+- takeScreenshot: shots/12-menu-dark
