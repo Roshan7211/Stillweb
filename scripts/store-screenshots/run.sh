@@ -37,14 +37,19 @@ shoot() {
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b
   xcrun simctl status_bar "$udid" override --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
-    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+    --cellularMode active --cellularBars 4 --batteryState discharging --batteryLevel 100
   xcrun simctl ui "$udid" appearance light
   xcrun simctl install "$udid" "$APP"
   mkdir -p "out/$name"
+  touch /tmp/shots-start
   (cd "out/$name" && maestro --device "$udid" test "$ROOT/scripts/store-screenshots/flow.yaml") || echo "flow ended early on $name"
   # The last screen, whatever happened.
   xcrun simctl io "$udid" screenshot "out/$name/zz-last.png" || true
-  find "out/$name" -name "*.png" -exec mv {} "out/$name/" \; 2>/dev/null
+  # Maestro may save next to the flow, in the working folder or in its own folder.
+  find "$ROOT" "$HOME/.maestro" -name '[0-9][0-9]-*.png' -newer /tmp/shots-start -not -path "$ROOT/out/*" \
+    -exec mv {} "out/$name/" \; 2>/dev/null
+  find "out/$name" -mindepth 2 -name "*.png" -exec mv {} "out/$name/" \; 2>/dev/null
+  echo "shots for $name:"; ls "out/$name"
   xcrun simctl shutdown "$udid" || true
 }
 

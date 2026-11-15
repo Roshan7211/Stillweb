@@ -34,7 +34,7 @@ appId: app.stillweb.browser
 - tapOn: "Menu"
 - waitForAnimationToEnd
 - takeScreenshot: shots/02-menu-light
-- tapOn: "Settings"
+- tapOn: ".*Settings.*"
 - waitForAnimationToEnd
 - takeScreenshot: shots/03-settings-top-light
 - scrollUntilVisible:
@@ -43,19 +43,19 @@ appId: app.stillweb.browser
     optional: true
 - takeScreenshot: shots/04-settings-look-light
 - scrollUntilVisible:
-    element: "Private vault.*"
+    element: ".*Private vault.*"
     direction: DOWN
     optional: true
 - takeScreenshot: shots/05-settings-privacy-light
 - scrollUntilVisible:
-    element: "Privacy report"
+    element: ".*Privacy report.*"
     direction: UP
     optional: true
-- tapOn: "Privacy report"
+- tapOn: ".*Privacy report.*"
 - waitForAnimationToEnd
 - takeScreenshot: shots/06-report-light
 - tapOn:
-    text: "See Stillweb Plus"
+    text: ".*See Stillweb Plus.*"
     optional: true
 - waitForAnimationToEnd:
     timeout: 8000
@@ -78,14 +78,14 @@ appId: app.stillweb.browser
 - waitForAnimationToEnd
 - takeScreenshot: shots/08-settings-look-dark
 - scrollUntilVisible:
-    element: "Privacy report"
+    element: ".*Privacy report.*"
     direction: UP
     optional: true
-- tapOn: "Privacy report"
+- tapOn: ".*Privacy report.*"
 - waitForAnimationToEnd
 - takeScreenshot: shots/09-report-dark
 - tapOn:
-    text: "See Stillweb Plus"
+    text: ".*See Stillweb Plus.*"
     optional: true
 - waitForAnimationToEnd:
     timeout: 8000
