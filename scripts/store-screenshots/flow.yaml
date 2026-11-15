@@ -1,6 +1,6 @@
 # App Store screenshots: the real app on an iPhone / iPad simulator (Maestro).
-# Screens are named <step>-<theme>; run.sh copies them out. Taps that may not match on a given
-# device are optional, so one miss doesn't cost the rest.
+# Each part starts again from the browser (relaunching the app keeps its tabs), so a screen
+# that closes differently than expected can't throw the next part off.
 appId: app.stillweb.browser
 ---
 - launchApp:
@@ -9,21 +9,31 @@ appId: app.stillweb.browser
     visible: "Search or enter address"
     timeout: 60000
 
-# Browse a news site so the blocked count isn't zero.
+# Browse news sites so the blocked count isn't zero; give them time to finish.
 - tapOn: "Search or enter address"
 - inputText: "https://www.bbc.com/news"
 - pressKey: Enter
-- waitForAnimationToEnd:
-    timeout: 20000
+- extendedWaitUntil:
+    visible: "never-shown-just-waiting"
+    timeout: 15000
+    optional: true
+- tapOn:
+    text: "Search or enter address"
+    optional: true
+- inputText: "https://edition.cnn.com"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "never-shown-just-waiting"
+    timeout: 15000
+    optional: true
 
 # A blank tab from the tab switcher.
 - tapOn:
-    text: "1 tab"
+    text: "[0-9]+ tabs?"
     optional: true
 - tapOn:
     text: "New tab"
     optional: true
-# A new tab starts in the address field: leave it so the page shows.
 - tapOn:
     text: "Cancel editing"
     optional: true
@@ -57,21 +67,24 @@ appId: app.stillweb.browser
 - tapOn:
     text: ".*See Stillweb Plus.*"
     optional: true
-- waitForAnimationToEnd:
-    timeout: 8000
+- extendedWaitUntil:
+    visible: ".*Restore Purchases.*"
+    timeout: 15000
+    optional: true
 - takeScreenshot: shots/07-plus-light
-- tapOn:
-    text: "Close"
-    optional: true
-- waitForAnimationToEnd
-- tapOn:
-    text: "Back"
-    optional: true
-- waitForAnimationToEnd
 
 # Dark, chosen in the app's own setting.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Menu"
+    timeout: 30000
+- tapOn: "Menu"
+- waitForAnimationToEnd
+- tapOn: ".*Settings.*"
+- waitForAnimationToEnd
 - scrollUntilVisible:
-    element: "Dark"
+    element: "Address bar"
     direction: DOWN
     optional: true
 - tapOn: "Dark"
@@ -87,21 +100,16 @@ appId: app.stillweb.browser
 - tapOn:
     text: ".*See Stillweb Plus.*"
     optional: true
-- waitForAnimationToEnd:
-    timeout: 8000
+- extendedWaitUntil:
+    visible: ".*Restore Purchases.*"
+    timeout: 15000
+    optional: true
 - takeScreenshot: shots/10-plus-dark
-- tapOn:
-    text: "Close"
-    optional: true
-- waitForAnimationToEnd
-- tapOn:
-    text: "Back"
-    optional: true
-- waitForAnimationToEnd
-- tapOn:
-    text: "Back"
-    optional: true
-- waitForAnimationToEnd
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Menu"
+    timeout: 30000
 - takeScreenshot: shots/11-newtab-dark
 - tapOn: "Menu"
 - waitForAnimationToEnd

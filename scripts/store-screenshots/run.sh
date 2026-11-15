@@ -42,7 +42,13 @@ shoot() {
   xcrun simctl install "$udid" "$APP"
   mkdir -p "out/$name"
   touch /tmp/shots-start
-  (cd "out/$name" && maestro --device "$udid" test "$ROOT/scripts/store-screenshots/flow.yaml") || echo "flow ended early on $name"
+  # Maestro's test helper sometimes fails to start on a fresh simulator: one more try then.
+  for attempt in 1 2; do
+    if (cd "out/$name" && maestro --device "$udid" test "$ROOT/scripts/store-screenshots/flow.yaml"); then break; fi
+    echo "flow ended early on $name (attempt $attempt)"
+    if find "$ROOT" "$HOME/.maestro" -name '[0-9][0-9]-*.png' -newer /tmp/shots-start -not -path "$ROOT/out/*" 2>/dev/null | grep -q .; then break; fi
+    sleep 20
+  done
   # The last screen, whatever happened.
   xcrun simctl io "$udid" screenshot "out/$name/zz-last.png" || true
   # Maestro may save next to the flow, in the working folder or in its own folder.
