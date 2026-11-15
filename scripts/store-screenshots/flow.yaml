@@ -1,6 +1,5 @@
-# App Store screenshots: the real app on an iPhone / iPad simulator (Maestro).
-# Each part starts again from the browser (relaunching the app keeps its tabs), so a screen
-# that closes differently than expected can't throw the next part off.
+# App Store screenshots, second pass: the privacy report and Plus, reached from the new tab
+# page's counter (one tappable element), in light and dark.
 appId: app.stillweb.browser
 ---
 - launchApp:
@@ -8,8 +7,6 @@ appId: app.stillweb.browser
 - extendedWaitUntil:
     visible: "Search or enter address"
     timeout: 60000
-
-# Browse news sites so the blocked count isn't zero; give them time to finish.
 - tapOn: "Search or enter address"
 - inputText: "https://www.bbc.com/news"
 - pressKey: Enter
@@ -26,8 +23,6 @@ appId: app.stillweb.browser
     visible: "never-shown-just-waiting"
     timeout: 15000
     optional: true
-
-# A blank tab from the tab switcher.
 - tapOn:
     text: "[0-9]+ tabs?"
     optional: true
@@ -39,41 +34,18 @@ appId: app.stillweb.browser
     optional: true
 - waitForAnimationToEnd
 
-# Light (the app follows the simulator, which run.sh sets to light).
-- takeScreenshot: shots/01-newtab-light
-- tapOn: "Menu"
-- waitForAnimationToEnd
-- takeScreenshot: shots/02-menu-light
-- tapOn: ".*Settings.*"
-- waitForAnimationToEnd
-- takeScreenshot: shots/03-settings-top-light
-- scrollUntilVisible:
-    element: "Address bar"
-    direction: DOWN
-    optional: true
-- takeScreenshot: shots/04-settings-look-light
-- scrollUntilVisible:
-    element: ".*Private vault.*"
-    direction: DOWN
-    optional: true
-- takeScreenshot: shots/05-settings-privacy-light
-- scrollUntilVisible:
-    element: ".*Privacy report.*"
-    direction: UP
-    optional: true
-- tapOn: ".*Privacy report.*"
+# Light
+- tapOn: ".*Open privacy report.*"
 - waitForAnimationToEnd
 - takeScreenshot: shots/06-report-light
-- tapOn:
-    text: ".*See Stillweb Plus.*"
-    optional: true
+- tapOn: ".*See Stillweb Plus.*"
 - extendedWaitUntil:
     visible: ".*Restore Purchases.*"
-    timeout: 15000
+    timeout: 20000
     optional: true
 - takeScreenshot: shots/07-plus-light
 
-# Dark, chosen in the app's own setting.
+# Dark: the app's own setting, then back to the new tab page.
 - stopApp
 - launchApp
 - extendedWaitUntil:
@@ -89,28 +61,17 @@ appId: app.stillweb.browser
     optional: true
 - tapOn: "Dark"
 - waitForAnimationToEnd
-- takeScreenshot: shots/08-settings-look-dark
-- scrollUntilVisible:
-    element: ".*Privacy report.*"
-    direction: UP
-    optional: true
-- tapOn: ".*Privacy report.*"
-- waitForAnimationToEnd
-- takeScreenshot: shots/09-report-dark
-- tapOn:
-    text: ".*See Stillweb Plus.*"
-    optional: true
-- extendedWaitUntil:
-    visible: ".*Restore Purchases.*"
-    timeout: 15000
-    optional: true
-- takeScreenshot: shots/10-plus-dark
 - stopApp
 - launchApp
 - extendedWaitUntil:
     visible: "Menu"
     timeout: 30000
-- takeScreenshot: shots/11-newtab-dark
-- tapOn: "Menu"
+- tapOn: ".*Open privacy report.*"
 - waitForAnimationToEnd
-- takeScreenshot: shots/12-menu-dark
+- takeScreenshot: shots/09-report-dark
+- tapOn: ".*See Stillweb Plus.*"
+- extendedWaitUntil:
+    visible: ".*Restore Purchases.*"
+    timeout: 20000
+    optional: true
+- takeScreenshot: shots/10-plus-dark
